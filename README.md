@@ -24,6 +24,7 @@ Electron + React + TypeScript
 - 활성 worktree 로컬 서버 start/stop (한 번에 하나) + 라이브 로그 패널
 - 브랜치·서버 상태 사이드바
 - 머지 + 정리 버튼 (MangoLove 방법론 검증 훅 연결)
+- 세션 영속화 b-lite: 재시작 시 worktree별 `claude --continue` 자동 실행 (프로세스 생존은 v2)
 
 ## 작업 이어가기
 
