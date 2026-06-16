@@ -11,6 +11,8 @@ release/
 # Logs
 *.log
 logs/
+# Do not ignore the renderer logs component directory (plan 3)
+!src/renderer/components/logs/
 
 # Environment
 .env

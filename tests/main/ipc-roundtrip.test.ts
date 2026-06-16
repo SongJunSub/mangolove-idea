@@ -191,3 +191,68 @@ describe('registerIpc — session', () => {
     expect(sm.resize).toHaveBeenCalledWith(req);
   });
 });
+
+describe('registerIpc — server + logs', () => {
+  function makeIpcMain() {
+    const handlers = new Map<string, (...a: unknown[]) => unknown>();
+    const ipcMain = {
+      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
+      on: vi.fn(),
+    };
+    return { handlers, ipcMain };
+  }
+
+  function fakeServer() {
+    const status = { process: { worktreeId: '/wt', kind: 'npm', state: 'running', pid: 9 } };
+    return {
+      start: vi.fn(async () => status),
+      stop: vi.fn(async () => ({
+        process: { worktreeId: null, kind: 'unknown', state: 'stopped' },
+      })),
+      status: vi.fn(() => status),
+      dispose: vi.fn(),
+    };
+  }
+  function fakeLogStore() {
+    return {
+      snapshot: vi.fn(() => [{ seq: 0, ts: 1, stream: 'stdout', level: 'info', text: 'x' }]),
+    };
+  }
+
+  it('SERVER_START delegates to serverManager.start and returns the ServerStatus', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const sm = fakeServer();
+    registerIpc(ipcMain as never, { mainWindow: null, serverManager: sm as never });
+    const req = { worktreeId: '/wt' };
+    const out = await handlers.get('server:start')!({}, req);
+    expect(sm.start).toHaveBeenCalledWith(req);
+    expect(out).toMatchObject({ process: { state: 'running', pid: 9 } });
+  });
+
+  it('SERVER_STOP delegates to serverManager.stop', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const sm = fakeServer();
+    registerIpc(ipcMain as never, { mainWindow: null, serverManager: sm as never });
+    const out = await handlers.get('server:stop')!({}, {});
+    expect(sm.stop).toHaveBeenCalledWith({});
+    expect(out).toMatchObject({ process: { state: 'stopped' } });
+  });
+
+  it('SERVER_STATUS delegates to serverManager.status', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const sm = fakeServer();
+    registerIpc(ipcMain as never, { mainWindow: null, serverManager: sm as never });
+    const out = await handlers.get('server:status')!({});
+    expect(sm.status).toHaveBeenCalledOnce();
+    expect(out).toMatchObject({ process: { state: 'running' } });
+  });
+
+  it('LOG_SNAPSHOT returns the LogStore snapshot', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const ls = fakeLogStore();
+    registerIpc(ipcMain as never, { mainWindow: null, logStore: ls as never });
+    const out = await handlers.get('log:snapshot')!({});
+    expect(ls.snapshot).toHaveBeenCalledOnce();
+    expect(out).toEqual([{ seq: 0, ts: 1, stream: 'stdout', level: 'info', text: 'x' }]);
+  });
+});

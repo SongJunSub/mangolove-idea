@@ -37,13 +37,13 @@ const api: MangoApi = {
     onStatus: (cb) => subscribe(IPC.SESSION_STATUS, cb),
   },
   server: {
-    start: () => notYet('3'),
-    stop: () => notYet('3'),
-    status: () => notYet('3'),
+    start: (req) => ipcRenderer.invoke(IPC.SERVER_START, req),
+    stop: (req) => ipcRenderer.invoke(IPC.SERVER_STOP, req),
+    status: () => ipcRenderer.invoke(IPC.SERVER_STATUS),
     onState: (cb) => subscribe(IPC.SERVER_STATE, cb),
   },
   logs: {
-    snapshot: () => notYet('3'),
+    snapshot: () => ipcRenderer.invoke(IPC.LOG_SNAPSHOT),
     onLine: (cb) => subscribe(IPC.LOG_LINE, cb),
   },
   merge: {
