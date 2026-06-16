@@ -7,7 +7,11 @@ export interface LogEmitter {
 
 const DEFAULT_CAP = 5000;
 
-/** Head-anchored, best-effort level token regex (Spring/Logback/npm friendly). */
+/**
+ * Best-effort level token regex (Spring/Logback/npm friendly). Matches the level
+ * word ANYWHERE in the line (not head-anchored), so prose containing "error" can
+ * false-match — an intentionally cheap filter aid, not authoritative parsing.
+ */
 const LEVEL_RE = /\b(ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\b/i;
 
 /**

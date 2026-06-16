@@ -30,8 +30,6 @@ export interface ServerManagerDeps {
 
 /** Internal bookkeeping for the ONE running child. */
 interface RunningServer {
-  /** Identity token: the exit handler ignores events from a replaced server. */
-  readonly token: object;
   readonly proc: IProcLike;
   readonly worktreeId: string;
   readonly kind: ServerKind;
@@ -94,7 +92,6 @@ export class ServerManager {
 
     const proc = this.runner.spawn(command, { cwd });
     const server: RunningServer = {
-      token: {},
       proc,
       worktreeId: req.worktreeId,
       kind: detected.kind,
