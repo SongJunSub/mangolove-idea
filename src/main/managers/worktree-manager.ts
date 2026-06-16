@@ -1,4 +1,7 @@
-import type { Worktree } from '../../shared/types';
+import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { SimpleGit } from 'simple-git';
+import type { CreateWorktreeRequest, RemoveWorktreeRequest, Worktree } from '../../shared/types';
 
 /**
  * Converts a branch name into a filesystem-safe directory segment: every run of
@@ -73,4 +76,64 @@ export function classifyGitError(error: unknown): string {
     return 'worktree has uncommitted changes; use force to remove';
   }
   return raw.replace(/^fatal:\s*/i, '').trim();
+}
+
+/**
+ * Real git-worktree CRUD over simple-git. Constructor-injected with a SimpleGit
+ * bound to `repoRoot`, so it is unit-testable against a temp repo and never
+ * reaches for a global repo path itself.
+ */
+export class WorktreeManager {
+  private readonly git: SimpleGit;
+  private readonly repoRoot: string;
+
+  constructor(git: SimpleGit, repoRoot: string) {
+    this.git = git;
+    // Canonicalize the root: `git worktree list --porcelain` emits realpath'd
+    // paths (on macOS /var -> /private/var via symlink), so we must store the
+    // canonical root for resolve()'d targets to equal the porcelain output —
+    // otherwise create()'s `trees.find(t => t.path === target)` never matches.
+    this.repoRoot = realpathSync(repoRoot);
+  }
+
+  /** Lists every managed worktree (primary first). */
+  async list(): Promise<Worktree[]> {
+    const out = await this.git.raw(['worktree', 'list', '--porcelain']);
+    return parseWorktreePorcelain(out);
+  }
+
+  /**
+   * Creates a new branch `newBranch` off `baseBranch` and checks it out in a new
+   * worktree. Target dir is `req.path` (resolved against repoRoot) or, by default,
+   * `<repoRoot>/.worktrees/<sanitized-branch>`. Returns the created Worktree.
+   */
+  async create(req: CreateWorktreeRequest): Promise<Worktree> {
+    const target = req.path
+      ? resolve(this.repoRoot, req.path)
+      : resolve(this.repoRoot, '.worktrees', sanitizeBranchToDir(req.newBranch));
+
+    try {
+      await this.git.raw(['worktree', 'add', target, '-b', req.newBranch, req.baseBranch]);
+    } catch (error) {
+      throw new Error(classifyGitError(error));
+    }
+
+    const trees = await this.list();
+    const created = trees.find((t) => t.path === target);
+    if (!created) {
+      throw new Error(`worktree created at ${target} but not found in listing`);
+    }
+    return created;
+  }
+
+  /** Removes the worktree identified by its path (id), optionally with --force. */
+  async remove(req: RemoveWorktreeRequest): Promise<void> {
+    const args = ['worktree', 'remove', req.worktreeId];
+    if (req.force) args.push('--force');
+    try {
+      await this.git.raw(args);
+    } catch (error) {
+      throw new Error(classifyGitError(error));
+    }
+  }
 }
