@@ -25,9 +25,15 @@ export function WorktreeItem({ worktree, onRemove }: WorktreeItemProps): React.J
       {worktree.head && <span style={{ fontSize: 11, color: '#aaa' }}>{worktree.head}</span>}
       <button
         type="button"
-        disabled={worktree.isPrimary}
+        disabled={worktree.isPrimary || worktree.isLocked}
         onClick={() => onRemove(worktree.id)}
-        title={worktree.isPrimary ? 'cannot remove the primary worktree' : 'remove worktree'}
+        title={
+          worktree.isPrimary
+            ? 'cannot remove the primary worktree'
+            : worktree.isLocked
+              ? 'worktree is locked; unlock it first'
+              : 'remove worktree'
+        }
       >
         Remove
       </button>

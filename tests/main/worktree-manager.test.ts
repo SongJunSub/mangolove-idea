@@ -101,6 +101,18 @@ describe('classifyGitError', () => {
     expect(msg).toBe('worktree has uncommitted changes; use force to remove');
   });
 
+  it('classifies a locked worktree removal', () => {
+    const msg = classifyGitError(
+      new Error("fatal: cannot remove a locked working tree, lock reason: 'busy'"),
+    );
+    expect(msg).toBe('worktree is locked; unlock it first');
+  });
+
+  it('classifies a worktree-path-already-exists collision', () => {
+    const msg = classifyGitError(new Error("fatal: '/repo/.worktrees/a-b' already exists"));
+    expect(msg).toBe('a worktree already exists at that path');
+  });
+
   it('falls back to the trimmed git message otherwise', () => {
     const msg = classifyGitError(new Error('fatal: some other git failure\n'));
     expect(msg).toBe('some other git failure');
@@ -150,6 +162,12 @@ describe('WorktreeManager (real temp git repo)', () => {
     });
     expect(created.path).toBe(join(realpathSync(repo.dir), 'custom', 'hf'));
     expect(created.branch).toBe('hotfix');
+  });
+
+  it('rejects an explicit path that escapes the repo root (path traversal)', async () => {
+    await expect(
+      manager.create({ baseBranch: 'main', newBranch: 'evil', path: '../escape-wt' }),
+    ).rejects.toThrow('worktree path must be inside the repository');
   });
 
   it('removes a created worktree', async () => {

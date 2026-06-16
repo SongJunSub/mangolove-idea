@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import type { SimpleGit } from 'simple-git';
 import type { CreateWorktreeRequest, RemoveWorktreeRequest, Worktree } from '../../shared/types';
 
@@ -78,6 +78,10 @@ export function classifyGitError(error: unknown): string {
   if (/use --force to delete it/.test(raw)) {
     return 'worktree has uncommitted changes; use force to remove';
   }
+  if (/cannot remove a locked working tree/.test(raw)) {
+    return 'worktree is locked; unlock it first';
+  }
+  if (/already exists/.test(raw)) return 'a worktree already exists at that path';
   return raw.replace(/^fatal:\s*/i, '').trim();
 }
 
@@ -114,6 +118,13 @@ export class WorktreeManager {
     const target = req.path
       ? resolve(this.repoRoot, req.path)
       : resolve(this.repoRoot, '.worktrees', sanitizeBranchToDir(req.newBranch));
+
+    // Guard against an explicit req.path escaping the repo root (path traversal).
+    // Not reachable from the current UI (the toolbar never sends `path`), but
+    // closes the door before any future path input is wired up.
+    if (target !== this.repoRoot && !target.startsWith(this.repoRoot + sep)) {
+      throw new Error('worktree path must be inside the repository');
+    }
 
     try {
       await this.git.raw(['worktree', 'add', target, '-b', req.newBranch, req.baseBranch]);
