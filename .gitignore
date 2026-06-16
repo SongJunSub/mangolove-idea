@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+.vite/
+release/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# MangoLove 세션 진행 상태 (개인 추적, 커밋하지 않음)
+.progress.md
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
