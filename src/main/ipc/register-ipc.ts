@@ -6,9 +6,14 @@ import type {
   CreateWorktreeRequest,
   RemoveWorktreeRequest,
   Worktree,
+  SpawnSessionRequest,
+  SessionInputRequest,
+  SessionResizeRequest,
+  AgentSession,
 } from '../../shared/types';
-import { probeNodePty, type NodePtyProbe } from '../pty/pty-factory';
+import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
 import { WorktreeManager } from '../managers/worktree-manager';
+import { SessionManager, type SessionEmitter } from '../managers/session-manager';
 import type { IpcContext } from './ipc-context';
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
@@ -56,6 +61,43 @@ async function getWorktreeManager(ctx: IpcContext): Promise<WorktreeManager> {
 }
 
 /**
+ * Builds the production SessionEmitter that forwards SessionManager events to the
+ * renderer over ctx.mainWindow. Null/destroyed-window guarded so a late event
+ * after window close is a no-op (never throws).
+ */
+function buildSessionEmitter(ctx: IpcContext): SessionEmitter {
+  const send = (channel: string, payload: unknown): void => {
+    const win = ctx.mainWindow;
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  };
+  return {
+    emitOutput: (e) => send(IPC.SESSION_OUTPUT, e),
+    emitExit: (e) => send(IPC.SESSION_EXIT, e),
+    emitStatus: (s) => send(IPC.SESSION_STATUS, s),
+  };
+}
+
+/**
+ * Resolves the SessionManager: prefer the one on ctx (tests inject a fake);
+ * otherwise lazily build a real one with the node-pty factory, an emitter bound
+ * to ctx.mainWindow, and a resolvePath backed by the WorktreeManager listing.
+ */
+function getSessionManager(ctx: IpcContext): SessionManager {
+  if (ctx.sessionManager) return ctx.sessionManager;
+  ctx.sessionManager = new SessionManager({
+    factory: new NodePtyFactory(),
+    emitter: buildSessionEmitter(ctx),
+    command: 'claude',
+    resolvePath: async (worktreeId) => {
+      const manager = await getWorktreeManager(ctx);
+      const trees = await manager.list();
+      return trees.find((t) => t.id === worktreeId)?.path;
+    },
+  });
+  return ctx.sessionManager;
+}
+
+/**
  * Registers ALL main-process IPC handlers in one place. Plan 1 wires the real
  * WORKTREE_LIST/CREATE/REMOVE handlers, delegating to the WorktreeManager on ctx.
  */
@@ -90,4 +132,26 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       }
     },
   );
+
+  ipcMain.handle(
+    IPC.SESSION_SPAWN,
+    async (_event: unknown, req: SpawnSessionRequest): Promise<AgentSession> => {
+      return getSessionManager(ctx).spawn(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.SESSION_KILL,
+    async (_event: unknown, req: { worktreeId: string }): Promise<Ack> => {
+      return getSessionManager(ctx).kill(req.worktreeId);
+    },
+  );
+
+  ipcMain.on(IPC.SESSION_INPUT, (_event: unknown, req: SessionInputRequest) => {
+    getSessionManager(ctx).write(req);
+  });
+
+  ipcMain.on(IPC.SESSION_RESIZE, (_event: unknown, req: SessionResizeRequest) => {
+    getSessionManager(ctx).resize(req);
+  });
 }

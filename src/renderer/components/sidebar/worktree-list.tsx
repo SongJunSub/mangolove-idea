@@ -1,4 +1,4 @@
-import type { Worktree } from '../../../shared/types';
+import type { AgentStatus, Worktree } from '../../../shared/types';
 import { WorktreeItem } from './worktree-item';
 
 /** Props for the worktree sidebar list. */
@@ -6,14 +6,20 @@ export interface WorktreeListProps {
   readonly worktrees: readonly Worktree[];
   readonly loading: boolean;
   readonly error: string | null;
+  readonly selectedId: string | null;
+  readonly agentStatuses: ReadonlyMap<string, AgentStatus>;
+  onSelect(worktreeId: string): void;
   onRemove(worktreeId: string): void;
 }
 
-/** Sidebar list of worktrees with loading/error/empty states. */
+/** Sidebar list of worktrees with loading/error/empty states + agent dots. */
 export function WorktreeList({
   worktrees,
   loading,
   error,
+  selectedId,
+  agentStatuses,
+  onSelect,
   onRemove,
 }: WorktreeListProps): React.JSX.Element {
   return (
@@ -26,7 +32,14 @@ export function WorktreeList({
       )}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {worktrees.map((wt) => (
-          <WorktreeItem key={wt.id} worktree={wt} onRemove={onRemove} />
+          <WorktreeItem
+            key={wt.id}
+            worktree={wt}
+            selected={wt.id === selectedId}
+            agentStatus={agentStatuses.get(wt.id) ?? 'idle'}
+            onSelect={onSelect}
+            onRemove={onRemove}
+          />
         ))}
       </ul>
     </section>
