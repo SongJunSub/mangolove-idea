@@ -1,7 +1,14 @@
 import type { IpcMain } from 'electron';
 import { IPC } from '../../shared/ipc-channels';
-import type { AppInfo, Worktree } from '../../shared/types';
+import type {
+  Ack,
+  AppInfo,
+  CreateWorktreeRequest,
+  RemoveWorktreeRequest,
+  Worktree,
+} from '../../shared/types';
 import { probeNodePty, type NodePtyProbe } from '../pty/pty-factory';
+import { WorktreeManager } from '../managers/worktree-manager';
 import type { IpcContext } from './ipc-context';
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
@@ -37,21 +44,50 @@ export function buildAppInfo(
 }
 
 /**
- * Registers ALL main-process IPC handlers in one place. Plan 0 wires the
- * `app:ping` probe and a `worktree:list` stub returning []. Later plans add
- * their handlers here, delegating to managers held on `ctx`.
+ * Resolves the WorktreeManager: prefer the one already on ctx (tests inject a
+ * fake); otherwise lazily build a real one from ctx.repoRoot and cache it.
+ */
+async function getWorktreeManager(ctx: IpcContext): Promise<WorktreeManager> {
+  if (ctx.worktreeManager) return ctx.worktreeManager;
+  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const { simpleGit } = await import('simple-git');
+  ctx.worktreeManager = new WorktreeManager(simpleGit(repoRoot), repoRoot);
+  return ctx.worktreeManager;
+}
+
+/**
+ * Registers ALL main-process IPC handlers in one place. Plan 1 wires the real
+ * WORKTREE_LIST/CREATE/REMOVE handlers, delegating to the WorktreeManager on ctx.
  */
 export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
-  void ctx; // managers attach here in later plans
-
   ipcMain.handle(IPC.APP_PING, async (): Promise<AppInfo> => {
-    // Lazy import of Electron `app` keeps this module importable under plain
-    // Node in tests; registerIpc is only CALLED from the real main process.
     const { app } = await import('electron');
     return buildAppInfo(app, process.versions, probeNodePty);
   });
 
   ipcMain.handle(IPC.WORKTREE_LIST, async (): Promise<Worktree[]> => {
-    return []; // real WorktreeManager arrives in Plan 1
+    const manager = await getWorktreeManager(ctx);
+    return manager.list();
   });
+
+  ipcMain.handle(
+    IPC.WORKTREE_CREATE,
+    async (_event: unknown, req: CreateWorktreeRequest): Promise<Worktree> => {
+      const manager = await getWorktreeManager(ctx);
+      return manager.create(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.WORKTREE_REMOVE,
+    async (_event: unknown, req: RemoveWorktreeRequest): Promise<Ack> => {
+      const manager = await getWorktreeManager(ctx);
+      try {
+        await manager.remove(req);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
 }

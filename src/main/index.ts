@@ -4,6 +4,7 @@ import { createIpcContext } from './ipc/ipc-context';
 import { registerIpc } from './ipc/register-ipc';
 
 const ctx = createIpcContext();
+ctx.repoRoot = process.cwd();
 
 function createWindow(): void {
   const win = new BrowserWindow({
