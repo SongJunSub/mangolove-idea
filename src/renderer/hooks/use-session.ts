@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type {
-  AgentSession,
-  SessionInputRequest,
-  SessionResizeRequest,
-} from '../../shared/types';
+import type { AgentSession, SessionInputRequest, SessionResizeRequest } from '../../shared/types';
 
 /** Return shape of the per-worktree session hook. */
 export interface UseSession {
