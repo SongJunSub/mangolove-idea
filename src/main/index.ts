@@ -41,3 +41,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+app.on('before-quit', () => {
+  // Kill the single local server child so quitting never orphans gradle/npm.
+  ctx.serverManager?.dispose();
+});
