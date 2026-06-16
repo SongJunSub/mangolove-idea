@@ -36,3 +36,50 @@ claude --continue      # 또는 claude --resume
 ```
 
 새 세션이면 `docs/DESIGN.md`와 `.progress.md`를 읽고 "다음" 항목부터 진행.
+
+## Development (Plan 0 — scaffold + IPC spine)
+
+Target platform: **macOS only** for the MVP.
+
+### Setup
+
+```bash
+npm install   # runs `postinstall: electron-rebuild -f -w node-pty` automatically
+```
+
+### node-pty native module
+
+`node-pty@1.1.0` is an **N-API** native addon shipping **ABI-stable prebuilt binaries**
+(`prebuilds/darwin-arm64/pty.node`). It loads in both plain Node and Electron **without a
+rebuild** — there is no `NODE_MODULE_VERSION` trap with this version. The rebuild is wired
+as cheap insurance, not a hard requirement:
+
+- `postinstall` runs `electron-rebuild -f -w node-pty` after every `npm install`. This
+  produces `build/Release/pty.node`, which takes precedence over the prebuild and pins the
+  binary to exactly this Electron — useful if a future node-pty ever drops prebuilds for
+  our arch.
+- After **any Electron version bump**, optionally re-run: `npm run rebuild`.
+- Symptom of a genuinely broken addon: the Ping panel shows `node-pty <ver> (FAILED)`.
+  Fix: `npm run rebuild` (and `xcode-select --install` if the C++ toolchain is missing).
+
+> `node-pty` keeps native deps OUT of the bundle: it stays in `dependencies` and is
+> externalized by electron-vite's `externalizeDepsPlugin()`, loaded from `node_modules`
+> at runtime.
+
+### Scripts
+
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Launch the app with HMR (electron-vite). |
+| `npm run build` | Bundle main/preload/renderer into `out/`. |
+| `npm test` | Vitest (node + jsdom projects). |
+| `npm run typecheck` | `tsc --noEmit` for node + web configs. |
+| `npm run lint` / `npm run format` | ESLint 9 flat config / Prettier. |
+| `npm run rebuild` | Re-rebuild node-pty against Electron (post version bump). |
+
+### Verifying the spine
+
+`npm run dev` → click **Ping main**. You should see `app`, `electron`, `node`, `chrome`
+versions and crucially **`node-pty <ver> (loaded)`** — proving the typed IPC round-trip
+(`window.mango.app.ping` → `app:ping` handler → preload contextBridge) and the native
+rebuild both work.
