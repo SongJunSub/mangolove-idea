@@ -10,10 +10,17 @@ import type {
   SessionInputRequest,
   SessionResizeRequest,
   AgentSession,
+  ServerStatus,
+  StartServerRequest,
+  StopServerRequest,
+  LogLine,
 } from '../../shared/types';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
+import { ServerManager, type ServerEmitter } from '../managers/server-manager';
+import { LogStore, type LogEmitter } from '../managers/log-store';
+import { NodeProcessRunner } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
@@ -97,6 +104,52 @@ function getSessionManager(ctx: IpcContext): SessionManager {
   return ctx.sessionManager;
 }
 
+/** Forwards each LogStore line to the renderer over LOG_LINE (window-guarded). */
+function buildLogEmitter(ctx: IpcContext): LogEmitter {
+  return {
+    emitLine: (line: LogLine) => {
+      const win = ctx.mainWindow;
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.LOG_LINE, line);
+    },
+  };
+}
+
+/** Forwards ServerManager state to the renderer over SERVER_STATE (guarded). */
+function buildServerEmitter(ctx: IpcContext): ServerEmitter {
+  return {
+    emitState: (status: ServerStatus) => {
+      const win = ctx.mainWindow;
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.SERVER_STATE, status);
+    },
+  };
+}
+
+/** Resolves the LogStore: prefer ctx (tests inject); else lazily build one. */
+function getLogStore(ctx: IpcContext): LogStore {
+  if (ctx.logStore) return ctx.logStore;
+  ctx.logStore = new LogStore(buildLogEmitter(ctx));
+  return ctx.logStore;
+}
+
+/** Resolves the ServerManager: prefer ctx (tests inject); else build a real one. */
+function getServerManager(ctx: IpcContext): ServerManager {
+  if (ctx.serverManager) return ctx.serverManager;
+  ctx.serverManager = new ServerManager({
+    runner: new NodeProcessRunner(),
+    logStore: getLogStore(ctx),
+    emitter: buildServerEmitter(ctx),
+    resolvePath: async (worktreeId) => {
+      const manager = await getWorktreeManager(ctx);
+      const trees = await manager.list();
+      return trees.find((t) => t.id === worktreeId)?.path;
+    },
+    // Smoke seam: a harmless line-emitting command can be injected via env so a
+    // manual/Playwright smoke runs WITHOUT a real gradle/npm server.
+    commandOverride: process.env.MANGO_SERVER_CMD,
+  });
+  return ctx.serverManager;
+}
+
 /**
  * Registers ALL main-process IPC handlers in one place. Plan 1 wires the real
  * WORKTREE_LIST/CREATE/REMOVE handlers, delegating to the WorktreeManager on ctx.
@@ -153,5 +206,27 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.on(IPC.SESSION_RESIZE, (_event: unknown, req: SessionResizeRequest) => {
     getSessionManager(ctx).resize(req);
+  });
+
+  ipcMain.handle(
+    IPC.SERVER_START,
+    async (_event: unknown, req: StartServerRequest): Promise<ServerStatus> => {
+      return getServerManager(ctx).start(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.SERVER_STOP,
+    async (_event: unknown, req: StopServerRequest): Promise<ServerStatus> => {
+      return getServerManager(ctx).stop(req);
+    },
+  );
+
+  ipcMain.handle(IPC.SERVER_STATUS, async (): Promise<ServerStatus> => {
+    return getServerManager(ctx).status();
+  });
+
+  ipcMain.handle(IPC.LOG_SNAPSHOT, async (): Promise<LogLine[]> => {
+    return getLogStore(ctx).snapshot();
   });
 }
