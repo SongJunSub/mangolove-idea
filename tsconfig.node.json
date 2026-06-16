@@ -24,6 +24,7 @@
     "src/shared/**/*.ts",
     "tests/main/**/*.ts",
     "tests/helpers/**/*.ts",
+    "__mocks__/**/*.ts",
     "electron.vite.config.ts",
     "vitest.config.ts"
   ]
