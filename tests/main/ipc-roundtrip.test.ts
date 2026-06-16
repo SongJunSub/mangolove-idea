@@ -34,30 +34,91 @@ describe('buildAppInfo', () => {
 });
 
 describe('registerIpc', () => {
-  it('registers a handler for app:ping that returns AppInfo', async () => {
+  function makeIpcMain() {
     const handlers = new Map<string, (...a: unknown[]) => unknown>();
     const ipcMain = {
       handle: vi.fn((channel: string, fn: (...a: unknown[]) => unknown) => {
         handlers.set(channel, fn);
       }),
     };
+    return { handlers, ipcMain };
+  }
 
+  it('registers a handler for app:ping that returns AppInfo', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
     registerIpc(ipcMain as never, { mainWindow: null });
-
     expect(handlers.has('app:ping')).toBe(true);
     const pingResult = (await handlers.get('app:ping')!({})) as { electronVersion: string };
     expect(typeof pingResult.electronVersion).toBe('string');
   });
 
-  it('registers a handler for worktree:list that returns []', async () => {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((channel: string, fn: (...a: unknown[]) => unknown) => {
-        handlers.set(channel, fn);
+  it('worktree:list delegates to the injected WorktreeManager', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const fakeManager = {
+      list: vi.fn(async () => [
+        { id: '/r', path: '/r', branch: 'main', isPrimary: true, isLocked: false },
+      ]),
+      create: vi.fn(),
+      remove: vi.fn(),
+    };
+    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
+    const list = await handlers.get('worktree:list')!({});
+    expect(fakeManager.list).toHaveBeenCalledOnce();
+    expect(list).toEqual([
+      { id: '/r', path: '/r', branch: 'main', isPrimary: true, isLocked: false },
+    ]);
+  });
+
+  it('worktree:create delegates the request and returns the Worktree', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const created = {
+      id: '/r/.worktrees/feat',
+      path: '/r/.worktrees/feat',
+      branch: 'feat',
+      isPrimary: false,
+      isLocked: false,
+    };
+    const fakeManager = {
+      list: vi.fn(),
+      create: vi.fn(async () => created),
+      remove: vi.fn(),
+    };
+    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
+    const req = { baseBranch: 'main', newBranch: 'feat' };
+    const result = await handlers.get('worktree:create')!({}, req);
+    expect(fakeManager.create).toHaveBeenCalledWith(req);
+    expect(result).toEqual(created);
+  });
+
+  it('worktree:remove returns Ack ok:true on success', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const fakeManager = {
+      list: vi.fn(),
+      create: vi.fn(),
+      remove: vi.fn(async () => undefined),
+    };
+    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
+    const req = { worktreeId: '/r/.worktrees/feat' };
+    const ack = await handlers.get('worktree:remove')!({}, req);
+    expect(fakeManager.remove).toHaveBeenCalledWith(req);
+    expect(ack).toEqual({ ok: true });
+  });
+
+  it('worktree:remove returns Ack ok:false with the error message on failure', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const fakeManager = {
+      list: vi.fn(),
+      create: vi.fn(),
+      remove: vi.fn(async () => {
+        throw new Error('cannot remove the primary working tree');
       }),
     };
-    registerIpc(ipcMain as never, { mainWindow: null });
-    const list = await handlers.get('worktree:list')!({});
-    expect(list).toEqual([]);
+    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
+    const ack = (await handlers.get('worktree:remove')!({}, { worktreeId: '/r' })) as {
+      ok: boolean;
+      error?: string;
+    };
+    expect(ack.ok).toBe(false);
+    expect(ack.error).toBe('cannot remove the primary working tree');
   });
 });
