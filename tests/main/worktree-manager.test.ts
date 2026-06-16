@@ -162,9 +162,9 @@ describe('WorktreeManager (real temp git repo)', () => {
 
   it('throws a classified error when the branch already exists', async () => {
     await manager.create({ baseBranch: 'main', newBranch: 'dup' });
-    await expect(
-      manager.create({ baseBranch: 'main', newBranch: 'dup' }),
-    ).rejects.toThrow("branch 'dup' already exists");
+    await expect(manager.create({ baseBranch: 'main', newBranch: 'dup' })).rejects.toThrow(
+      "branch 'dup' already exists",
+    );
   });
 
   it('throws when removing the primary worktree', async () => {

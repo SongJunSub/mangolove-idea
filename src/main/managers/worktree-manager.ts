@@ -43,7 +43,10 @@ export function parseWorktreePorcelain(output: string): Worktree[] {
 
     const branchLine = lines.find((l) => l.startsWith('branch '));
     const branch = branchLine
-      ? branchLine.slice('branch '.length).trim().replace(/^refs\/heads\//, '')
+      ? branchLine
+          .slice('branch '.length)
+          .trim()
+          .replace(/^refs\/heads\//, '')
       : '(detached)';
 
     const isLocked = lines.some((l) => l === 'locked' || l.startsWith('locked '));
