@@ -24,8 +24,8 @@ const api: MangoApi = {
   },
   worktree: {
     list: () => ipcRenderer.invoke(IPC.WORKTREE_LIST),
-    create: () => notYet('1'),
-    remove: () => notYet('1'),
+    create: (req) => ipcRenderer.invoke(IPC.WORKTREE_CREATE, req),
+    remove: (req) => ipcRenderer.invoke(IPC.WORKTREE_REMOVE, req),
   },
   session: {
     spawn: () => notYet('2'),
