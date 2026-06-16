@@ -1,10 +1,13 @@
-import type { AgentStatus, Worktree } from '../../../shared/types';
+import type { AgentStatus, ServerState, Worktree } from '../../../shared/types';
+import { ServerDot } from './server-dot';
 
 /** Props for one worktree row. */
 export interface WorktreeItemProps {
   readonly worktree: Worktree;
   readonly selected: boolean;
   readonly agentStatus: AgentStatus;
+  readonly serverState: ServerState;
+  readonly ownsServer: boolean;
   onSelect(worktreeId: string): void;
   onRemove(worktreeId: string): void;
 }
@@ -22,6 +25,8 @@ export function WorktreeItem({
   worktree,
   selected,
   agentStatus,
+  serverState,
+  ownsServer,
   onSelect,
   onRemove,
 }: WorktreeItemProps): React.JSX.Element {
@@ -50,6 +55,7 @@ export function WorktreeItem({
           flex: '0 0 auto',
         }}
       />
+      {ownsServer && <ServerDot state={serverState} />}
       <span style={{ flex: 1, fontFamily: 'ui-monospace, monospace' }}>{worktree.branch}</span>
       {worktree.isPrimary && <span style={{ fontSize: 11, color: '#888' }}>primary</span>}
       {worktree.isLocked && <span style={{ fontSize: 11, color: '#b58900' }}>locked</span>}

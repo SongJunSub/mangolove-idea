@@ -24,7 +24,6 @@ export function filterLogs(lines: readonly LogLine[], filter: LogFilter): LogLin
   const minRank = LEVEL_RANK[filter.minLevel];
   return lines.filter(
     (l) =>
-      LEVEL_RANK[l.level] >= minRank &&
-      (needle === '' || l.text.toLowerCase().includes(needle)),
+      LEVEL_RANK[l.level] >= minRank && (needle === '' || l.text.toLowerCase().includes(needle)),
   );
 }
