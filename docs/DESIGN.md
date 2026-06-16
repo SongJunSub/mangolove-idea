@@ -16,11 +16,19 @@ IntelliJ는 특정 브랜치 디버깅 창으로 유지하고, **그 옆에서 w
 - 브랜치 편집 / 에이전트는 병렬, 서버 기동만 단일
 - 앱 이름: **MangoLove IDEA** / 레포: `~/Project/mangolove-idea`
 
-## 미확정 (다음 세션에서 결정)
+## 확정 — 스택
 
-- 스택: **Electron + React + TypeScript** 추천 (사용자 강점, node-pty/xterm.js/simple-git/Monaco 성숙)
-  - 대안: Tauri + React (Rust 백엔드, 바이너리 작음) — Rust 학습이 목적일 때만
-- MVP 범위 최종 승인
+**Electron + React + TypeScript** (2026-06-16 확정)
+- 라이브러리: `node-pty`(PTY) · `xterm.js`(터미널 렌더) · `simple-git`(git) · `Monaco`(추후 diff)
+- 선택 근거: 사용자 최강점(React/TS), Node 생태계가 PTY/프로세스/git을 성숙하게 지원 → 제작 속도 우선
+- 보류된 대안: Tauri + React — Rust 학습이 목적이 되면 재검토. 코드 작성 전이라 전환 가능
+
+## 다음 단계 (재개 시 여기부터)
+
+- [ ] MVP 범위(아래 v1) 최종 승인
+- [ ] 설계 문서를 spec으로 정식화 → `writing-plans` 로 구현 계획 분해
+- [ ] Small/Medium 트랙 판정 후 Electron 스캐폴딩 시작 (vite + electron + react + ts)
+- [ ] 미해결: "다른 터미널 세션 이어서 작업"이 *앱 기능*(세션 영속화 / PTY 재attach)인지 확인 → 맞으면 MVP에 추가
 
 ## 아키텍처 (제시안)
 

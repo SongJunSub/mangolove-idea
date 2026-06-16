@@ -12,7 +12,7 @@ IntelliJ는 특정 브랜치 **디버깅 창**으로 두고, 그 옆에서 **여
 - 설계 문서: [docs/DESIGN.md](docs/DESIGN.md)
 - 진행 상태(세션 핸드오프): `.progress.md` (gitignore)
 
-## 스택 (예정)
+## 스택 (확정 2026-06-16)
 
 Electron + React + TypeScript
 (`node-pty` · `xterm.js` · `simple-git` · `Monaco`)
