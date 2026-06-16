@@ -206,13 +206,17 @@ describe('registerIpc — server + logs', () => {
     const status = { process: { worktreeId: '/wt', kind: 'npm', state: 'running', pid: 9 } };
     return {
       start: vi.fn(async () => status),
-      stop: vi.fn(async () => ({ process: { worktreeId: null, kind: 'unknown', state: 'stopped' } })),
+      stop: vi.fn(async () => ({
+        process: { worktreeId: null, kind: 'unknown', state: 'stopped' },
+      })),
       status: vi.fn(() => status),
       dispose: vi.fn(),
     };
   }
   function fakeLogStore() {
-    return { snapshot: vi.fn(() => [{ seq: 0, ts: 1, stream: 'stdout', level: 'info', text: 'x' }]) };
+    return {
+      snapshot: vi.fn(() => [{ seq: 0, ts: 1, stream: 'stdout', level: 'info', text: 'x' }]),
+    };
   }
 
   it('SERVER_START delegates to serverManager.start and returns the ServerStatus', async () => {
