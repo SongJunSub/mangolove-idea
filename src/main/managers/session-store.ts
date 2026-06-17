@@ -27,14 +27,23 @@ export class SessionStore {
     this.filePath = filePath;
   }
 
-  /** Reads + parses the records, returning [] on missing/corrupt/non-array files. */
+  /**
+   * Reads + parses the records, returning [] on missing/corrupt/non-array files.
+   *
+   * DESIGN (b-lite, intentional — NOT a bug): a corrupt file is treated as empty,
+   * so the next `upsert` rewrites it from scratch and previously-recorded worktrees
+   * lose their `--continue` eligibility. Acceptable for an MVP convenience cache:
+   * the store holds NO durable state (claude owns rehydration via its own JSONL),
+   * so the worst case is one missed auto-continue, not data loss. The atomic
+   * temp+rename write makes self-corruption rare.
+   */
   load(): SessionRecord[] {
     if (!existsSync(this.filePath)) return [];
     let parsed: unknown;
     try {
       parsed = JSON.parse(readFileSync(this.filePath, 'utf8'));
     } catch {
-      return [];
+      return []; // corrupt JSON -> recover as empty (see DESIGN note above)
     }
     if (!Array.isArray(parsed)) return [];
     return parsed.map((r) => this.sanitize(r as SessionRecord));
