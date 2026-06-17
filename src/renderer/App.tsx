@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { AppInfo, QuitWarningEvent, Worktree } from '../shared/types';
 import { formatVersions } from './lib/format-versions';
 import { useWorktrees } from './hooks/use-worktrees';
@@ -9,7 +9,11 @@ import { useMerge } from './hooks/use-merge';
 import { useSessionRecords } from './hooks/use-session-records';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
-import { AgentTerminal } from './components/terminal/agent-terminal';
+// Lazy-loaded so the xterm.js bundle (+ addon-fit + its CSS) is only fetched when
+// a worktree is first selected — keeps the initial renderer chunk smaller.
+const AgentTerminal = lazy(() =>
+  import('./components/terminal/agent-terminal').then((m) => ({ default: m.AgentTerminal })),
+);
 import { ServerControls } from './components/toolbar/server-controls';
 import { MergeControls } from './components/toolbar/merge-controls';
 import { LogPanel } from './components/logs/log-panel';
@@ -21,7 +25,7 @@ export function App(): React.JSX.Element {
   const { worktrees, loading, error, create, remove, refresh } = useWorktrees();
   const { status: serverStatus, start: startServer, stop: stopServer } = useServer();
   const logLines = useLogs();
-  const statuses = useWorktreeStatus(worktrees);
+  const statuses = useWorktreeStatus(worktrees, serverStatus);
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
 
   const sessionRecords = useSessionRecords();
@@ -93,11 +97,13 @@ export function App(): React.JSX.Element {
         />
         <section style={{ flex: 1, minWidth: 0 }}>
           {selectedId ? (
-            <AgentTerminal
-              key={selectedId}
-              worktreeId={selectedId}
-              continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
-            />
+            <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading terminal…</p>}>
+              <AgentTerminal
+                key={selectedId}
+                worktreeId={selectedId}
+                continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
+              />
+            </Suspense>
           ) : (
             <p style={{ fontSize: 13, color: '#888' }}>Select a worktree to start its agent.</p>
           )}

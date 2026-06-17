@@ -3,15 +3,16 @@ import type { AgentStatus, ServerStatus, Worktree } from '../../shared/types';
 import { aggregateStatus, type WorktreeRowStatus } from '../state/app-store';
 
 /**
- * Live unified per-worktree status. Owns the agent-status map (SESSION_STATUS)
- * and the single ServerStatus (SERVER_STATE, seeded from status()), then derives
- * the row map via the pure aggregateStatus reducer. The sidebar reads this map.
+ * Live unified per-worktree status. Owns ONLY the agent-status map (SESSION_STATUS)
+ * and derives the row map via the pure aggregateStatus reducer. The single
+ * ServerStatus is passed in from `useServer` (the sole SERVER_STATE subscriber) so
+ * we don't open a second redundant server subscription. The sidebar reads this map.
  */
 export function useWorktreeStatus(
   worktrees: readonly Worktree[],
+  server: ServerStatus | null,
 ): ReadonlyMap<string, WorktreeRowStatus> {
   const [agentStatuses, setAgentStatuses] = useState<ReadonlyMap<string, AgentStatus>>(new Map());
-  const [server, setServer] = useState<ServerStatus | null>(null);
 
   useEffect(() => {
     const offStatus = window.mango.session.onStatus((s) => {
@@ -21,15 +22,8 @@ export function useWorktreeStatus(
         return next;
       });
     });
-    let alive = true;
-    void window.mango.server.status().then((s) => {
-      if (alive) setServer(s);
-    });
-    const offState = window.mango.server.onState((s) => setServer(s));
     return () => {
-      alive = false;
       offStatus();
-      offState();
     };
   }, []);
 
