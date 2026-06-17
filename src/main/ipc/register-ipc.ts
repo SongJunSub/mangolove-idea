@@ -14,7 +14,10 @@ import type {
   StartServerRequest,
   StopServerRequest,
   LogLine,
+  MergeRequest,
+  MergeResult,
 } from '../../shared/types';
+import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
@@ -150,6 +153,36 @@ function getServerManager(ctx: IpcContext): ServerManager {
   return ctx.serverManager;
 }
 
+/** Forwards MergeRunner progress to the renderer over MERGE_PROGRESS (guarded). */
+function buildMergeEmitter(ctx: IpcContext): MergeEmitter {
+  return {
+    emitProgress: (e) => {
+      const win = ctx.mainWindow;
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.MERGE_PROGRESS, e);
+    },
+  };
+}
+
+/**
+ * Resolves the MergeRunner: prefer ctx (tests inject); else build a real one.
+ * MUST be async: main is ESM (`verbatimModuleSyntax`), so `require` is undefined in
+ * module scope — simple-git loads via dynamic `import`, and we reuse the cached,
+ * canonicalized `getWorktreeManager` rather than constructing a second WorktreeManager.
+ */
+async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
+  if (ctx.mergeRunner) return ctx.mergeRunner;
+  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const { simpleGit } = await import('simple-git');
+  const worktrees = await getWorktreeManager(ctx);
+  ctx.mergeRunner = new MergeRunner({
+    git: simpleGit(repoRoot),
+    worktrees,
+    verifyRunner: new NodeProcessRunner(),
+    emitter: buildMergeEmitter(ctx),
+  });
+  return ctx.mergeRunner;
+}
+
 /**
  * Registers ALL main-process IPC handlers in one place. Plan 1 wires the real
  * WORKTREE_LIST/CREATE/REMOVE handlers, delegating to the WorktreeManager on ctx.
@@ -229,4 +262,11 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle(IPC.LOG_SNAPSHOT, async (): Promise<LogLine[]> => {
     return getLogStore(ctx).snapshot();
   });
+
+  ipcMain.handle(
+    IPC.MERGE_RUN,
+    async (_event: unknown, req: MergeRequest): Promise<MergeResult> => {
+      return (await getMergeRunner(ctx)).run(req);
+    },
+  );
 }
