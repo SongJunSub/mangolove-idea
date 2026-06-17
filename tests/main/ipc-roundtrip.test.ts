@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { buildAppInfo, registerIpc } from '../../src/main/ipc/register-ipc';
+import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
 describe('buildAppInfo', () => {
   it('assembles AppInfo from injected version sources + node-pty probe', () => {
@@ -306,7 +307,7 @@ describe('registerIpc — app quit + session records (Plan 5)', () => {
     const { handlers, ipcMain } = makeIpcMain();
     const session = { killAll: vi.fn(), liveWorktreeIds: vi.fn(() => []) };
     const server = { dispose: vi.fn() };
-    const ctx = {
+    const ctx: IpcContext = {
       mainWindow: null,
       sessionManager: session as never,
       serverManager: server as never,
@@ -323,7 +324,7 @@ describe('registerIpc — app quit + session records (Plan 5)', () => {
     const { handlers, ipcMain } = makeIpcMain();
     const session = { killAll: vi.fn(), liveWorktreeIds: vi.fn(() => []) };
     const server = { dispose: vi.fn() };
-    const ctx = {
+    const ctx: IpcContext = {
       mainWindow: null,
       sessionManager: session as never,
       serverManager: server as never,
