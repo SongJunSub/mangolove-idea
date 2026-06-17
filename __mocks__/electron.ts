@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 
 export const app = {
   getVersion: vi.fn(() => '0.1.0'),
+  getPath: vi.fn((name: string) => `/tmp/mango-userData/${name}`),
 };
 
 export const ipcMain = {
