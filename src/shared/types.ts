@@ -132,8 +132,9 @@ export interface SessionExitEvent {
 
 export interface StartServerRequest {
   readonly worktreeId: string;
-  /** Optional override; otherwise ServerManager auto-detects (gradlew vs npm). */
-  readonly commandOverride?: string;
+  // NOTE: no renderer-supplied command override — the command comes only from
+  // auto-detection (gradlew vs npm) or the main-side env seam (MANGO_SERVER_CMD),
+  // so a renderer cannot inject a command into the shell:true child spawn.
 }
 
 export interface StopServerRequest {

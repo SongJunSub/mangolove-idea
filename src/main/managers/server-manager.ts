@@ -24,7 +24,7 @@ export interface ServerManagerDeps {
   readonly detect?: (dir: string) => DetectedRunner;
   /** Resolves worktreeId -> absolute cwd (undefined if not a managed worktree). */
   readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
-  /** Global command override (env seam for the smoke); request override wins. */
+  /** Global command override from the main-side env seam (MANGO_SERVER_CMD). */
   readonly commandOverride?: string;
 }
 
@@ -78,7 +78,9 @@ export class ServerManager {
     }
 
     const detected = this.detect(cwd);
-    const command = req.commandOverride ?? this.commandOverride ?? detected.command;
+    // Command source (hardened): main-side env seam (operator-controlled) OR
+    // auto-detection — never a renderer-supplied request field.
+    const command = this.commandOverride ?? detected.command;
     if (!command) {
       return this.crash(req.worktreeId, detected.kind, undefined, 'no runnable server detected');
     }
