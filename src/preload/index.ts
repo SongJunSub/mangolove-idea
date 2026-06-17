@@ -27,6 +27,7 @@ const api: MangoApi = {
     sendInput: (req) => ipcRenderer.send(IPC.SESSION_INPUT, req),
     resize: (req) => ipcRenderer.send(IPC.SESSION_RESIZE, req),
     kill: (worktreeId) => ipcRenderer.invoke(IPC.SESSION_KILL, { worktreeId }),
+    records: () => ipcRenderer.invoke(IPC.SESSION_RECORDS),
     onOutput: (cb) => subscribe(IPC.SESSION_OUTPUT, cb),
     onExit: (cb) => subscribe(IPC.SESSION_EXIT, cb),
     onStatus: (cb) => subscribe(IPC.SESSION_STATUS, cb),

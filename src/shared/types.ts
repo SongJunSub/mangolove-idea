@@ -169,9 +169,14 @@ export interface MergeResult {
   readonly error?: string;
 }
 
-/** Asked of the renderer at quit (MVP item 6): are turns in flight? */
+/**
+ * Emitted to the renderer at quit (MVP item 6) when agent sessions are live, so
+ * the user can confirm before the PTYs are swept. NOTE: this is driven by LIVE
+ * (running, non-exited) PTYs, not by turn detection — `hasActiveTurn` stays false
+ * (b-lite declines real turn detection; warning-on-live-session is the honest MVP).
+ */
 export interface QuitWarningEvent {
-  /** worktreeIds whose AgentSession.hasActiveTurn is true. */
+  /** worktreeIds that currently have a running (non-exited) claude PTY. */
   readonly activeWorktreeIds: readonly string[];
 }
 

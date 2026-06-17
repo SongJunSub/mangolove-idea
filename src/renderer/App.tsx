@@ -1,11 +1,12 @@
-import { useCallback, useState } from 'react';
-import type { AppInfo, Worktree } from '../shared/types';
+import { useCallback, useEffect, useState } from 'react';
+import type { AppInfo, QuitWarningEvent, Worktree } from '../shared/types';
 import { formatVersions } from './lib/format-versions';
 import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
 import { useLogs } from './hooks/use-logs';
 import { useWorktreeStatus } from './hooks/use-worktree-status';
 import { useMerge } from './hooks/use-merge';
+import { useSessionRecords } from './hooks/use-session-records';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
 import { AgentTerminal } from './components/terminal/agent-terminal';
@@ -22,6 +23,18 @@ export function App(): React.JSX.Element {
   const logLines = useLogs();
   const statuses = useWorktreeStatus(worktrees);
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
+
+  const sessionRecords = useSessionRecords();
+  const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
+
+  useEffect(() => {
+    return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
+  }, []);
+
+  const onQuitDecision = useCallback(async (quit: boolean): Promise<void> => {
+    setQuitWarning(null);
+    await window.mango.app.sendQuitDecision(quit);
+  }, []);
 
   const selectedWorktree = worktrees.find((w) => w.id === selectedId) ?? null;
 
@@ -80,7 +93,11 @@ export function App(): React.JSX.Element {
         />
         <section style={{ flex: 1, minWidth: 0 }}>
           {selectedId ? (
-            <AgentTerminal key={selectedId} worktreeId={selectedId} />
+            <AgentTerminal
+              key={selectedId}
+              worktreeId={selectedId}
+              continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
+            />
           ) : (
             <p style={{ fontSize: 13, color: '#888' }}>Select a worktree to start its agent.</p>
           )}
@@ -98,6 +115,38 @@ export function App(): React.JSX.Element {
           <LogPanel lines={logLines} />
         </section>
       </div>
+      {quitWarning && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-testid="quit-warning"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div style={{ background: '#fff', borderRadius: 8, padding: 24, maxWidth: 380 }}>
+            <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
+            <p style={{ fontSize: 13 }}>
+              {quitWarning.activeWorktreeIds.length} agent session(s) are live. They will be
+              terminated (their conversations are saved by claude and resume with{' '}
+              <code>--continue</code> next time). Quit anyway?
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button type="button" onClick={() => void onQuitDecision(false)}>
+                Cancel
+              </button>
+              <button type="button" onClick={() => void onQuitDecision(true)}>
+                Quit anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

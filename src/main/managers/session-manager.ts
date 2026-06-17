@@ -1,4 +1,4 @@
-import type { Ack, AgentSession, AgentStatus } from '../../shared/types';
+import type { Ack, AgentSession, AgentStatus, SessionRecord } from '../../shared/types';
 import type { IPtyLike, PtyExitEvent, PtyFactory } from '../pty/pty-factory';
 
 /** Plan-2 spawn input (mirrors SpawnSessionRequest minus transport concerns). */
@@ -7,6 +7,11 @@ export interface SpawnArgs {
   readonly continueSession: boolean;
   readonly cols: number;
   readonly rows: number;
+}
+
+/** Structural port for the SessionStore (Plan 5) — only what SessionManager calls. */
+export interface SessionRecordSink {
+  upsert(record: SessionRecord): void;
 }
 
 /** Where SessionManager publishes main->renderer events (injected, so tests spy). */
@@ -24,6 +29,12 @@ export interface SessionManagerDeps {
   readonly command?: string;
   /** Resolves worktreeId -> absolute cwd, or undefined if not a managed worktree. */
   readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
+  /** Resolves worktreeId -> branch name for the persisted SessionRecord (Plan 5). */
+  readonly resolveBranch?: (worktreeId: string) => Promise<string | undefined>;
+  /** Persists hadActiveSession on successful spawn (Plan 5). Optional => no-op. */
+  readonly store?: SessionRecordSink;
+  /** Clock for SessionRecord.updatedAt; default Date.now (Plan 5). */
+  readonly clock?: () => number;
 }
 
 /** Internal per-worktree bookkeeping. */
@@ -46,6 +57,9 @@ export class SessionManager {
   private readonly emitter: SessionEmitter;
   private readonly command: string;
   private readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
+  private readonly resolveBranch?: (worktreeId: string) => Promise<string | undefined>;
+  private readonly store?: SessionRecordSink;
+  private readonly clock: () => number;
   private readonly sessions = new Map<string, Session>();
 
   constructor(deps: SessionManagerDeps) {
@@ -53,6 +67,9 @@ export class SessionManager {
     this.emitter = deps.emitter;
     this.command = deps.command ?? 'claude';
     this.resolvePath = deps.resolvePath;
+    this.resolveBranch = deps.resolveBranch;
+    this.store = deps.store;
+    this.clock = deps.clock ?? Date.now;
   }
 
   /** Spawns (or replaces) the PTY for a worktree and returns its AgentSession. */
@@ -90,6 +107,9 @@ export class SessionManager {
 
     const running = this.buildSession(worktreeId, 'running', pty.pid, continueSession);
     this.emitter.emitStatus(running);
+
+    await this.recordActive(worktreeId);
+
     return running;
   }
 
@@ -168,5 +188,31 @@ export class SessionManager {
   ): AgentSession {
     // hasActiveTurn: honest false for Plan 2 — real turn detection is Plan 5.
     return { worktreeId, pid, status, hasActiveTurn: false, continued };
+  }
+
+  /** Lists worktrees whose PTY is currently running (used by the quit warning). */
+  liveWorktreeIds(): string[] {
+    const ids: string[] = [];
+    for (const [worktreeId, session] of this.sessions) {
+      if (!session.exited) ids.push(worktreeId);
+    }
+    return ids;
+  }
+
+  /**
+   * Persists {hadActiveSession:true} for a worktree after a successful spawn so a
+   * reopen offers `claude --continue`. Resolves branch via the injected resolver
+   * (falls back to '' if unknown). No-op when no store is injected. NEVER writes
+   * conversation content — only the four SessionRecord contract fields.
+   */
+  private async recordActive(worktreeId: string): Promise<void> {
+    if (!this.store) return;
+    const branch = (await this.resolveBranch?.(worktreeId)) ?? '';
+    this.store.upsert({
+      worktreePath: worktreeId,
+      branch,
+      hadActiveSession: true,
+      updatedAt: this.clock(),
+    });
   }
 }

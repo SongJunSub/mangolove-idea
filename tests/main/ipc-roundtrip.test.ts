@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { buildAppInfo, registerIpc } from '../../src/main/ipc/register-ipc';
+import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
 describe('buildAppInfo', () => {
   it('assembles AppInfo from injected version sources + node-pty probe', () => {
@@ -276,5 +277,63 @@ describe('registerIpc — server + logs', () => {
     const out = await handlers.get('log:snapshot')!({});
     expect(ls.snapshot).toHaveBeenCalledOnce();
     expect(out).toEqual([{ seq: 0, ts: 1, stream: 'stdout', level: 'info', text: 'x' }]);
+  });
+});
+
+describe('registerIpc — app quit + session records (Plan 5)', () => {
+  function makeIpcMain() {
+    const handlers = new Map<string, (...a: unknown[]) => unknown>();
+    const ipcMain = {
+      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
+      on: vi.fn(),
+    };
+    return { handlers, ipcMain };
+  }
+
+  it('SESSION_RECORDS returns the recorded worktree paths from the SessionStore', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = {
+      all: vi.fn(() => [
+        { worktreePath: '/wt/a', branch: 'f', hadActiveSession: true, updatedAt: 1 },
+        { worktreePath: '/wt/b', branch: 'g', hadActiveSession: true, updatedAt: 2 },
+      ]),
+    };
+    registerIpc(ipcMain as never, { mainWindow: null, sessionStore: store as never });
+    const out = await handlers.get('session:records')!({});
+    expect(out).toEqual(['/wt/a', '/wt/b']);
+  });
+
+  it('APP_QUIT_DECISION(quit:true) kills all sessions, disposes server, and returns ok', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const session = { killAll: vi.fn(), liveWorktreeIds: vi.fn(() => []) };
+    const server = { dispose: vi.fn() };
+    const ctx: IpcContext = {
+      mainWindow: null,
+      sessionManager: session as never,
+      serverManager: server as never,
+    };
+    registerIpc(ipcMain as never, ctx);
+    const ack = await handlers.get('app:quit-decision')!({}, { quit: true });
+    expect(session.killAll).toHaveBeenCalledOnce();
+    expect(server.dispose).toHaveBeenCalledOnce();
+    expect(ctx.confirmedQuit).toBe(true);
+    expect(ack).toEqual({ ok: true });
+  });
+
+  it('APP_QUIT_DECISION(quit:false) does NOT sweep and returns ok', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const session = { killAll: vi.fn(), liveWorktreeIds: vi.fn(() => []) };
+    const server = { dispose: vi.fn() };
+    const ctx: IpcContext = {
+      mainWindow: null,
+      sessionManager: session as never,
+      serverManager: server as never,
+    };
+    registerIpc(ipcMain as never, ctx);
+    const ack = await handlers.get('app:quit-decision')!({}, { quit: false });
+    expect(session.killAll).not.toHaveBeenCalled();
+    expect(server.dispose).not.toHaveBeenCalled();
+    expect(ctx.confirmedQuit).toBeFalsy();
+    expect(ack).toEqual({ ok: true });
   });
 });

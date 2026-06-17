@@ -4,6 +4,7 @@ import type { SessionManager } from '../managers/session-manager';
 import type { ServerManager } from '../managers/server-manager';
 import type { LogStore } from '../managers/log-store';
 import type { MergeRunner } from '../git/merge-runner';
+import type { SessionStore } from '../managers/session-store';
 
 /**
  * Holds main-process singletons + the main window ref for event emitters.
@@ -23,6 +24,12 @@ export interface IpcContext {
   logStore?: LogStore;
   /** Lazily constructed in register-ipc; injectable in tests (Plan 4). */
   mergeRunner?: MergeRunner;
+  /** Lazily constructed in register-ipc; injectable in tests (Plan 5). */
+  sessionStore?: SessionStore;
+  /** Set true once the user confirms quit so before-quit stops re-intercepting (Plan 5). */
+  confirmedQuit?: boolean;
+  /** Injected by index.ts so the quit handler can actually quit (app.quit). */
+  requestQuit?: () => void;
 }
 
 export function createIpcContext(): IpcContext {

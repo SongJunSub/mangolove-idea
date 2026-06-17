@@ -25,6 +25,7 @@ import { ServerManager, type ServerEmitter } from '../managers/server-manager';
 import { LogStore, type LogEmitter } from '../managers/log-store';
 import { NodeProcessRunner } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
+import type { SessionStore } from '../managers/session-store';
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
 interface AppLike {
@@ -91,6 +92,8 @@ function buildSessionEmitter(ctx: IpcContext): SessionEmitter {
  * Resolves the SessionManager: prefer the one on ctx (tests inject a fake);
  * otherwise lazily build a real one with the node-pty factory, an emitter bound
  * to ctx.mainWindow, and a resolvePath backed by the WorktreeManager listing.
+ * getSessionManager stays SYNCHRONOUS so SESSION_INPUT/SESSION_RESIZE handlers
+ * call write/resize synchronously (the Plan-2 delegation tests assert this).
  */
 function getSessionManager(ctx: IpcContext): SessionManager {
   if (ctx.sessionManager) return ctx.sessionManager;
@@ -103,6 +106,13 @@ function getSessionManager(ctx: IpcContext): SessionManager {
       const trees = await manager.list();
       return trees.find((t) => t.id === worktreeId)?.path;
     },
+    resolveBranch: async (worktreeId) => {
+      const manager = await getWorktreeManager(ctx);
+      const trees = await manager.list();
+      return trees.find((t) => t.id === worktreeId)?.branch;
+    },
+    store: getSessionStore(ctx),
+    clock: Date.now,
   });
   return ctx.sessionManager;
 }
@@ -132,6 +142,21 @@ function getLogStore(ctx: IpcContext): LogStore {
   if (ctx.logStore) return ctx.logStore;
   ctx.logStore = new LogStore(buildLogEmitter(ctx));
   return ctx.logStore;
+}
+
+/**
+ * Resolves the SessionStore SYNCHRONOUSLY. It is constructed eagerly in
+ * `index.ts` (which holds the real electron `app` for the userData path) and
+ * assigned to `ctx.sessionStore` BEFORE `registerIpc`; tests inject
+ * `ctx.sessionStore` directly. Kept sync so `getSessionManager` and the
+ * `SESSION_INPUT`/`SESSION_RESIZE` `ipcMain.on` handlers stay synchronous — the
+ * existing Plan-2 delegation tests assert `write`/`resize` was called synchronously.
+ */
+function getSessionStore(ctx: IpcContext): SessionStore {
+  if (ctx.sessionStore) return ctx.sessionStore;
+  throw new Error(
+    'sessionStore not initialized — index.ts must set ctx.sessionStore before registerIpc',
+  );
 }
 
 /** Resolves the ServerManager: prefer ctx (tests inject); else build a real one. */
@@ -267,6 +292,24 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     IPC.MERGE_RUN,
     async (_event: unknown, req: MergeRequest): Promise<MergeResult> => {
       return (await getMergeRunner(ctx)).run(req);
+    },
+  );
+
+  ipcMain.handle(IPC.SESSION_RECORDS, async (): Promise<string[]> => {
+    return getSessionStore(ctx)
+      .all()
+      .map((r) => r.worktreePath);
+  });
+
+  ipcMain.handle(
+    IPC.APP_QUIT_DECISION,
+    async (_event: unknown, req: { quit: boolean }): Promise<Ack> => {
+      if (!req.quit) return { ok: true }; // user cancelled — stay open.
+      ctx.confirmedQuit = true;
+      ctx.sessionManager?.killAll(); // PTY kill-sweep: no orphan claude survives.
+      ctx.serverManager?.dispose(); // keep Plan 3's server cleanup.
+      ctx.requestQuit?.(); // index.ts wires this to app.quit().
+      return { ok: true };
     },
   );
 }
