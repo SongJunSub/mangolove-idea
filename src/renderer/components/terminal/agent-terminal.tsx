@@ -8,6 +8,8 @@ import { useSession } from '../../hooks/use-session';
 export interface AgentTerminalProps {
   /** The worktree whose `claude` PTY this terminal is bound to. */
   readonly worktreeId: string;
+  /** When true, spawn `claude --continue` to rehydrate (b-lite restart, MVP item 6). */
+  readonly continueSession?: boolean;
 }
 
 /**
@@ -18,7 +20,10 @@ export interface AgentTerminalProps {
  * disposes the terminal. Re-mounts (worktreeId change) tear down and rebuild via
  * the effect's cleanup + the key in App.tsx.
  */
-export function AgentTerminal({ worktreeId }: AgentTerminalProps): React.JSX.Element {
+export function AgentTerminal({
+  worktreeId,
+  continueSession = false,
+}: AgentTerminalProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const { spawn, kill, sendInput, resize } = useSession(worktreeId);
 
@@ -31,6 +36,9 @@ export function AgentTerminal({ worktreeId }: AgentTerminalProps): React.JSX.Ele
   killRef.current = kill;
   sendInputRef.current = sendInput;
   resizeRef.current = resize;
+
+  const continueRef = useRef(continueSession);
+  continueRef.current = continueSession;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -59,7 +67,7 @@ export function AgentTerminal({ worktreeId }: AgentTerminalProps): React.JSX.Ele
       }
     });
 
-    void spawnRef.current(term.cols, term.rows, false);
+    void spawnRef.current(term.cols, term.rows, continueRef.current);
 
     const observer = new ResizeObserver(() => {
       fit.fit();
