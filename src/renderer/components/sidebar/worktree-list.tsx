@@ -1,15 +1,13 @@
-import type { AgentStatus, ServerState, Worktree } from '../../../shared/types';
+import type { Worktree } from '../../../shared/types';
+import type { WorktreeRowStatus } from '../../state/app-store';
 import { WorktreeItem } from './worktree-item';
 
-/** Props for the worktree sidebar list. */
 export interface WorktreeListProps {
   readonly worktrees: readonly Worktree[];
   readonly loading: boolean;
   readonly error: string | null;
   readonly selectedId: string | null;
-  readonly agentStatuses: ReadonlyMap<string, AgentStatus>;
-  readonly serverState: ServerState;
-  readonly serverWorktreeId: string | null;
+  readonly statuses: ReadonlyMap<string, WorktreeRowStatus>;
   onSelect(worktreeId: string): void;
   onRemove(worktreeId: string): void;
 }
@@ -20,9 +18,7 @@ export function WorktreeList({
   loading,
   error,
   selectedId,
-  agentStatuses,
-  serverState,
-  serverWorktreeId,
+  statuses,
   onSelect,
   onRemove,
 }: WorktreeListProps): React.JSX.Element {
@@ -35,18 +31,21 @@ export function WorktreeList({
         <p style={{ fontSize: 12, color: '#888' }}>no worktrees</p>
       )}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {worktrees.map((wt) => (
-          <WorktreeItem
-            key={wt.id}
-            worktree={wt}
-            selected={wt.id === selectedId}
-            agentStatus={agentStatuses.get(wt.id) ?? 'idle'}
-            serverState={serverState}
-            ownsServer={wt.id === serverWorktreeId}
-            onSelect={onSelect}
-            onRemove={onRemove}
-          />
-        ))}
+        {worktrees.map((wt) => {
+          const status = statuses.get(wt.id);
+          return (
+            <WorktreeItem
+              key={wt.id}
+              worktree={wt}
+              selected={wt.id === selectedId}
+              agentStatus={status?.agent ?? 'idle'}
+              serverState={status?.server ?? 'stopped'}
+              ownsServer={status?.ownsServer ?? false}
+              onSelect={onSelect}
+              onRemove={onRemove}
+            />
+          );
+        })}
       </ul>
     </section>
   );

@@ -3,6 +3,7 @@ import type { WorktreeManager } from '../managers/worktree-manager';
 import type { SessionManager } from '../managers/session-manager';
 import type { ServerManager } from '../managers/server-manager';
 import type { LogStore } from '../managers/log-store';
+import type { MergeRunner } from '../git/merge-runner';
 
 /**
  * Holds main-process singletons + the main window ref for event emitters.
@@ -20,6 +21,8 @@ export interface IpcContext {
   serverManager?: ServerManager;
   /** The LogStore backing the running server's logs (Plan 3). */
   logStore?: LogStore;
+  /** Lazily constructed in register-ipc; injectable in tests (Plan 4). */
+  mergeRunner?: MergeRunner;
 }
 
 export function createIpcContext(): IpcContext {

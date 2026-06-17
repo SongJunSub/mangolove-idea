@@ -192,6 +192,28 @@ describe('registerIpc — session', () => {
   });
 });
 
+describe('registerIpc — merge', () => {
+  function makeIpcMain() {
+    const handlers = new Map<string, (...a: unknown[]) => unknown>();
+    const ipcMain = {
+      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
+      on: vi.fn(),
+    };
+    return { handlers, ipcMain };
+  }
+
+  it('MERGE_RUN delegates to mergeRunner.run and returns the MergeResult', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const result = { worktreeId: '/wt', merged: true, cleanedUp: true };
+    const mr = { run: vi.fn(async () => result) };
+    registerIpc(ipcMain as never, { mainWindow: null, mergeRunner: mr as never });
+    const req = { worktreeId: '/wt', targetBranch: 'main', runVerifyHook: true, cleanup: true };
+    const out = await handlers.get('merge:run')!({}, req);
+    expect(mr.run).toHaveBeenCalledWith(req);
+    expect(out).toEqual(result);
+  });
+});
+
 describe('registerIpc — server + logs', () => {
   function makeIpcMain() {
     const handlers = new Map<string, (...a: unknown[]) => unknown>();

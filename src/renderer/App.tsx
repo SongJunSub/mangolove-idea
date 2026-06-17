@@ -1,35 +1,45 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { AgentStatus, AppInfo } from '../shared/types';
+import { useCallback, useState } from 'react';
+import type { AppInfo, Worktree } from '../shared/types';
 import { formatVersions } from './lib/format-versions';
 import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
 import { useLogs } from './hooks/use-logs';
+import { useWorktreeStatus } from './hooks/use-worktree-status';
+import { useMerge } from './hooks/use-merge';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
 import { AgentTerminal } from './components/terminal/agent-terminal';
 import { ServerControls } from './components/toolbar/server-controls';
+import { MergeControls } from './components/toolbar/merge-controls';
 import { LogPanel } from './components/logs/log-panel';
 
 export function App(): React.JSX.Element {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [pingError, setPingError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [agentStatuses, setAgentStatuses] = useState<ReadonlyMap<string, AgentStatus>>(new Map());
-  const { worktrees, loading, error, create, remove } = useWorktrees();
+  const { worktrees, loading, error, create, remove, refresh } = useWorktrees();
   const { status: serverStatus, start: startServer, stop: stopServer } = useServer();
   const logLines = useLogs();
+  const statuses = useWorktreeStatus(worktrees);
+  const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
 
-  // Aggregate every worktree's agent status from the global SESSION_STATUS stream.
-  useEffect(() => {
-    const off = window.mango.session.onStatus((s) => {
-      setAgentStatuses((prev) => {
-        const next = new Map(prev);
-        next.set(s.worktreeId, s.status);
-        return next;
+  const selectedWorktree = worktrees.find((w) => w.id === selectedId) ?? null;
+
+  const onMerge = useCallback(
+    async (worktree: Worktree): Promise<void> => {
+      const result = await runMerge({
+        worktreeId: worktree.id,
+        targetBranch: 'main',
+        runVerifyHook: true,
+        cleanup: true,
       });
-    });
-    return off;
-  }, []);
+      if (result.merged) {
+        if (worktree.id === selectedId) setSelectedId(null);
+        await refresh();
+      }
+    },
+    [runMerge, refresh, selectedId],
+  );
 
   const onPing = useCallback(async () => {
     setPingError(null);
@@ -43,7 +53,7 @@ export function App(): React.JSX.Element {
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24 }}>
       <h1>MangoLove IDEA</h1>
-      <p>Plan 3: local server + live logs.</p>
+      <p>Plan 4: merge + cleanup + unified status sidebar.</p>
 
       <Toolbar onCreate={create} />
       <ServerControls
@@ -52,15 +62,19 @@ export function App(): React.JSX.Element {
         onStart={(id) => void startServer(id)}
         onStop={() => void stopServer()}
       />
+      <MergeControls
+        selected={selectedWorktree}
+        running={merging}
+        progress={mergeProgress}
+        onMerge={(wt) => void onMerge(wt)}
+      />
       <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
         <WorktreeList
           worktrees={worktrees}
           loading={loading}
           error={error}
           selectedId={selectedId}
-          agentStatuses={agentStatuses}
-          serverState={serverStatus?.process.state ?? 'stopped'}
-          serverWorktreeId={serverStatus?.process.worktreeId ?? null}
+          statuses={statuses}
           onSelect={setSelectedId}
           onRemove={(id) => void remove(id)}
         />
