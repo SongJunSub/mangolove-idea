@@ -41,6 +41,8 @@ export interface MangoApi {
     sendInput(req: SessionInputRequest): void; // fire-and-forget
     resize(req: SessionResizeRequest): void; // fire-and-forget
     kill(worktreeId: string): Promise<Ack>;
+    /** Recorded worktree paths that had an agent (=> spawn with --continue). */
+    records(): Promise<string[]>;
     onOutput(cb: (e: SessionOutputEvent) => void): Unsubscribe;
     onExit(cb: (e: SessionExitEvent) => void): Unsubscribe;
     onStatus(cb: (s: AgentSession) => void): Unsubscribe;

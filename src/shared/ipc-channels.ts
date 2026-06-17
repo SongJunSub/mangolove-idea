@@ -16,6 +16,7 @@ export const IPC = {
   SESSION_OUTPUT: 'session:output', // main -> renderer, event
   SESSION_EXIT: 'session:exit', // main -> renderer, event
   SESSION_STATUS: 'session:status', // main -> renderer, event (AgentSession changed)
+  SESSION_RECORDS: 'session:records', // invoke (recorded worktree paths for rehydrate)
 
   // server (ONE at a time)
   SERVER_START: 'server:start', // invoke
