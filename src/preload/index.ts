@@ -11,11 +11,6 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): Unsubscribe {
   };
 }
 
-/** Marker for surfaces not yet wired in Plan 0. Keeps the shape complete + honest. */
-function notYet(plan: string): never {
-  throw new Error(`mango: this API lands in Plan ${plan}, not Plan 0`);
-}
-
 const api: MangoApi = {
   app: {
     ping: () => ipcRenderer.invoke(IPC.APP_PING),
@@ -47,7 +42,7 @@ const api: MangoApi = {
     onLine: (cb) => subscribe(IPC.LOG_LINE, cb),
   },
   merge: {
-    run: () => notYet('4'),
+    run: (req) => ipcRenderer.invoke(IPC.MERGE_RUN, req),
     onProgress: (cb) => subscribe(IPC.MERGE_PROGRESS, cb),
   },
 };
