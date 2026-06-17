@@ -116,6 +116,7 @@ export class MergeRunner {
 
     // ── cleanup (non-fatal: the merge already succeeded) ──────────────────────
     let cleanedUp = false;
+    let cleanupFailed = false;
     if (req.cleanup) {
       try {
         // Order matters: remove the worktree FIRST, then delete the branch —
@@ -125,12 +126,20 @@ export class MergeRunner {
         cleanedUp = true;
         this.emit(worktreeId, 'cleanup', true, `removed ${featureBranch}`);
       } catch (error) {
+        cleanupFailed = true;
         const raw = error instanceof Error ? error.message : String(error);
         this.emit(worktreeId, 'cleanup', false, `cleanup failed: ${raw}`);
       }
     }
 
-    this.emit(worktreeId, 'done', true, cleanedUp ? 'merged + cleaned up' : 'merged');
+    // The final `done` must not mask a failed cleanup: a requested-but-failed
+    // cleanup reports ok:false so the UI's stage line surfaces it (merged stands).
+    const doneMessage = cleanedUp
+      ? 'merged + cleaned up'
+      : cleanupFailed
+        ? 'merged, but cleanup failed'
+        : 'merged';
+    this.emit(worktreeId, 'done', !cleanupFailed, doneMessage);
     return { worktreeId, merged: true, cleanedUp };
   }
 
