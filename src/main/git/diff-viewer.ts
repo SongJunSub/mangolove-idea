@@ -1,4 +1,10 @@
-import type { ChangedFile, ChangeStatus, DiffFileRequest, DiffListRequest, FileDiff } from '../../shared/types';
+import type {
+  ChangedFile,
+  ChangeStatus,
+  DiffFileRequest,
+  DiffListRequest,
+  FileDiff,
+} from '../../shared/types';
 import type { SimpleGit } from 'simple-git';
 import { realpathSync } from 'node:fs';
 
@@ -106,7 +112,10 @@ export class DiffViewer {
       if (realP !== canonical) continue;
       const br = lines.find((l) => l.startsWith('branch '));
       if (!br) throw new Error(`worktree ${worktreeId} has no branch (detached)`);
-      return br.slice('branch '.length).trim().replace(/^refs\/heads\//, '');
+      return br
+        .slice('branch '.length)
+        .trim()
+        .replace(/^refs\/heads\//, '');
     }
     throw new Error(`unknown worktree ${worktreeId}`);
   }

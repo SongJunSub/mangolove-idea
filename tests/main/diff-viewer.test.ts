@@ -21,9 +21,7 @@ describe('parseNameStatus', () => {
   });
 
   it('treats copies (C…) as added of the destination', () => {
-    expect(parseNameStatus('C75\ta.txt\tb.txt\n')).toEqual([
-      { path: 'b.txt', status: 'added' },
-    ]);
+    expect(parseNameStatus('C75\ta.txt\tb.txt\n')).toEqual([{ path: 'b.txt', status: 'added' }]);
   });
 
   it('ignores blank lines and unknown statuses', () => {
@@ -70,7 +68,11 @@ describe('DiffViewer (real temp git repo)', () => {
   it('getFileDiff(modified) returns merge-base original + branch modified', async () => {
     const d = await viewer.getFileDiff({ worktreeId, path: 'mod.txt' });
     expect(d).toEqual({
-      path: 'mod.txt', status: 'modified', original: 'old\n', modified: 'old\nnew\n', binary: false,
+      path: 'mod.txt',
+      status: 'modified',
+      original: 'old\n',
+      modified: 'old\nnew\n',
+      binary: false,
     });
   });
 
