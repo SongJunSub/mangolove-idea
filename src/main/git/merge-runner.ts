@@ -77,6 +77,16 @@ export class MergeRunner {
       this.emit(worktreeId, 'verify', true, 'verify passed');
     }
 
+    // ── re-surface an in-progress merge ───────────────────────────────────────
+    // If MERGE_HEAD already exists (a prior run paused on a conflict, possibly
+    // across an app restart), do NOT re-run from the top (the conflicted tree would
+    // trip the dirty-tree gate with a confusing 'uncommitted changes'). Re-report it.
+    if (await this.inProgress()) {
+      const conflicted = (await this.git.status()).conflicted;
+      this.emit(worktreeId, 'conflict', false, `resume merge: ${conflicted.length} conflict(s)`);
+      return { worktreeId, merged: false, cleanedUp: false, status: 'conflict', conflicted };
+    }
+
     // ── merge ───────────────────────────────────────────────────────────────
     // Safety: the primary tree must be clean of TRACKED changes. Untracked paths
     // (notably the `.worktrees/` dir) are ignored — they are always 'not_added'.
@@ -100,16 +110,27 @@ export class MergeRunner {
       await this.git.checkout(targetBranch);
       await this.git.merge(['--no-edit', featureBranch]);
     } catch (error) {
-      // Conflict (or any merge failure): abort so the repo is never left mid-merge.
+      // Branch by Abstraction: a TRUE conflict (confirmed via status().conflicted,
+      // NOT the brittle /conflict/i message) PAUSES the merge in progress for the
+      // resolution UI. Any other throw keeps the original safe-abort path verbatim.
+      const conflicted = (await this.git.status()).conflicted;
+      if (conflicted.length > 0) {
+        this.emit(
+          worktreeId,
+          'conflict',
+          false,
+          `merge conflict: ${conflicted.length} file(s) need resolution`,
+        );
+        return { worktreeId, merged: false, cleanedUp: false, status: 'conflict', conflicted };
+      }
+      // Non-conflict failure: abort so the repo is never left mid-merge.
       try {
         await this.git.raw(['merge', '--abort']);
       } catch {
         // best-effort; if there was nothing to abort git errors — ignore.
       }
       const raw = error instanceof Error ? error.message : String(error);
-      const msg = /conflict/i.test(raw)
-        ? `merge conflict merging ${featureBranch} into ${targetBranch}`
-        : raw.replace(/^fatal:\s*/i, '').trim();
+      const msg = raw.replace(/^fatal:\s*/i, '').trim();
       return this.fail(worktreeId, 'merge', msg);
     }
     this.emit(worktreeId, 'merge', true, `merged ${featureBranch} into ${targetBranch}`);
@@ -118,18 +139,10 @@ export class MergeRunner {
     let cleanedUp = false;
     let cleanupFailed = false;
     if (req.cleanup) {
-      try {
-        // Order matters: remove the worktree FIRST, then delete the branch —
-        // `git branch -d` refuses a branch still held by a worktree.
-        await this.worktrees.remove({ worktreeId });
-        await this.git.branch(['-d', featureBranch]);
-        cleanedUp = true;
-        this.emit(worktreeId, 'cleanup', true, `removed ${featureBranch}`);
-      } catch (error) {
-        cleanupFailed = true;
-        const raw = error instanceof Error ? error.message : String(error);
-        this.emit(worktreeId, 'cleanup', false, `cleanup failed: ${raw}`);
-      }
+      const result = await this.cleanupWorktree(worktreeId, featureBranch);
+      cleanedUp = result.cleanedUp;
+      cleanupFailed = result.failed;
+      this.emit(worktreeId, 'cleanup', !cleanupFailed, result.message);
     }
 
     // The final `done` must not mask a failed cleanup: a requested-but-failed
@@ -140,7 +153,39 @@ export class MergeRunner {
         ? 'merged, but cleanup failed'
         : 'merged';
     this.emit(worktreeId, 'done', !cleanupFailed, doneMessage);
-    return { worktreeId, merged: true, cleanedUp };
+    return { worktreeId, merged: true, cleanedUp, status: 'merged' };
+  }
+
+  /** True while a merge is paused in the primary tree (`.git/MERGE_HEAD` present). */
+  private async inProgress(): Promise<boolean> {
+    try {
+      // No `-q` — see ConflictResolver.inProgress(): `-q` suppresses stderr so
+      // simple-git resolves instead of throwing, making this always true.
+      await this.git.raw(['rev-parse', '--verify', 'MERGE_HEAD']);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Shared cleanup: remove the worktree FIRST, then delete the branch (order is
+   * load-bearing — `git branch -d` refuses a branch still held by a worktree).
+   * Non-fatal: returns the outcome so callers (happy-path merge AND a user-driven
+   * post-resolution continue) can report ok:false without flipping merged:false.
+   */
+  async cleanupWorktree(
+    worktreeId: string,
+    featureBranch: string,
+  ): Promise<{ cleanedUp: boolean; failed: boolean; message: string }> {
+    try {
+      await this.worktrees.remove({ worktreeId });
+      await this.git.branch(['-d', featureBranch]);
+      return { cleanedUp: true, failed: false, message: `removed ${featureBranch}` };
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : String(error);
+      return { cleanedUp: false, failed: true, message: `cleanup failed: ${raw}` };
+    }
   }
 
   /** Runs the verify command in `cwd`; resolves true iff exit code === 0. */
@@ -158,6 +203,6 @@ export class MergeRunner {
   /** Emits a failed stage and returns a non-merged MergeResult. */
   private fail(worktreeId: string, stage: MergeStage, error: string): MergeResult {
     this.emit(worktreeId, stage, false, error);
-    return { worktreeId, merged: false, cleanedUp: false, error };
+    return { worktreeId, merged: false, cleanedUp: false, status: 'failed', error };
   }
 }

@@ -131,13 +131,14 @@ describe('MergeRunner', () => {
     });
 
     expect(result.merged).toBe(true);
+    expect(result.status).toBe('merged');
     expect(events.map((e) => e.stage)).toEqual(['verify', 'merge', 'done']);
     // target (main) now contains the feature file
     const log = await repo.git.log();
     expect(log.all.some((c) => c.message.includes('feature/m commit'))).toBe(true);
   });
 
-  it('aborts and fails at merge on a conflict, leaving the tree clean', async () => {
+  it('PAUSES on a real conflict: leaves MERGE_HEAD + conflicted files, returns status conflict', async () => {
     // diverge: feature edits base.txt one way, main edits it another
     const path = join(realpathSync(repo.dir), '.worktrees', 'cflt');
     await repo.git.raw(['worktree', 'add', path, '-b', 'feature/cflt', 'main']);
@@ -161,12 +162,74 @@ describe('MergeRunner', () => {
     });
 
     expect(result.merged).toBe(false);
-    expect(result.error).toMatch(/conflict/i);
+    expect(result.status).toBe('conflict');
+    expect(result.conflicted).toContain('base.txt');
+    expect(result.cleanedUp).toBe(false); // cleanup must NOT run while a merge is in progress
+    expect(events.find((e) => e.stage === 'conflict')).toMatchObject({ stage: 'conflict' });
+    expect(events.some((e) => e.stage === 'cleanup')).toBe(false);
+    // merge is LEFT in progress
+    const inProgress = await repo.git
+      .raw(['rev-parse', '--verify', 'MERGE_HEAD'])
+      .then(() => true)
+      .catch(() => false);
+    expect(inProgress).toBe(true);
+    const st = await repo.git.status();
+    expect(st.conflicted).toContain('base.txt');
+  });
+
+  it('AUTO-ABORTS a non-conflict merge failure, leaving the tree clean (status failed)', async () => {
+    const feat = await addFeature(repo, 'feature/badref');
+    const { runner } = makeVerifyRunner(0);
+    const { emitter, events } = makeEmitter();
+    const mr = new MergeRunner({ git, worktrees, verifyRunner: runner, emitter });
+
+    // A non-existent target branch makes checkout throw — a NON-conflict failure.
+    const result = await mr.run({
+      worktreeId: feat.id,
+      targetBranch: 'no-such-branch',
+      runVerifyHook: false,
+      cleanup: false,
+    });
+
+    expect(result.merged).toBe(false);
+    expect(result.status).toBe('failed');
     expect(events.find((e) => e.stage === 'merge')).toMatchObject({ ok: false });
-    // tree is clean (abort restored it) — no merge-in-progress markers
+    // tree is clean (auto-abort restored it) — no merge-in-progress markers
     const st = await repo.git.status();
     expect(st.conflicted).toEqual([]);
     expect(st.modified).toEqual([]);
+    const inProgress = await repo.git
+      .raw(['rev-parse', '--verify', 'MERGE_HEAD'])
+      .then(() => true)
+      .catch(() => false);
+    expect(inProgress).toBe(false);
+  });
+
+  it('re-surfaces an existing in-progress merge instead of tripping the dirty-tree gate', async () => {
+    const path = join(realpathSync(repo.dir), '.worktrees', 'cflt2');
+    await repo.git.raw(['worktree', 'add', path, '-b', 'feature/cflt2', 'main']);
+    const fg = simpleGit(path);
+    writeFileSync(join(path, 'base.txt'), 'feature2\n');
+    await fg.add('base.txt');
+    await fg.commit('feat edit');
+    writeFileSync(join(repo.dir, 'base.txt'), 'main2\n');
+    await repo.git.add('base.txt');
+    await repo.git.commit('main edit');
+
+    const { runner } = makeVerifyRunner(0);
+    const { emitter } = makeEmitter();
+    const mr = new MergeRunner({ git, worktrees, verifyRunner: runner, emitter });
+
+    await mr.run({ worktreeId: path, targetBranch: 'main', runVerifyHook: false, cleanup: false });
+    // A SECOND run while MERGE_HEAD exists must re-surface, not error on uncommitted changes.
+    const second = await mr.run({
+      worktreeId: path,
+      targetBranch: 'main',
+      runVerifyHook: false,
+      cleanup: false,
+    });
+    expect(second.status).toBe('conflict');
+    expect(second.conflicted).toContain('base.txt');
   });
 
   it('refuses to merge when the primary tree has tracked changes', async () => {

@@ -25,6 +25,10 @@ const AgentTerminal = lazy(() =>
 const DiffView = lazy(() =>
   import('./components/diff/diff-view').then((m) => ({ default: m.DiffView })),
 );
+// Lazy so monaco stays in the existing ~7 MB diff chunk; the conflict editor shares it.
+const ConflictView = lazy(() =>
+  import('./components/diff/conflict-view').then((m) => ({ default: m.ConflictView })),
+);
 
 export function App(): React.JSX.Element {
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -40,15 +44,47 @@ export function App(): React.JSX.Element {
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
-  const [paneMode, setPaneMode] = useState<'terminal' | 'diff'>('terminal');
+  const [paneMode, setPaneMode] = useState<'terminal' | 'diff' | 'conflict'>('terminal');
+  // Worktree currently holding an in-progress (paused) merge conflict, or null.
+  const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
 
   useEffect(() => {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
   }, []);
 
-  // Reset to Terminal tab whenever a different worktree is selected.
+  // On selecting a worktree, reset the pane: to 'conflict' if THE in-progress merge
+  // belongs to the SELECTED worktree (covers app-restart resume — truth comes from
+  // MERGE_HEAD in the primary tree), otherwise back to 'terminal'. ONE effect owns
+  // the reset so there is no race between a sync reset and an async probe.
+  //
+  // There is exactly ONE global MERGE_HEAD (single-MERGE_HEAD design), so we MUST
+  // ask main which worktree actually owns it — `merge.conflicts()` ignores its
+  // worktreeId argument and reports the same non-empty list for ANY selection while
+  // a merge is paused. Attributing that to `selectedId` would open the Conflicts
+  // pane against the WRONG worktree and make Continue/Abort clean up the wrong
+  // worktree/branch. `merge.owner()` returns the worktreeId of MERGE_HEAD's feature
+  // branch; we set conflictWorktreeId to THAT, and only flip to the pane when it is
+  // the worktree currently selected.
   useEffect(() => {
-    setPaneMode('terminal');
+    if (!selectedId) {
+      setPaneMode('terminal');
+      return;
+    }
+    let cancelled = false;
+    setPaneMode('terminal'); // optimistic default until the probe resolves
+    void window.mango.merge
+      .owner()
+      .then((ownerId) => {
+        if (cancelled) return;
+        setConflictWorktreeId(ownerId);
+        if (ownerId !== null && ownerId === selectedId) {
+          setPaneMode('conflict');
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId]);
 
   const onQuitDecision = useCallback(async (quit: boolean): Promise<void> => {
@@ -67,6 +103,18 @@ export function App(): React.JSX.Element {
         runVerifyHook: true,
         cleanup: true,
       });
+      if (result.status === 'conflict') {
+        // There is exactly ONE global MERGE_HEAD. A second merge while one is paused
+        // re-surfaces the EXISTING conflict, which may belong to a DIFFERENT worktree
+        // than the one just clicked. Attribute the Conflicts pane to the TRUE owner —
+        // ask merge.owner() rather than trusting worktree.id — so Continue never
+        // commits one worktree's merge and cleans up another's tree/branch. Only flip
+        // to the Conflicts pane when the owner is the worktree currently selected.
+        const ownerId = (await window.mango.merge.owner()) ?? result.worktreeId;
+        setConflictWorktreeId(ownerId);
+        if (ownerId === selectedId) setPaneMode('conflict');
+        return;
+      }
       if (result.merged) {
         if (worktree.id === selectedId) setSelectedId(null);
         await refresh();
@@ -150,6 +198,18 @@ export function App(): React.JSX.Element {
                 >
                   Diff
                 </button>
+                {conflictWorktreeId === selectedId && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={paneMode === 'conflict'}
+                    data-testid="tab-conflict"
+                    style={{ color: '#e0a030' }}
+                    onClick={() => setPaneMode('conflict')}
+                  >
+                    Conflicts
+                  </button>
+                )}
               </div>
               {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
               <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
@@ -166,6 +226,26 @@ export function App(): React.JSX.Element {
               {paneMode === 'diff' && (
                 <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading diff…</p>}>
                   <DiffView key={`diff-${selectedId}`} worktreeId={selectedId} base={baseBranch} />
+                </Suspense>
+              )}
+              {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
+                <Suspense
+                  fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading conflicts…</p>}
+                >
+                  <ConflictView
+                    key={`conflict-${selectedId}`}
+                    worktreeId={selectedId}
+                    targetBranch={baseBranch}
+                    cleanup={true}
+                    onResolved={(merged) => {
+                      setConflictWorktreeId(null);
+                      setPaneMode('terminal');
+                      if (merged) {
+                        if (selectedId === selectedWorktree?.id) setSelectedId(null);
+                      }
+                      void refresh();
+                    }}
+                  />
                 </Suspense>
               )}
             </>

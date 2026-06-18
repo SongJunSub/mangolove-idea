@@ -21,9 +21,18 @@ import type {
   DiffListRequest,
   DiffFileRequest,
   AppSettings,
+  ConflictedFile,
+  ConflictFileVersions,
+  ConflictListRequest,
+  ConflictReadRequest,
+  ConflictResolveRequest,
+  ConflictContinueRequest,
+  ConflictAbortRequest,
+  ConflictInProgressRequest,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { DiffViewer } from '../git/diff-viewer';
+import { ConflictResolver } from '../git/conflict-resolver';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
@@ -290,6 +299,21 @@ async function getDiffViewer(ctx: IpcContext): Promise<DiffViewer> {
 }
 
 /**
+ * Resolves the ConflictResolver: prefer ctx (tests inject); else build a real one
+ * bound to the PRIMARY repoRoot (where MERGE_HEAD lives). Reuses the cached
+ * WorktreeManager exactly like getMergeRunner. STATELESS — it recomputes truth from
+ * MERGE_HEAD/git.status() per call — so it is safe to cache across settings changes.
+ */
+async function getConflictResolver(ctx: IpcContext): Promise<ConflictResolver> {
+  if (ctx.conflictResolver) return ctx.conflictResolver;
+  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const { simpleGit } = await import('simple-git');
+  const worktrees = await getWorktreeManager(ctx);
+  ctx.conflictResolver = new ConflictResolver({ git: simpleGit(repoRoot), worktrees });
+  return ctx.conflictResolver;
+}
+
+/**
  * Registers ALL main-process IPC handlers in one place. Plan 1 wires the real
  * WORKTREE_LIST/CREATE/REMOVE handlers, delegating to the WorktreeManager on ctx.
  */
@@ -372,6 +396,25 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle(
     IPC.MERGE_RUN,
     async (_event: unknown, req: MergeRequest): Promise<MergeResult> => {
+      // Re-surface an in-progress merge instead of running run() from the top
+      // (which would trip the dirty-tree gate on the conflicted target tree).
+      const resolver = await getConflictResolver(ctx);
+      if (await resolver.inProgress()) {
+        const conflicted = (await resolver.list()).map((f) => f.path);
+        // There is exactly ONE global MERGE_HEAD. The paused merge may belong to a
+        // DIFFERENT worktree than the one just clicked, so attribute the conflict to
+        // its TRUE owner (the worktree whose feature branch is MERGE_HEAD) — never to
+        // req.worktreeId. Otherwise Continue would commit the owner's merge but run
+        // cleanup against the clicked worktree, wiping the wrong tree/branch.
+        const ownerId = (await resolver.inProgressWorktreeId()) ?? req.worktreeId;
+        return {
+          worktreeId: ownerId,
+          merged: false,
+          cleanedUp: false,
+          status: 'conflict',
+          conflicted,
+        };
+      }
       return (await getMergeRunner(ctx)).run(req);
     },
   );
@@ -389,6 +432,64 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       return (await getDiffViewer(ctx)).getFileDiff(req);
     },
   );
+
+  ipcMain.handle(
+    IPC.MERGE_CONFLICTS,
+    async (_event: unknown, _req: ConflictListRequest): Promise<ConflictedFile[]> => {
+      return (await getConflictResolver(ctx)).list();
+    },
+  );
+
+  ipcMain.handle(
+    IPC.MERGE_READ_CONFLICT,
+    async (_event: unknown, req: ConflictReadRequest): Promise<ConflictFileVersions> => {
+      return (await getConflictResolver(ctx)).read(req.path);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.MERGE_RESOLVE,
+    async (_event: unknown, req: ConflictResolveRequest): Promise<MergeResult> => {
+      const resolver = await getConflictResolver(ctx);
+      await resolver.resolve({ path: req.path, choice: req.choice, content: req.content });
+      const conflicted = (await resolver.list()).map((f) => f.path);
+      return {
+        worktreeId: req.worktreeId,
+        merged: false,
+        cleanedUp: false,
+        status: 'conflict',
+        conflicted,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    IPC.MERGE_CONTINUE,
+    async (_event: unknown, req: ConflictContinueRequest): Promise<MergeResult> => {
+      return (await getConflictResolver(ctx)).continue(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.MERGE_ABORT,
+    async (_event: unknown, req: ConflictAbortRequest): Promise<MergeResult> => {
+      return (await getConflictResolver(ctx)).abort(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.MERGE_IN_PROGRESS,
+    async (_event: unknown, _req: ConflictInProgressRequest): Promise<boolean> => {
+      return (await getConflictResolver(ctx)).inProgress();
+    },
+  );
+
+  ipcMain.handle(IPC.MERGE_OWNER, async (): Promise<string | null> => {
+    // Which worktree the single in-flight MERGE_HEAD actually belongs to — the
+    // renderer attributes the Conflicts pane to THIS, never to whatever worktree
+    // happens to be selected.
+    return (await getConflictResolver(ctx)).inProgressWorktreeId();
+  });
 
   ipcMain.handle(IPC.SESSION_RECORDS, async (): Promise<string[]> => {
     return getSessionStore(ctx)
@@ -410,6 +511,14 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       // safe — an edited verifyCommand/baseBranch applies on the next merge/diff.
       ctx.mergeRunner = undefined; // verifyCommand (+ base via renderer)
       ctx.diffViewer = undefined; // base (rebuilt with current settings on next diff)
+      // The ConflictResolver owns the in-progress merge. It recomputes truth from
+      // MERGE_HEAD/git.status() per call, so nulling it would only re-bind a fresh
+      // SimpleGit — harmless — BUT while a merge is in progress we keep the same
+      // instance to mirror the sessionManager 'keep-while-busy' discipline and to
+      // guarantee the resolution capability is never dropped mid-conflict.
+      if (!(await ctx.conflictResolver?.inProgress())) {
+        ctx.conflictResolver = undefined; // idle: rebuilt on next conflict call
+      }
       // sessionManager/serverManager own LIVE children that the before-quit sweep
       // (index.ts) and the SESSION_INPUT/RESIZE handlers find THROUGH ctx. Nulling
       // them mid-run would orphan the running claude/server from the sweep AND detach

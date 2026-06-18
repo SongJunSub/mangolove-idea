@@ -153,7 +153,7 @@ export interface MergeRequest {
   readonly cleanup: boolean;
 }
 
-export type MergeStage = 'verify' | 'merge' | 'cleanup' | 'done';
+export type MergeStage = 'verify' | 'merge' | 'conflict' | 'cleanup' | 'done';
 
 export interface MergeProgressEvent {
   readonly worktreeId: string;
@@ -162,12 +162,98 @@ export interface MergeProgressEvent {
   readonly message: string;
 }
 
+/**
+ * Outcome of a merge attempt. `status` discriminates the paused-conflict case.
+ * NOTE: `status` is a REQUIRED field — this is a deliberate required-field WIDENING
+ * of MergeResult, not a backward-optional addition. It is safe because every
+ * existing producer is updated in the same change (merge-runner's success path
+ * sets 'merged' and fail() sets 'failed'; the conflict/continue/abort producers
+ * added in Tasks 2-3 set the remaining values) and the existing merge-runner
+ * tests assert via field access / toMatchObject (never a whole-object .toEqual),
+ * so no existing assertion regresses.
+ */
 export interface MergeResult {
   readonly worktreeId: string;
   readonly merged: boolean;
   readonly cleanedUp: boolean;
-  /** Present when merged === false. */
+  /**
+   * 'merged'  — merge commit created (merged === true).
+   * 'conflict'— merge is PAUSED in the primary tree (MERGE_HEAD present); resolve then continue/abort.
+   * 'failed'  — non-conflict failure; tree was auto-aborted to a clean state (merged === false).
+   */
+  readonly status: 'merged' | 'conflict' | 'failed';
+  /** Conflicted paths, present when status === 'conflict'. */
+  readonly conflicted?: readonly string[];
+  /** Present when status === 'failed'. */
   readonly error?: string;
+}
+
+/** Which index stages a conflicted path has (modify/delete & add/add lack some). */
+export interface ConflictedFile {
+  readonly path: string;
+  /** Porcelain unmerged XY code: UU, AA, DU, UD, DD, AU, UA. */
+  readonly code: string;
+  /** Stage :2 (ours/target) present — false for an add/add-missing or theirs-only case. */
+  readonly hasOurs: boolean;
+  /** Stage :3 (theirs/feature) present. */
+  readonly hasTheirs: boolean;
+}
+
+/** The four blob views for one conflicted file (absent stages return ''). */
+export interface ConflictFileVersions {
+  readonly path: string;
+  readonly code: string;
+  /** Stage :1 — common ancestor; '' if absent (e.g. add/add). */
+  readonly base: string;
+  /** Stage :2 — OURS = the TARGET branch (e.g. main); '' if absent (e.g. ours deleted). */
+  readonly ours: string;
+  /** Stage :3 — THEIRS = the FEATURE branch; '' if absent (e.g. theirs deleted). */
+  readonly theirs: string;
+  /** The working-tree file with git's raw <<<<<<< ======= >>>>>>> markers. */
+  readonly working: string;
+  readonly hasOurs: boolean;
+  readonly hasTheirs: boolean;
+}
+
+export interface ConflictListRequest {
+  readonly worktreeId: string;
+}
+
+export interface ConflictReadRequest {
+  readonly worktreeId: string;
+  readonly path: string;
+}
+
+export interface ConflictResolveRequest {
+  readonly worktreeId: string;
+  readonly path: string;
+  /**
+   * 'ours'   — checkout --ours + add (target/main version).
+   * 'theirs' — checkout --theirs + add (feature version).
+   * 'manual' — write `content` + add.
+   * 'keep'   — git add the working file as-is (modify/delete: keep the file).
+   * 'remove' — git rm the path (modify/delete: drop the file).
+   */
+  readonly choice: 'ours' | 'theirs' | 'manual' | 'keep' | 'remove';
+  /** Required when choice === 'manual'. */
+  readonly content?: string;
+  /** Target branch (so the resolver can run cleanup with the right feature branch). */
+  readonly targetBranch: string;
+}
+
+export interface ConflictContinueRequest {
+  readonly worktreeId: string;
+  readonly targetBranch: string;
+  /** Remove the worktree + delete the feature branch after the commit (mirrors MergeRequest). */
+  readonly cleanup: boolean;
+}
+
+export interface ConflictAbortRequest {
+  readonly worktreeId: string;
+}
+
+export interface ConflictInProgressRequest {
+  readonly worktreeId: string;
 }
 
 /**

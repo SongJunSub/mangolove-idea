@@ -7,6 +7,7 @@ import type { MergeRunner } from '../git/merge-runner';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { DiffViewer } from '../git/diff-viewer';
+import type { ConflictResolver } from '../git/conflict-resolver';
 
 /**
  * Holds main-process singletons + the main window ref for event emitters.
@@ -43,6 +44,12 @@ export interface IpcContext {
   serverSettingsDirty?: boolean;
   /** Lazily constructed in register-ipc; injectable in tests (V2 A1). */
   diffViewer?: DiffViewer;
+  /**
+   * Lazily constructed in register-ipc; injectable in tests (V2 merge conflict).
+   * STATEFUL only in the sense that it owns the in-progress merge — it is NOT nulled
+   * on SETTINGS_SET while inProgress() (it recomputes truth from MERGE_HEAD per call).
+   */
+  conflictResolver?: ConflictResolver;
   /** Injected by index.ts so the quit handler can actually quit (app.quit). */
   requestQuit?: () => void;
 }

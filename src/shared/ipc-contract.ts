@@ -17,6 +17,14 @@ import type {
   MergeRequest,
   MergeResult,
   MergeProgressEvent,
+  ConflictedFile,
+  ConflictFileVersions,
+  ConflictListRequest,
+  ConflictReadRequest,
+  ConflictResolveRequest,
+  ConflictContinueRequest,
+  ConflictAbortRequest,
+  ConflictInProgressRequest,
   QuitWarningEvent,
   AppInfo,
   ChangedFile,
@@ -65,6 +73,29 @@ export interface MangoApi {
   merge: {
     run(req: MergeRequest): Promise<MergeResult>;
     onProgress(cb: (e: MergeProgressEvent) => void): Unsubscribe;
+    /** Conflicted paths for the in-progress merge in the primary tree (empty if none). */
+    conflicts(req: ConflictListRequest): Promise<ConflictedFile[]>;
+    /** Base/ours/theirs/working contents + missing-stage flags for one conflicted file. */
+    readConflict(req: ConflictReadRequest): Promise<ConflictFileVersions>;
+    /** Resolve one file: 'ours' | 'theirs' | 'manual' (content) | 'keep' | 'remove'. */
+    resolve(req: ConflictResolveRequest): Promise<MergeResult>;
+    /** Create the merge commit (rejected unless zero conflicts remain). User-driven only. */
+    continue(req: ConflictContinueRequest): Promise<MergeResult>;
+    /** `git merge --abort`: restore the target branch, drop MERGE_HEAD. */
+    abort(req: ConflictAbortRequest): Promise<MergeResult>;
+    /**
+     * True while a merge is paused (`.git/MERGE_HEAD` present), recomputed from git.
+     * The ONLY truthful source for the 'all conflicts resolved but not yet committed'
+     * window: list() returns [] there, but the merge is still in progress.
+     */
+    inProgress(req: ConflictInProgressRequest): Promise<boolean>;
+    /**
+     * The worktreeId whose feature branch is the in-progress merge's MERGE_HEAD,
+     * or null when no merge is paused. The renderer attributes the Conflicts pane
+     * to THIS worktree only — never to whatever worktree is currently selected —
+     * so a global MERGE_HEAD is never mis-attributed across app restart/reselect.
+     */
+    owner(): Promise<string | null>;
   };
   diff: {
     /** PR-style changed-file list: worktree branch vs base (default 'main'). */
