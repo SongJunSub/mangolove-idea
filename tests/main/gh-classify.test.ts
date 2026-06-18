@@ -34,9 +34,9 @@ describe('classifyGhStatus (pure, table-driven, no spawning)', () => {
   });
 
   it('maps the no-PR stderr (exit 1) to no-pr', () => {
-    expect(
-      kind(classifyGhStatus(1, '', 'no pull requests found for branch "feature/login"')),
-    ).toBe('no-pr');
+    expect(kind(classifyGhStatus(1, '', 'no pull requests found for branch "feature/login"'))).toBe(
+      'no-pr',
+    );
   });
 
   it('maps rate limit / HTTP 403 to rate-limited', () => {
@@ -60,11 +60,7 @@ describe('summarizeChecks (pure, switches on bucket only)', () => {
   });
 
   it('any fail bucket => failing (precedence over pending/pass)', () => {
-    const out = summarizeChecks([
-      { bucket: 'pass' },
-      { bucket: 'fail' },
-      { bucket: 'pending' },
-    ]);
+    const out = summarizeChecks([{ bucket: 'pass' }, { bucket: 'fail' }, { bucket: 'pending' }]);
     expect(out.summary).toBe('failing');
     expect(out.counts).toEqual({ pass: 1, fail: 1, pending: 1, skipping: 0, cancel: 0 });
   });

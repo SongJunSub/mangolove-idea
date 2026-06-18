@@ -41,8 +41,12 @@ export function App(): React.JSX.Element {
   const logLines = useLogs();
   const statuses = useWorktreeStatus(worktrees, serverStatus);
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
-  const { status: ghStatus, loading: ghLoading, error: ghError, refresh: refreshGh } =
-    useGhStatus(selectedId);
+  const {
+    status: ghStatus,
+    loading: ghLoading,
+    error: ghError,
+    refresh: refreshGh,
+  } = useGhStatus(selectedId);
 
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
