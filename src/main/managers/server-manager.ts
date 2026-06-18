@@ -147,6 +147,11 @@ export class ServerManager {
     return { process: this.last };
   }
 
+  /** True while a server child is live (so the live-apply guard won't orphan it). */
+  hasLiveServer(): boolean {
+    return this.current !== null;
+  }
+
   /** Kills the running child (before-quit sweep). */
   killAll(): void {
     const server = this.current;

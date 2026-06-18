@@ -376,6 +376,36 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       .map((r) => r.worktreePath);
   });
 
+  ipcMain.handle(IPC.SETTINGS_GET, async (): Promise<AppSettings> => {
+    return getSettingsStore(ctx).get();
+  });
+
+  ipcMain.handle(
+    IPC.SETTINGS_SET,
+    async (_event: unknown, partial: Partial<AppSettings>): Promise<AppSettings> => {
+      const merged = getSettingsStore(ctx).set(partial);
+      // Live-apply: the managers bake their command/base in at CONSTRUCTION and are
+      // cached on ctx; clearing a cache makes it REBUILD lazily with the new settings.
+      // mergeRunner/diffViewer hold NO live OS process, so clearing them is always
+      // safe — an edited verifyCommand/baseBranch applies on the next merge/diff.
+      ctx.mergeRunner = undefined; // verifyCommand (+ base via renderer)
+      ctx.diffViewer = undefined; // base (rebuilt with current settings on next diff)
+      // sessionManager/serverManager own LIVE children that the before-quit sweep
+      // (index.ts) and the SESSION_INPUT/RESIZE handlers find THROUGH ctx. Nulling
+      // them mid-run would orphan the running claude/server from the sweep AND detach
+      // it from the next keystroke (a fresh manager has no record of it). So clear
+      // them ONLY when idle; while busy, the new agent/server command takes effect
+      // once the live work ends.
+      if ((ctx.sessionManager?.liveWorktreeIds().length ?? 0) === 0) {
+        ctx.sessionManager = undefined; // agentCommand (next spawn)
+      }
+      if (!(ctx.serverManager?.hasLiveServer() ?? false)) {
+        ctx.serverManager = undefined; // serverCommand (next start)
+      }
+      return merged;
+    },
+  );
+
   ipcMain.handle(
     IPC.APP_QUIT_DECISION,
     async (_event: unknown, req: { quit: boolean }): Promise<Ack> => {

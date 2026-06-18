@@ -421,3 +421,74 @@ describe('registerIpc — app quit + session records (Plan 5)', () => {
     expect(ack).toEqual({ ok: true });
   });
 });
+
+describe('registerIpc — settings (V2 E)', () => {
+  function makeIpcMain() {
+    const handlers = new Map<string, (...a: unknown[]) => unknown>();
+    const ipcMain = {
+      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
+      on: vi.fn(),
+    };
+    return { handlers, ipcMain };
+  }
+
+  it('SETTINGS_GET returns the SettingsStore.get() snapshot', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(() => ({ agentCommand: 'a' })), set: vi.fn() };
+    registerIpc(ipcMain as never, { mainWindow: null, settingsStore: store as never });
+    const out = await handlers.get('settings:get')!({});
+    expect(store.get).toHaveBeenCalledOnce();
+    expect(out).toEqual({ agentCommand: 'a' });
+  });
+
+  it('SETTINGS_SET persists the partial and returns the merged settings', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const merged = { agentCommand: 'a', verifyCommand: 'true' };
+    const store = { get: vi.fn(), set: vi.fn(() => merged) };
+    registerIpc(ipcMain as never, { mainWindow: null, settingsStore: store as never });
+    const req = { verifyCommand: 'true' };
+    const out = await handlers.get('settings:set')!({}, req);
+    expect(store.set).toHaveBeenCalledWith(req);
+    expect(out).toEqual(merged);
+  });
+
+  it('SETTINGS_SET clears ALL caches when session+server are idle', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(), set: vi.fn(() => ({})) };
+    const ctx = {
+      mainWindow: null,
+      settingsStore: store as never,
+      sessionManager: { liveWorktreeIds: () => [] } as never, // idle
+      serverManager: { hasLiveServer: () => false } as never, // idle
+      mergeRunner: { tag: 'merge' } as never,
+      diffViewer: { tag: 'diff' } as never,
+    };
+    registerIpc(ipcMain as never, ctx);
+    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    expect(ctx.sessionManager).toBeUndefined();
+    expect(ctx.serverManager).toBeUndefined();
+    expect(ctx.mergeRunner).toBeUndefined();
+    expect(ctx.diffViewer).toBeUndefined();
+  });
+
+  it('SETTINGS_SET KEEPS live session/server managers (no orphan) but always clears merge/diff', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(), set: vi.fn(() => ({})) };
+    const liveSession = { liveWorktreeIds: () => ['w1'] }; // busy
+    const liveServer = { hasLiveServer: () => true }; // busy
+    const ctx = {
+      mainWindow: null,
+      settingsStore: store as never,
+      sessionManager: liveSession as never,
+      serverManager: liveServer as never,
+      mergeRunner: { tag: 'merge' } as never,
+      diffViewer: { tag: 'diff' } as never,
+    };
+    registerIpc(ipcMain as never, ctx);
+    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    expect(ctx.sessionManager).toBe(liveSession); // kept -> sweep still finds it
+    expect(ctx.serverManager).toBe(liveServer); // kept -> sweep still finds it
+    expect(ctx.mergeRunner).toBeUndefined(); // stateless -> always cleared
+    expect(ctx.diffViewer).toBeUndefined();
+  });
+});

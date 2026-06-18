@@ -39,6 +39,10 @@ export const IPC = {
   // diff viewer (V2 A1) — read-only PR-style diff (renderer -> main, invoke)
   DIFF_LIST: 'diff:list', // invoke (worktreeId, base? -> ChangedFile[])
   DIFF_FILE: 'diff:file', // invoke (worktreeId, base?, path -> FileDiff)
+
+  // settings (V2 E) — persisted per-project config (renderer -> main, invoke)
+  SETTINGS_GET: 'settings:get', // invoke (-> AppSettings)
+  SETTINGS_SET: 'settings:set', // invoke (Partial<AppSettings> -> AppSettings)
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

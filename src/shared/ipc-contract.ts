@@ -23,6 +23,7 @@ import type {
   FileDiff,
   DiffListRequest,
   DiffFileRequest,
+  AppSettings,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -70,6 +71,12 @@ export interface MangoApi {
     list(req: DiffListRequest): Promise<ChangedFile[]>;
     /** Original (merge-base) + modified (branch) contents for one file. */
     file(req: DiffFileRequest): Promise<FileDiff>;
+  };
+  settings: {
+    /** Current persisted settings (every field optional; unset => env/default). */
+    get(): Promise<AppSettings>;
+    /** Persists a partial; returns the merged, sanitized settings. */
+    set(partial: Partial<AppSettings>): Promise<AppSettings>;
   };
 }
 
