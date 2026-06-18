@@ -130,7 +130,7 @@ function getSessionManager(ctx: IpcContext): SessionManager {
   ctx.sessionManager = new SessionManager({
     factory: new NodePtyFactory(),
     emitter: buildSessionEmitter(ctx),
-    command: 'claude',
+    command: resolveCommands(getSettingsStore(ctx).get()).agentCommand,
     resolvePath: async (worktreeId) => {
       const manager = await getWorktreeManager(ctx);
       const trees = await manager.list();
@@ -217,7 +217,9 @@ function getServerManager(ctx: IpcContext): ServerManager {
     },
     // Smoke seam: a harmless line-emitting command can be injected via env so a
     // manual/Playwright smoke runs WITHOUT a real gradle/npm server.
-    commandOverride: process.env.MANGO_SERVER_CMD,
+    // Command source precedence: persisted setting > env seam (smoke) > undefined
+    // (=> ServerManager auto-detection of gradle/npm wins).
+    commandOverride: resolveCommands(getSettingsStore(ctx).get()).serverCommand,
   });
   return ctx.serverManager;
 }
@@ -248,6 +250,7 @@ async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
     worktrees,
     verifyRunner: new NodeProcessRunner(),
     emitter: buildMergeEmitter(ctx),
+    verifyCommand: resolveCommands(getSettingsStore(ctx).get()).verifyCommand,
   });
   return ctx.mergeRunner;
 }
