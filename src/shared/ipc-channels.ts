@@ -47,6 +47,10 @@ export const IPC = {
   DIFF_LIST: 'diff:list', // invoke (worktreeId, base? -> ChangedFile[])
   DIFF_FILE: 'diff:file', // invoke (worktreeId, base?, path -> FileDiff)
 
+  // PR/CI status panel (V2) — read-only gh-backed status + the open-in-browser action
+  GH_STATUS: 'gh:status', // invoke (worktreeId -> GhStatus)
+  APP_OPEN_EXTERNAL: 'app:open-external', // invoke (url -> Ack; shell.openExternal)
+
   // settings (V2 E) — persisted per-project config (renderer -> main, invoke)
   SETTINGS_GET: 'settings:get', // invoke (-> AppSettings)
   SETTINGS_SET: 'settings:set', // invoke (Partial<AppSettings> -> AppSettings)
