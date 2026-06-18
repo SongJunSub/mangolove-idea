@@ -123,6 +123,7 @@ export class DiffViewer {
   /** PR-style changed-file list: branch vs base (default 'main'), with binary flags. */
   async listChangedFiles(req: DiffListRequest): Promise<ChangedFile[]> {
     const base = req.base ?? DEFAULT_BASE;
+    this.assertSafeRef(base);
     const branch = await this.resolveBranch(req.worktreeId);
     const range = `${base}...${branch}`; // three-dot: PR semantics (verified).
     const nameStatus = await this.git.raw(['diff', '--name-status', '-M', range]);
@@ -134,6 +135,7 @@ export class DiffViewer {
   /** Original (merge-base) + modified (branch tip) contents for one changed file. */
   async getFileDiff(req: DiffFileRequest): Promise<FileDiff> {
     const base = req.base ?? DEFAULT_BASE;
+    this.assertSafeRef(base);
     const files = await this.listChangedFiles({ worktreeId: req.worktreeId, base });
     const entry = files.find((f) => f.path === req.path);
     if (!entry) throw new Error(`${req.path} is not a changed file in this diff`);
@@ -162,5 +164,16 @@ export class DiffViewer {
       if (/does not exist|exists on disk, but not in|no such path/i.test(raw)) return '';
       throw error;
     }
+  }
+
+  /**
+   * Defensive: reject a `base` ref that git could misparse as an OPTION (leading
+   * '-'). No shell injection is possible — simple-git uses arg arrays — this only
+   * guards git's own arg parsing for the renderer-supplied `base` (which flows into
+   * `git merge-base <base> <branch>` as a standalone token). branch comes from
+   * porcelain, not the renderer.
+   */
+  private assertSafeRef(base: string): void {
+    if (base.startsWith('-')) throw new Error(`invalid base ref: ${base}`);
   }
 }

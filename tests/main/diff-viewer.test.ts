@@ -106,4 +106,13 @@ describe('DiffViewer (real temp git repo)', () => {
       /not a changed file/,
     );
   });
+
+  it('rejects a base ref that could be misparsed as a git option (leading "-")', async () => {
+    await expect(viewer.listChangedFiles({ worktreeId, base: '--output=x' })).rejects.toThrow(
+      /invalid base ref/,
+    );
+    await expect(viewer.getFileDiff({ worktreeId, base: '-x', path: 'keep.txt' })).rejects.toThrow(
+      /invalid base ref/,
+    );
+  });
 });

@@ -23,7 +23,7 @@ const STATUS_LABEL: Record<ChangedFile['status'], string> = {
  * its models are created on mount and disposed on unmount (mirrors AgentTerminal).
  */
 export function DiffView({ worktreeId, base }: DiffViewProps): React.JSX.Element {
-  const { files, loading, error } = useDiff(worktreeId, base);
+  const { files, loading, error, loadFile } = useDiff(worktreeId, base);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -54,8 +54,7 @@ export function DiffView({ worktreeId, base }: DiffViewProps): React.JSX.Element
     if (!selectedPath) return;
     let cancelled = false;
     setFileError(null);
-    window.mango.diff
-      .file({ worktreeId, base, path: selectedPath })
+    loadFile(selectedPath)
       .then((d: FileDiff) => {
         const editor = editorRef.current;
         if (cancelled || !editor) return;
@@ -83,7 +82,7 @@ export function DiffView({ worktreeId, base }: DiffViewProps): React.JSX.Element
     return () => {
       cancelled = true;
     };
-  }, [selectedPath, worktreeId, base]);
+  }, [selectedPath, loadFile]);
 
   return (
     <div data-testid="diff-view" style={{ display: 'flex', gap: 12, height: 460 }}>
