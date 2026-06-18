@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  ConflictedFile,
-  ConflictFileVersions,
-  MergeResult,
-} from '../../shared/types';
+import type { ConflictedFile, ConflictFileVersions, MergeResult } from '../../shared/types';
 
 type Choice = 'ours' | 'theirs' | 'manual' | 'keep' | 'remove';
 
@@ -15,7 +11,12 @@ export interface UseConflicts {
   readonly inProgress: boolean;
   refresh(): Promise<void>;
   read(path: string): Promise<ConflictFileVersions>;
-  resolve(path: string, choice: Choice, targetBranch: string, content?: string): Promise<MergeResult>;
+  resolve(
+    path: string,
+    choice: Choice,
+    targetBranch: string,
+    content?: string,
+  ): Promise<MergeResult>;
   continueMerge(targetBranch: string, cleanup: boolean): Promise<MergeResult>;
   abort(): Promise<MergeResult>;
 }
@@ -77,8 +78,19 @@ export function useConflicts(worktreeId: string): UseConflicts {
   );
 
   const resolve = useCallback(
-    async (path: string, choice: Choice, targetBranch: string, content?: string): Promise<MergeResult> => {
-      const res = await window.mango.merge.resolve({ worktreeId, path, choice, content, targetBranch });
+    async (
+      path: string,
+      choice: Choice,
+      targetBranch: string,
+      content?: string,
+    ): Promise<MergeResult> => {
+      const res = await window.mango.merge.resolve({
+        worktreeId,
+        path,
+        choice,
+        content,
+        targetBranch,
+      });
       await refresh();
       return res;
     },
