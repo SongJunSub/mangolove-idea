@@ -166,9 +166,11 @@ export interface MergeProgressEvent {
  * Outcome of a merge attempt. `status` discriminates the paused-conflict case.
  * NOTE: `status` is a REQUIRED field — this is a deliberate required-field WIDENING
  * of MergeResult, not a backward-optional addition. It is safe because every
- * producer is updated in the same change (run/fail/continue/abort all set it in
- * Tasks 2-3) and the existing merge-runner tests assert via field access /
- * toMatchObject (never a whole-object .toEqual), so no existing assertion regresses.
+ * existing producer is updated in the same change (merge-runner's success path
+ * sets 'merged' and fail() sets 'failed'; the conflict/continue/abort producers
+ * added in Tasks 2-3 set the remaining values) and the existing merge-runner
+ * tests assert via field access / toMatchObject (never a whole-object .toEqual),
+ * so no existing assertion regresses.
  */
 export interface MergeResult {
   readonly worktreeId: string;

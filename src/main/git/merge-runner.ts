@@ -140,7 +140,7 @@ export class MergeRunner {
         ? 'merged, but cleanup failed'
         : 'merged';
     this.emit(worktreeId, 'done', !cleanupFailed, doneMessage);
-    return { worktreeId, merged: true, cleanedUp };
+    return { worktreeId, merged: true, cleanedUp, status: 'merged' };
   }
 
   /** Runs the verify command in `cwd`; resolves true iff exit code === 0. */
@@ -158,6 +158,6 @@ export class MergeRunner {
   /** Emits a failed stage and returns a non-merged MergeResult. */
   private fail(worktreeId: string, stage: MergeStage, error: string): MergeResult {
     this.emit(worktreeId, stage, false, error);
-    return { worktreeId, merged: false, cleanedUp: false, error };
+    return { worktreeId, merged: false, cleanedUp: false, status: 'failed', error };
   }
 }

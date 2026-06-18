@@ -45,6 +45,11 @@ const api: MangoApi = {
   merge: {
     run: (req) => ipcRenderer.invoke(IPC.MERGE_RUN, req),
     onProgress: (cb) => subscribe(IPC.MERGE_PROGRESS, cb),
+    conflicts: (req) => ipcRenderer.invoke(IPC.MERGE_CONFLICTS, req),
+    readConflict: (req) => ipcRenderer.invoke(IPC.MERGE_READ_CONFLICT, req),
+    resolve: (req) => ipcRenderer.invoke(IPC.MERGE_RESOLVE, req),
+    continue: (req) => ipcRenderer.invoke(IPC.MERGE_CONTINUE, req),
+    abort: (req) => ipcRenderer.invoke(IPC.MERGE_ABORT, req),
   },
   diff: {
     list: (req) => ipcRenderer.invoke(IPC.DIFF_LIST, req),
