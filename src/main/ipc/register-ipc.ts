@@ -511,6 +511,12 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     IPC.APP_OPEN_EXTERNAL,
     async (_event: unknown, req: OpenExternalRequest): Promise<Ack> => {
       try {
+        // Pin this sink to the PR-URL contract: only https github.com URLs.
+        // A malformed URL throws here and lands in the {ok:false} branch.
+        const u = new URL(req.url);
+        if (u.protocol !== 'https:' || (u.hostname !== 'github.com' && !u.hostname.endsWith('.github.com'))) {
+          return { ok: false, error: 'refused: only https github.com URLs may be opened' };
+        }
         const { shell } = await import('electron');
         await shell.openExternal(req.url);
         return { ok: true };
