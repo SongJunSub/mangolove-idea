@@ -62,3 +62,17 @@
 - **b-full**: "에이전트가 실행 중이던 턴이 끊기면 절대 안 됨"이 하드 요구가 될 때. 그 전엔 b-lite(`claude --continue`)로 충분.
 - **병렬 서버**: 한 번에 둘 이상의 서버를 동시에 띄워야 하는 실제 워크플로가 반복될 때.
 - **크로스머신 이동**: 단일 머신 가정이 깨질 때(원격/팀 공유).
+
+---
+
+# V2 Backlog — Merge Conflict Resolution (deferred)
+
+- 3-way merge editor (base/ours/theirs/result). Deferred: monaco 0.55.1 ships no
+  merge editor; a hand-built 3-pane is large effort. Single-editor-over-markers ships first.
+- Syntax highlighting in the conflict editor (per-language workers). Deferred: would
+  pull the heavy ts/json/css/html workers; MVP stays plaintext (editor.worker only).
+- Conflict-marker lint: warn if `<<<<<<<`/`=======`/`>>>>>>>` remain when staging a
+  manual resolution (git itself does not check). Nice-to-have.
+- Inline decorations/gutter actions on each conflict hunk (accept-this-hunk).
+- rename/rename and content+rename combined conflicts: richer than keep/remove.
+- A dedicated merge:status push event so the conflict pane updates without polling.
