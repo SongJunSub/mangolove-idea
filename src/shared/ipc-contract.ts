@@ -17,6 +17,13 @@ import type {
   MergeRequest,
   MergeResult,
   MergeProgressEvent,
+  ConflictedFile,
+  ConflictFileVersions,
+  ConflictListRequest,
+  ConflictReadRequest,
+  ConflictResolveRequest,
+  ConflictContinueRequest,
+  ConflictAbortRequest,
   QuitWarningEvent,
   AppInfo,
   ChangedFile,
@@ -65,6 +72,16 @@ export interface MangoApi {
   merge: {
     run(req: MergeRequest): Promise<MergeResult>;
     onProgress(cb: (e: MergeProgressEvent) => void): Unsubscribe;
+    /** Conflicted paths for the in-progress merge in the primary tree (empty if none). */
+    conflicts(req: ConflictListRequest): Promise<ConflictedFile[]>;
+    /** Base/ours/theirs/working contents + missing-stage flags for one conflicted file. */
+    readConflict(req: ConflictReadRequest): Promise<ConflictFileVersions>;
+    /** Resolve one file: 'ours' | 'theirs' | 'manual' (content) | 'keep' | 'remove'. */
+    resolve(req: ConflictResolveRequest): Promise<MergeResult>;
+    /** Create the merge commit (rejected unless zero conflicts remain). User-driven only. */
+    continue(req: ConflictContinueRequest): Promise<MergeResult>;
+    /** `git merge --abort`: restore the target branch, drop MERGE_HEAD. */
+    abort(req: ConflictAbortRequest): Promise<MergeResult>;
   };
   diff: {
     /** PR-style changed-file list: worktree branch vs base (default 'main'). */

@@ -28,9 +28,14 @@ export const IPC = {
   LOG_LINE: 'log:line', // main -> renderer, event (one LogLine)
   LOG_SNAPSHOT: 'log:snapshot', // invoke (full ring buffer for current run)
 
-  // merge + cleanup (MVP item 5)
+  // merge + cleanup (MVP item 5) + conflict resolution (V2)
   MERGE_RUN: 'merge:run', // invoke
-  MERGE_PROGRESS: 'merge:progress', // main -> renderer, event
+  MERGE_PROGRESS: 'merge:progress', // main -> renderer, event (now also the 'conflict' stage)
+  MERGE_CONFLICTS: 'merge:conflicts', // invoke (worktreeId -> ConflictedFile[])
+  MERGE_READ_CONFLICT: 'merge:read-conflict', // invoke (worktreeId, path -> ConflictFileVersions)
+  MERGE_RESOLVE: 'merge:resolve', // invoke (resolve one file -> MergeResult)
+  MERGE_CONTINUE: 'merge:continue', // invoke (commit --no-edit + optional cleanup -> MergeResult)
+  MERGE_ABORT: 'merge:abort', // invoke (merge --abort -> MergeResult)
 
   // app quit warning (MVP item 6)
   APP_QUIT_WARNING: 'app:quit-warning', // main -> renderer, event
