@@ -52,27 +52,33 @@ export function App(): React.JSX.Element {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
   }, []);
 
-  // On selecting a worktree, reset the pane: to 'conflict' if a merge is paused there
-  // (covers app-restart resume — truth comes from MERGE_HEAD in the primary tree),
-  // otherwise back to 'terminal'. ONE effect owns the reset so there is no race
-  // between a sync reset and an async probe.
+  // On selecting a worktree, reset the pane: to 'conflict' if THE in-progress merge
+  // belongs to the SELECTED worktree (covers app-restart resume — truth comes from
+  // MERGE_HEAD in the primary tree), otherwise back to 'terminal'. ONE effect owns
+  // the reset so there is no race between a sync reset and an async probe.
+  //
+  // There is exactly ONE global MERGE_HEAD (single-MERGE_HEAD design), so we MUST
+  // ask main which worktree actually owns it — `merge.conflicts()` ignores its
+  // worktreeId argument and reports the same non-empty list for ANY selection while
+  // a merge is paused. Attributing that to `selectedId` would open the Conflicts
+  // pane against the WRONG worktree and make Continue/Abort clean up the wrong
+  // worktree/branch. `merge.owner()` returns the worktreeId of MERGE_HEAD's feature
+  // branch; we set conflictWorktreeId to THAT, and only flip to the pane when it is
+  // the worktree currently selected.
   useEffect(() => {
     if (!selectedId) {
       setPaneMode('terminal');
-      setConflictWorktreeId(null);
       return;
     }
     let cancelled = false;
     setPaneMode('terminal'); // optimistic default until the probe resolves
     void window.mango.merge
-      .conflicts({ worktreeId: selectedId })
-      .then((files) => {
+      .owner()
+      .then((ownerId) => {
         if (cancelled) return;
-        if (files.length > 0) {
-          setConflictWorktreeId(selectedId);
+        setConflictWorktreeId(ownerId);
+        if (ownerId !== null && ownerId === selectedId) {
           setPaneMode('conflict');
-        } else {
-          setConflictWorktreeId((id) => (id === selectedId ? null : id));
         }
       })
       .catch(() => undefined);

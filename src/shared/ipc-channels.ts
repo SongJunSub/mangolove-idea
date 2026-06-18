@@ -37,6 +37,7 @@ export const IPC = {
   MERGE_CONTINUE: 'merge:continue', // invoke (commit --no-edit + optional cleanup -> MergeResult)
   MERGE_ABORT: 'merge:abort', // invoke (merge --abort -> MergeResult)
   MERGE_IN_PROGRESS: 'merge:in-progress', // invoke (worktreeId -> boolean; MERGE_HEAD present?)
+  MERGE_OWNER: 'merge:owner', // invoke (-> worktreeId of MERGE_HEAD's feature branch, or null)
 
   // app quit warning (MVP item 6)
   APP_QUIT_WARNING: 'app:quit-warning', // main -> renderer, event

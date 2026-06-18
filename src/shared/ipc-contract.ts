@@ -89,6 +89,13 @@ export interface MangoApi {
      * window: list() returns [] there, but the merge is still in progress.
      */
     inProgress(req: ConflictInProgressRequest): Promise<boolean>;
+    /**
+     * The worktreeId whose feature branch is the in-progress merge's MERGE_HEAD,
+     * or null when no merge is paused. The renderer attributes the Conflicts pane
+     * to THIS worktree only — never to whatever worktree is currently selected —
+     * so a global MERGE_HEAD is never mis-attributed across app restart/reselect.
+     */
+    owner(): Promise<string | null>;
   };
   diff: {
     /** PR-style changed-file list: worktree branch vs base (default 'main'). */

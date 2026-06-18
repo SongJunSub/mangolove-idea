@@ -472,6 +472,13 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     },
   );
 
+  ipcMain.handle(IPC.MERGE_OWNER, async (): Promise<string | null> => {
+    // Which worktree the single in-flight MERGE_HEAD actually belongs to — the
+    // renderer attributes the Conflicts pane to THIS, never to whatever worktree
+    // happens to be selected.
+    return (await getConflictResolver(ctx)).inProgressWorktreeId();
+  });
+
   ipcMain.handle(IPC.SESSION_RECORDS, async (): Promise<string[]> => {
     return getSessionStore(ctx)
       .all()

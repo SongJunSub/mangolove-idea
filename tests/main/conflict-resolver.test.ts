@@ -65,6 +65,38 @@ describe('ConflictResolver', () => {
     expect(await resolver.inProgress()).toBe(true);
   });
 
+  it('inProgressWorktreeId() is null when no merge is paused', async () => {
+    expect(await resolver.inProgressWorktreeId()).toBeNull();
+  });
+
+  it('inProgressWorktreeId() returns the feature worktree (MERGE_HEAD owner), not the primary', async () => {
+    const wtPath = await seedContentConflict(repo, git);
+    const owner = await resolver.inProgressWorktreeId();
+    expect(owner).toBe(wtPath);
+    // The primary tree owns MERGE_HEAD on disk but is NEVER the attributed owner —
+    // the owner is the worktree whose branch is the merge's second parent.
+    const trees = await worktrees.list();
+    const primary = trees.find((t) => t.isPrimary);
+    expect(owner).not.toBe(primary?.id);
+  });
+
+  it('inProgressWorktreeId() does not attribute the merge to an UNRELATED worktree', async () => {
+    await seedContentConflict(repo, git);
+    // A second, unrelated worktree exists but is NOT the one being merged.
+    const otherPath = join(realpathSync(repo.dir), '.worktrees', 'other');
+    await repo.git.raw(['worktree', 'add', otherPath, '-b', 'feature/other', 'main']);
+    const owner = await resolver.inProgressWorktreeId();
+    expect(owner).not.toBe(realpathSync(otherPath));
+    expect(owner).toBe(join(realpathSync(repo.dir), '.worktrees', 'cflt'));
+  });
+
+  it('inProgressWorktreeId() goes back to null after the merge is aborted', async () => {
+    await seedContentConflict(repo, git);
+    expect(await resolver.inProgressWorktreeId()).not.toBeNull();
+    await resolver.abort({ worktreeId: '' });
+    expect(await resolver.inProgressWorktreeId()).toBeNull();
+  });
+
   it('list() returns the conflicted file with UU code and both stages', async () => {
     await seedContentConflict(repo, git);
     const files = await resolver.list();

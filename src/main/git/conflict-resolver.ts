@@ -36,16 +36,47 @@ export class ConflictResolver {
 
   /** True while a merge is paused (`.git/MERGE_HEAD` present). */
   async inProgress(): Promise<boolean> {
+    return (await this.mergeHeadSha()) !== null;
+  }
+
+  /**
+   * The id (path) of the worktree whose branch is the SECOND PARENT of the
+   * in-progress merge (i.e. the one being merged INTO the target), or null when
+   * no merge is paused. The merge is `git merge <feature>` run in the primary
+   * tree, so `MERGE_HEAD` is the tip of that feature branch — we match it against
+   * each NON-PRIMARY worktree's branch tip. This is the ONLY honest source of
+   * "which worktree does the single global MERGE_HEAD belong to"; the renderer
+   * uses it so a paused merge is never mis-attributed to whatever worktree happens
+   * to be selected (a primary selection, or an unrelated feature worktree).
+   */
+  async inProgressWorktreeId(): Promise<string | null> {
+    const mergeHead = await this.mergeHeadSha();
+    if (mergeHead === null) return null;
+    const trees = await this.worktrees.list();
+    for (const tree of trees) {
+      if (tree.isPrimary || tree.branch === '(detached)') continue;
+      const tip = await this.revParseOrNull(tree.branch);
+      if (tip !== null && tip === mergeHead) return tree.id;
+    }
+    return null; // MERGE_HEAD present but no managed worktree's branch matches it.
+  }
+
+  /** SHA of MERGE_HEAD, or null when no merge is in progress. */
+  private async mergeHeadSha(): Promise<string | null> {
+    // NB: do NOT pass `-q`. With `-q`, git still exits non-zero when MERGE_HEAD
+    // is absent but SUPPRESSES stderr, and simple-git only rejects a raw task
+    // when stderr is non-empty — so `-q` would RESOLVE with '' and look as if a
+    // merge were in progress in every state. Without `-q`, rev-parse writes
+    // "fatal: Needed a single revision" to stderr -> simple-git rejects -> catch.
+    return this.revParseOrNull('MERGE_HEAD');
+  }
+
+  /** `git rev-parse --verify <ref>` -> trimmed SHA, or null when the ref is absent. */
+  private async revParseOrNull(ref: string): Promise<string | null> {
     try {
-      // NB: do NOT pass `-q`. With `-q`, git still exits non-zero when MERGE_HEAD
-      // is absent but SUPPRESSES stderr, and simple-git only rejects a raw task
-      // when stderr is non-empty — so `-q` would RESOLVE with '' and inProgress()
-      // would be true in every state. Without `-q`, rev-parse writes
-      // "fatal: Needed a single revision" to stderr -> simple-git rejects -> catch.
-      await this.git.raw(['rev-parse', '--verify', 'MERGE_HEAD']);
-      return true;
+      return (await this.git.raw(['rev-parse', '--verify', ref])).trim();
     } catch {
-      return false; // MERGE_HEAD absent -> rev-parse throws -> not in progress.
+      return null;
     }
   }
 

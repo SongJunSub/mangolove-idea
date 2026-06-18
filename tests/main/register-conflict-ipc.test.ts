@@ -23,6 +23,7 @@ describe('conflict IPC wiring', () => {
       continue: vi.fn().mockResolvedValue({ worktreeId: 'w', merged: true, cleanedUp: false, status: 'merged' }),
       abort: vi.fn().mockResolvedValue({ worktreeId: 'w', merged: false, cleanedUp: false, status: 'failed' }),
       inProgress: vi.fn().mockResolvedValue(true),
+      inProgressWorktreeId: vi.fn().mockResolvedValue('w'),
     } as unknown as ConflictResolver;
     const ctx = createIpcContext();
     ctx.conflictResolver = resolver;
@@ -55,6 +56,10 @@ describe('conflict IPC wiring', () => {
     const merging = await handlers.get(IPC.MERGE_IN_PROGRESS)!(null, { worktreeId: 'w' });
     expect(merging).toBe(true);
     expect(resolver.inProgress).toHaveBeenCalled();
+
+    const owner = await handlers.get(IPC.MERGE_OWNER)!(null, undefined);
+    expect(owner).toBe('w');
+    expect(resolver.inProgressWorktreeId).toHaveBeenCalled();
   });
 
   it('SETTINGS_SET keeps the conflictResolver while a merge is in progress', async () => {
