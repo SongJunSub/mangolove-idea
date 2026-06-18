@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
-import { buildAppInfo, registerIpc } from '../../src/main/ipc/register-ipc';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { buildAppInfo, registerIpc, resolveCommands } from '../../src/main/ipc/register-ipc';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
+import type { AppSettings } from '../../src/shared/types';
 
 describe('buildAppInfo', () => {
   it('assembles AppInfo from injected version sources + node-pty probe', () => {
@@ -31,6 +32,56 @@ describe('buildAppInfo', () => {
     );
     expect(info.nodePtyLoaded).toBe(false);
     expect(info.nodePtyVersion).toBe('unknown');
+  });
+});
+
+describe('resolveCommands — settings > env > default precedence', () => {
+  const ENV = ['MANGO_AGENT_CMD', 'MANGO_SERVER_CMD', 'MANGO_VERIFY_CMD'] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const k of ENV) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k]!;
+    }
+  });
+
+  it('falls back to hardcoded defaults when settings + env are unset', () => {
+    expect(resolveCommands({})).toEqual({
+      agentCommand: 'claude',
+      verifyCommand: 'true',
+      serverCommand: undefined, // unset => detection wins downstream
+    });
+  });
+
+  it('uses the env seam when settings are unset (keeps the smokes working)', () => {
+    process.env.MANGO_AGENT_CMD = 'env-claude';
+    process.env.MANGO_SERVER_CMD = 'env-server';
+    process.env.MANGO_VERIFY_CMD = 'env-verify';
+    expect(resolveCommands({})).toEqual({
+      agentCommand: 'env-claude',
+      verifyCommand: 'env-verify',
+      serverCommand: 'env-server',
+    });
+  });
+
+  it('prefers a set settings value over env and default', () => {
+    process.env.MANGO_AGENT_CMD = 'env-claude';
+    const settings: AppSettings = {
+      agentCommand: 'set-claude',
+      verifyCommand: 'set-verify',
+      serverCommand: 'set-server',
+    };
+    expect(resolveCommands(settings)).toEqual({
+      agentCommand: 'set-claude',
+      verifyCommand: 'set-verify',
+      serverCommand: 'set-server',
+    });
   });
 });
 

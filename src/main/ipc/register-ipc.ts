@@ -20,6 +20,7 @@ import type {
   FileDiff,
   DiffListRequest,
   DiffFileRequest,
+  AppSettings,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { DiffViewer } from '../git/diff-viewer';
@@ -31,6 +32,7 @@ import { LogStore, type LogEmitter } from '../managers/log-store';
 import { NodeProcessRunner } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
 import type { SessionStore } from '../managers/session-store';
+import type { SettingsStore } from '../managers/settings-store';
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
 interface AppLike {
@@ -61,6 +63,29 @@ export function buildAppInfo(
     chromeVersion: versions.chrome ?? 'unknown',
     nodePtyVersion: pty.version,
     nodePtyLoaded: pty.loaded,
+  };
+}
+
+/** The three command seams resolved with precedence: settings > env > default. */
+export interface ResolvedCommands {
+  readonly agentCommand: string;
+  readonly verifyCommand: string;
+  /** undefined => no override; ServerManager auto-detection (gradle/npm) wins. */
+  readonly serverCommand: string | undefined;
+}
+
+/**
+ * Resolves the agent/verify/server command seams from persisted settings, falling
+ * back to the existing env seams, then the hardcoded defaults. Pure + exported so
+ * the precedence is unit-tested without Electron. KEEPING the env tier is what lets
+ * the existing Playwright smokes (which set MANGO_*_CMD with no persisted settings)
+ * still resolve to the env value.
+ */
+export function resolveCommands(settings: AppSettings): ResolvedCommands {
+  return {
+    agentCommand: settings.agentCommand ?? process.env.MANGO_AGENT_CMD ?? 'claude',
+    verifyCommand: settings.verifyCommand ?? process.env.MANGO_VERIFY_CMD ?? 'true',
+    serverCommand: settings.serverCommand ?? process.env.MANGO_SERVER_CMD,
   };
 }
 
@@ -161,6 +186,20 @@ function getSessionStore(ctx: IpcContext): SessionStore {
   if (ctx.sessionStore) return ctx.sessionStore;
   throw new Error(
     'sessionStore not initialized — index.ts must set ctx.sessionStore before registerIpc',
+  );
+}
+
+/**
+ * Resolves the SettingsStore SYNCHRONOUSLY. Constructed eagerly in index.ts (which
+ * holds the real electron `app` for the userData path) and assigned to
+ * ctx.settingsStore BEFORE registerIpc; tests inject ctx.settingsStore directly.
+ * Kept sync so getSessionManager (and the SESSION_INPUT/RESIZE on-handlers it feeds)
+ * stay synchronous — the Plan-2 delegation tests assert that.
+ */
+function getSettingsStore(ctx: IpcContext): SettingsStore {
+  if (ctx.settingsStore) return ctx.settingsStore;
+  throw new Error(
+    'settingsStore not initialized — index.ts must set ctx.settingsStore before registerIpc',
   );
 }
 
