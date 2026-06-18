@@ -19,11 +19,14 @@ export function MergeControls({
   onMerge,
 }: MergeControlsProps): React.JSX.Element {
   const canMerge = !!selected && !selected.isPrimary && !running;
-  const stageLabel = progress
-    ? `${progress.stage}${progress.ok ? '' : progress.stage === 'conflict' ? ' ⚠' : ' ✗'}: ${progress.message}`
-    : '';
+  const stageMark = progress?.ok ? '' : progress?.stage === 'conflict' ? ' ⚠' : ' ✗';
+  const stageLabel = progress ? `${progress.stage}${stageMark}: ${progress.message}` : '';
   const stageColor =
-    progress && progress.stage === 'conflict' ? '#e0a030' : progress && !progress.ok ? 'crimson' : '#888';
+    progress && progress.stage === 'conflict'
+      ? '#e0a030'
+      : progress && !progress.ok
+        ? 'crimson'
+        : '#888';
 
   return (
     <div data-testid="merge-controls" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -42,10 +45,7 @@ export function MergeControls({
         {running ? 'Merging…' : 'Merge → main'}
       </button>
       {stageLabel && (
-        <span
-          data-testid="merge-stage"
-          style={{ fontSize: 11, color: stageColor }}
-        >
+        <span data-testid="merge-stage" style={{ fontSize: 11, color: stageColor }}>
           {stageLabel}
         </span>
       )}

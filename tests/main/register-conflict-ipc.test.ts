@@ -17,11 +17,17 @@ function makeIpcMain() {
 describe('conflict IPC wiring', () => {
   it('routes the conflict channels to the injected ConflictResolver', async () => {
     const resolver = {
-      list: vi.fn().mockResolvedValue([{ path: 'a.txt', code: 'UU', hasOurs: true, hasTheirs: true }]),
+      list: vi
+        .fn()
+        .mockResolvedValue([{ path: 'a.txt', code: 'UU', hasOurs: true, hasTheirs: true }]),
       read: vi.fn().mockResolvedValue({ path: 'a.txt' }),
       resolve: vi.fn().mockResolvedValue(undefined),
-      continue: vi.fn().mockResolvedValue({ worktreeId: 'w', merged: true, cleanedUp: false, status: 'merged' }),
-      abort: vi.fn().mockResolvedValue({ worktreeId: 'w', merged: false, cleanedUp: false, status: 'failed' }),
+      continue: vi
+        .fn()
+        .mockResolvedValue({ worktreeId: 'w', merged: true, cleanedUp: false, status: 'merged' }),
+      abort: vi
+        .fn()
+        .mockResolvedValue({ worktreeId: 'w', merged: false, cleanedUp: false, status: 'failed' }),
       inProgress: vi.fn().mockResolvedValue(true),
       inProgressWorktreeId: vi.fn().mockResolvedValue('w'),
     } as unknown as ConflictResolver;
@@ -41,7 +47,11 @@ describe('conflict IPC wiring', () => {
       choice: 'ours',
       targetBranch: 'main',
     });
-    expect(resolver.resolve).toHaveBeenCalledWith({ path: 'a.txt', choice: 'ours', content: undefined });
+    expect(resolver.resolve).toHaveBeenCalledWith({
+      path: 'a.txt',
+      choice: 'ours',
+      content: undefined,
+    });
 
     const cont = await handlers.get(IPC.MERGE_CONTINUE)!(null, {
       worktreeId: 'w',

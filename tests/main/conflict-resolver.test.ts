@@ -161,7 +161,9 @@ describe('ConflictResolver', () => {
     // feature commit — not 1.
     expect((await repo.git.log()).total).toBe(before + 2);
     // Robust intent check: HEAD is a real merge commit (sha + 2 parents = 3 tokens).
-    const parents = (await repo.git.raw(['rev-list', '--parents', '-n', '1', 'HEAD'])).trim().split(/\s+/);
+    const parents = (await repo.git.raw(['rev-list', '--parents', '-n', '1', 'HEAD']))
+      .trim()
+      .split(/\s+/);
     expect(parents.length).toBe(3);
     expect(await resolver.inProgress()).toBe(false);
     const st = await repo.git.status();

@@ -401,7 +401,13 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       const resolver = await getConflictResolver(ctx);
       if (await resolver.inProgress()) {
         const conflicted = (await resolver.list()).map((f) => f.path);
-        return { worktreeId: req.worktreeId, merged: false, cleanedUp: false, status: 'conflict', conflicted };
+        return {
+          worktreeId: req.worktreeId,
+          merged: false,
+          cleanedUp: false,
+          status: 'conflict',
+          conflicted,
+        };
       }
       return (await getMergeRunner(ctx)).run(req);
     },
