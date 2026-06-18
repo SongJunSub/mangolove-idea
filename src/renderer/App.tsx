@@ -7,6 +7,8 @@ import { useLogs } from './hooks/use-logs';
 import { useWorktreeStatus } from './hooks/use-worktree-status';
 import { useMerge } from './hooks/use-merge';
 import { useSessionRecords } from './hooks/use-session-records';
+import { useSettings } from './hooks/use-settings';
+import { SettingsModal } from './components/settings/settings-modal';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
 import { ServerControls } from './components/toolbar/server-controls';
@@ -35,6 +37,8 @@ export function App(): React.JSX.Element {
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
 
   const sessionRecords = useSessionRecords();
+  const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   const [paneMode, setPaneMode] = useState<'terminal' | 'diff'>('terminal');
 
@@ -53,12 +57,13 @@ export function App(): React.JSX.Element {
   }, []);
 
   const selectedWorktree = worktrees.find((w) => w.id === selectedId) ?? null;
+  const baseBranch = settings.baseBranch ?? 'main';
 
   const onMerge = useCallback(
     async (worktree: Worktree): Promise<void> => {
       const result = await runMerge({
         worktreeId: worktree.id,
-        targetBranch: 'main',
+        targetBranch: baseBranch,
         runVerifyHook: true,
         cleanup: true,
       });
@@ -67,7 +72,7 @@ export function App(): React.JSX.Element {
         await refresh();
       }
     },
-    [runMerge, refresh, selectedId],
+    [runMerge, refresh, selectedId, baseBranch],
   );
 
   const onPing = useCallback(async () => {
@@ -84,7 +89,19 @@ export function App(): React.JSX.Element {
       <h1>MangoLove IDEA</h1>
       <p>Plan 4: merge + cleanup + unified status sidebar.</p>
 
-      <Toolbar onCreate={create} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Toolbar onCreate={create} />
+        <button
+          type="button"
+          data-testid="settings-open"
+          aria-label="settings"
+          title="Settings"
+          disabled={settingsLoading}
+          onClick={() => setSettingsOpen(true)}
+        >
+          ⚙
+        </button>
+      </div>
       <ServerControls
         selectedId={selectedId}
         status={serverStatus}
@@ -148,7 +165,7 @@ export function App(): React.JSX.Element {
               </div>
               {paneMode === 'diff' && (
                 <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading diff…</p>}>
-                  <DiffView key={`diff-${selectedId}`} worktreeId={selectedId} base="main" />
+                  <DiffView key={`diff-${selectedId}`} worktreeId={selectedId} base={baseBranch} />
                 </Suspense>
               )}
             </>
@@ -169,6 +186,16 @@ export function App(): React.JSX.Element {
           <LogPanel lines={logLines} />
         </section>
       </div>
+      {settingsOpen && !settingsLoading && (
+        <SettingsModal
+          settings={settings}
+          onSave={(partial) => {
+            void saveSettings(partial);
+            setSettingsOpen(false);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {quitWarning && (
         <div
           role="dialog"

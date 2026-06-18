@@ -44,6 +44,7 @@ function makeManager(opts: {
   fakes: FakePtyHandle[];
   resolvePath?: (id: string) => Promise<string | undefined>;
   command?: string;
+  onIdle?: () => void;
 }) {
   const { factory, calls } = makeFakeFactory(opts.fakes);
   const { emitter, outputs, exits, statuses } = makeSpyEmitter();
@@ -52,6 +53,7 @@ function makeManager(opts: {
     emitter,
     command: opts.command ?? 'claude',
     resolvePath: opts.resolvePath ?? (async (id) => id),
+    onIdle: opts.onIdle,
   });
   return { mgr, calls, outputs, exits, statuses };
 }
@@ -207,5 +209,39 @@ describe('SessionManager exit + kill', () => {
     mgr.killAll();
     expect(killA).toHaveBeenCalled();
     expect(killB).toHaveBeenCalled();
+  });
+});
+
+describe('SessionManager onIdle (deferred live-apply hook, V2 E)', () => {
+  it('fires onIdle when the last PTY exits naturally', async () => {
+    const fake = makeFakePty();
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [fake], onIdle });
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    expect(onIdle).not.toHaveBeenCalled();
+    fake.emitExit(0);
+    expect(onIdle).toHaveBeenCalledOnce();
+  });
+
+  it('fires onIdle when the last PTY is killed', async () => {
+    const fake = makeFakePty();
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [fake], onIdle });
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    mgr.kill(WT);
+    expect(onIdle).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT fire onIdle while another PTY is still live', async () => {
+    const a = makeFakePty(1);
+    const b = makeFakePty(2);
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [a, b], onIdle });
+    await mgr.spawn({ worktreeId: '/wt/a', continueSession: false, cols: 80, rows: 24 });
+    await mgr.spawn({ worktreeId: '/wt/b', continueSession: false, cols: 80, rows: 24 });
+    a.emitExit(0); // one of two — still busy
+    expect(onIdle).not.toHaveBeenCalled();
+    b.emitExit(0); // now idle
+    expect(onIdle).toHaveBeenCalledOnce();
   });
 });

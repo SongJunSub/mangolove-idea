@@ -6,7 +6,7 @@
 > 규모: **S** = 한 PR / 며칠 · **M** = 한 플랜(Plan 0–5 급) · **L** = 여러 플랜 / 재설계.
 > 의존성은 MVP 기준. 각 항목은 착수 시 `writing-plans`로 정식 플랜화 후 진행한다.
 
-상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-18 — **A1 Monaco diff 뷰어 완료**.
+상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-18 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**.
 
 ---
 
@@ -44,7 +44,7 @@
 
 | 기능 | 규모 | 의존성 | 가치 / 메모 |
 |------|:--:|------|------|
-| **설정 UI** | M | — | agent / verify / server 명령이 지금은 env seam(`MANGO_AGENT_CMD` · `MANGO_VERIFY_CMD` · `MANGO_SERVER_CMD`). 프로젝트별 설정 + 영속화 UI로 |
+| ~~**설정 UI**~~ ✅ **완료** | M | — | agent / verify / server 명령 + base 브랜치를 기어(⚙) 모달에서 편집·영속화. `SettingsStore`(temp+rename, sanitize, corrupt-safe) + 우선순위 **settings > env > default**(`resolveCommands`) → env seam(`MANGO_AGENT_CMD` · `MANGO_VERIFY_CMD` · `MANGO_SERVER_CMD`) 스모크 유지. live-apply: stateless `mergeRunner`/`diffViewer`는 항상 캐시 클리어, 라이브 자식을 가진 `sessionManager`/`serverManager`는 idle일 때만(고아 방지). 계획: docs/plans/2026-06-18-v2-settings.md |
 | **멀티레포 / 멀티윈도우** | L | — | 지금은 단일 레포(`process.cwd()`). 여러 레포를 열기 |
 | **패키징·배포 (electron-builder)** | M | — | 지금은 `npm run dev` 실행. 서명된 설치본. `electron-builder`는 dev dep로 이미 잡아둠 |
 

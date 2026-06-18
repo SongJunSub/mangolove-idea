@@ -246,3 +246,22 @@ export interface DiffFileRequest {
   /** The changed file's path (the new path for renames). */
   readonly path: string;
 }
+
+// ── Settings (V2 item E) ──
+
+/**
+ * Persisted, user-editable per-project config (V2 item E). EVERY field is
+ * OPTIONAL: an unset field means "fall back to the existing env seam, then the
+ * hardcoded default" (precedence: settings > env > default), so the dev/test env
+ * seams — and the existing Playwright smokes — keep working when settings are unset.
+ */
+export interface AppSettings {
+  /** Agent binary to spawn; unset => MANGO_AGENT_CMD ?? 'claude'. */
+  readonly agentCommand?: string;
+  /** Verify hook command; unset => MANGO_VERIFY_CMD ?? 'true'. */
+  readonly verifyCommand?: string;
+  /** Server start override; unset => MANGO_SERVER_CMD ?? auto-detection. */
+  readonly serverCommand?: string;
+  /** Default base branch for merge target + diff; unset => 'main'. */
+  readonly baseBranch?: string;
+}

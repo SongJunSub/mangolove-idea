@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ServerManager, type ServerEmitter } from '../../src/main/managers/server-manager';
 import { LogStore, type LogEmitter } from '../../src/main/managers/log-store';
 import type { ProcessRunner, IProcLike } from '../../src/main/proc/process-runner';
@@ -27,6 +27,7 @@ function makeManager(opts: {
   detect?: (dir: string) => DetectedRunner;
   resolvePath?: (id: string) => Promise<string | undefined>;
   commandOverride?: string;
+  onIdle?: () => void;
 }) {
   const states: ServerStatus[] = [];
   const logLines: LogLine[] = [];
@@ -41,6 +42,7 @@ function makeManager(opts: {
     detect: opts.detect ?? (() => ({ kind: 'npm', command: 'npm run dev' })),
     resolvePath: opts.resolvePath ?? (async (id) => id),
     commandOverride: opts.commandOverride,
+    onIdle: opts.onIdle,
   });
   return { mgr, states, logLines, calls, logStore };
 }
@@ -185,5 +187,45 @@ describe('ServerManager exit + stop', () => {
     await mgr.start({ worktreeId: WT });
     mgr.dispose();
     expect(fake.killed()).toBe(true);
+  });
+});
+
+describe('ServerManager onIdle (deferred live-apply hook, V2 E)', () => {
+  it('fires onIdle when stop() ends the running server', async () => {
+    const fake = makeFakeRunner();
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [fake], onIdle });
+    await mgr.start({ worktreeId: WT });
+    expect(onIdle).not.toHaveBeenCalled();
+    await mgr.stop({});
+    expect(onIdle).toHaveBeenCalledOnce();
+  });
+
+  it('fires onIdle when the server exits naturally', async () => {
+    const fake = makeFakeRunner();
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [fake], onIdle });
+    await mgr.start({ worktreeId: WT });
+    fake.emitExit(0, null);
+    expect(onIdle).toHaveBeenCalledOnce();
+  });
+
+  it('fires onIdle on a crash exit too (idle either way)', async () => {
+    const fake = makeFakeRunner();
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [fake], onIdle });
+    await mgr.start({ worktreeId: WT });
+    fake.emitExit(1, null);
+    expect(onIdle).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT fire onIdle from the replace path (still busy with the new server)', async () => {
+    const first = makeFakeRunner(1);
+    const second = makeFakeRunner(2);
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [first, second], onIdle });
+    await mgr.start({ worktreeId: WT });
+    await mgr.start({ worktreeId: '/repo/.worktrees/other' }); // replace -> still busy
+    expect(onIdle).not.toHaveBeenCalled();
   });
 });

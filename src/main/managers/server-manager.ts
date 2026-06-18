@@ -26,6 +26,14 @@ export interface ServerManagerDeps {
   readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
   /** Global command override from the main-side env seam (MANGO_SERVER_CMD). */
   readonly commandOverride?: string;
+  /**
+   * Fired when the single live server child goes away (stop or natural exit),
+   * i.e. the manager transitions from busy -> idle. register-ipc uses this to
+   * perform a settings edit that was DEFERRED while busy: clearing
+   * ctx.serverManager so the next start rebuilds with the new serverCommand.
+   * Optional => no-op.
+   */
+  readonly onIdle?: () => void;
 }
 
 /** Internal bookkeeping for the ONE running child. */
@@ -54,6 +62,7 @@ export class ServerManager {
   private readonly detect: (dir: string) => DetectedRunner;
   private readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
   private readonly commandOverride?: string;
+  private readonly onIdle?: () => void;
   private current: RunningServer | null = null;
   /** Last process snapshot (so status()/stop() report something when idle). */
   private last: ServerProcess = STOPPED_IDLE;
@@ -65,6 +74,7 @@ export class ServerManager {
     this.detect = deps.detect ?? detectRunner;
     this.resolvePath = deps.resolvePath;
     this.commandOverride = deps.commandOverride;
+    this.onIdle = deps.onIdle;
   }
 
   /** Starts (replacing any running server) the detected/overridden command. */
@@ -133,18 +143,26 @@ export class ServerManager {
     });
     server.proc.kill();
     this.logStore.flush();
-    return this.emitState({
+    const status = this.emitState({
       worktreeId: server.worktreeId,
       kind: server.kind,
       state: 'stopped',
       command: server.command,
       exitCode: null,
     });
+    // busy -> idle: a serverCommand edited while running applies on the next start.
+    this.onIdle?.();
+    return status;
   }
 
   /** Current single-server snapshot. */
   status(): ServerStatus {
     return { process: this.last };
+  }
+
+  /** True while a server child is live (so the live-apply guard won't orphan it). */
+  hasLiveServer(): boolean {
+    return this.current !== null;
   }
 
   /** Kills the running child (before-quit sweep). */
@@ -183,6 +201,8 @@ export class ServerManager {
       command: server.command,
       exitCode: code,
     });
+    // busy -> idle: a serverCommand edited while running applies on the next start.
+    this.onIdle?.();
   }
 
   private crash(

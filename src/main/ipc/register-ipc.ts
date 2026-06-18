@@ -20,6 +20,7 @@ import type {
   FileDiff,
   DiffListRequest,
   DiffFileRequest,
+  AppSettings,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { DiffViewer } from '../git/diff-viewer';
@@ -31,6 +32,7 @@ import { LogStore, type LogEmitter } from '../managers/log-store';
 import { NodeProcessRunner } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
 import type { SessionStore } from '../managers/session-store';
+import type { SettingsStore } from '../managers/settings-store';
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
 interface AppLike {
@@ -61,6 +63,29 @@ export function buildAppInfo(
     chromeVersion: versions.chrome ?? 'unknown',
     nodePtyVersion: pty.version,
     nodePtyLoaded: pty.loaded,
+  };
+}
+
+/** The three command seams resolved with precedence: settings > env > default. */
+export interface ResolvedCommands {
+  readonly agentCommand: string;
+  readonly verifyCommand: string;
+  /** undefined => no override; ServerManager auto-detection (gradle/npm) wins. */
+  readonly serverCommand: string | undefined;
+}
+
+/**
+ * Resolves the agent/verify/server command seams from persisted settings, falling
+ * back to the existing env seams, then the hardcoded defaults. Pure + exported so
+ * the precedence is unit-tested without Electron. KEEPING the env tier is what lets
+ * the existing Playwright smokes (which set MANGO_*_CMD with no persisted settings)
+ * still resolve to the env value.
+ */
+export function resolveCommands(settings: AppSettings): ResolvedCommands {
+  return {
+    agentCommand: settings.agentCommand ?? process.env.MANGO_AGENT_CMD ?? 'claude',
+    verifyCommand: settings.verifyCommand ?? process.env.MANGO_VERIFY_CMD ?? 'true',
+    serverCommand: settings.serverCommand ?? process.env.MANGO_SERVER_CMD,
   };
 }
 
@@ -105,7 +130,7 @@ function getSessionManager(ctx: IpcContext): SessionManager {
   ctx.sessionManager = new SessionManager({
     factory: new NodePtyFactory(),
     emitter: buildSessionEmitter(ctx),
-    command: 'claude',
+    command: resolveCommands(getSettingsStore(ctx).get()).agentCommand,
     resolvePath: async (worktreeId) => {
       const manager = await getWorktreeManager(ctx);
       const trees = await manager.list();
@@ -118,6 +143,17 @@ function getSessionManager(ctx: IpcContext): SessionManager {
     },
     store: getSessionStore(ctx),
     clock: Date.now,
+    // Deferred live-apply: if SETTINGS_SET edited the agentCommand while this
+    // manager was busy, it was KEPT (so the quit sweep + keystrokes still find the
+    // live PTY). Once the last PTY exits, drop the cache so the next spawn rebuilds
+    // with the new agentCommand. Guarded by the dirty flag so a plain session end
+    // (no pending edit) keeps the warm, correctly-configured manager.
+    onIdle: () => {
+      if (ctx.sessionSettingsDirty) {
+        ctx.sessionSettingsDirty = false;
+        ctx.sessionManager = undefined;
+      }
+    },
   });
   return ctx.sessionManager;
 }
@@ -164,6 +200,20 @@ function getSessionStore(ctx: IpcContext): SessionStore {
   );
 }
 
+/**
+ * Resolves the SettingsStore SYNCHRONOUSLY. Constructed eagerly in index.ts (which
+ * holds the real electron `app` for the userData path) and assigned to
+ * ctx.settingsStore BEFORE registerIpc; tests inject ctx.settingsStore directly.
+ * Kept sync so getSessionManager (and the SESSION_INPUT/RESIZE on-handlers it feeds)
+ * stay synchronous — the Plan-2 delegation tests assert that.
+ */
+export function getSettingsStore(ctx: IpcContext): SettingsStore {
+  if (ctx.settingsStore) return ctx.settingsStore;
+  throw new Error(
+    'settingsStore not initialized — index.ts must set ctx.settingsStore before registerIpc',
+  );
+}
+
 /** Resolves the ServerManager: prefer ctx (tests inject); else build a real one. */
 function getServerManager(ctx: IpcContext): ServerManager {
   if (ctx.serverManager) return ctx.serverManager;
@@ -178,7 +228,18 @@ function getServerManager(ctx: IpcContext): ServerManager {
     },
     // Smoke seam: a harmless line-emitting command can be injected via env so a
     // manual/Playwright smoke runs WITHOUT a real gradle/npm server.
-    commandOverride: process.env.MANGO_SERVER_CMD,
+    // Command source precedence: persisted setting > env seam (smoke) > undefined
+    // (=> ServerManager auto-detection of gradle/npm wins).
+    commandOverride: resolveCommands(getSettingsStore(ctx).get()).serverCommand,
+    // Deferred live-apply (mirror of getSessionManager): if SETTINGS_SET edited the
+    // serverCommand while a server was live, the manager was KEPT. Once the server
+    // stops/exits, drop the cache so the next start rebuilds with the new command.
+    onIdle: () => {
+      if (ctx.serverSettingsDirty) {
+        ctx.serverSettingsDirty = false;
+        ctx.serverManager = undefined;
+      }
+    },
   });
   return ctx.serverManager;
 }
@@ -209,6 +270,7 @@ async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
     worktrees,
     verifyRunner: new NodeProcessRunner(),
     emitter: buildMergeEmitter(ctx),
+    verifyCommand: resolveCommands(getSettingsStore(ctx).get()).verifyCommand,
   });
   return ctx.mergeRunner;
 }
@@ -333,6 +395,44 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       .all()
       .map((r) => r.worktreePath);
   });
+
+  ipcMain.handle(IPC.SETTINGS_GET, async (): Promise<AppSettings> => {
+    return getSettingsStore(ctx).get();
+  });
+
+  ipcMain.handle(
+    IPC.SETTINGS_SET,
+    async (_event: unknown, partial: Partial<AppSettings>): Promise<AppSettings> => {
+      const merged = getSettingsStore(ctx).set(partial);
+      // Live-apply: the managers bake their command/base in at CONSTRUCTION and are
+      // cached on ctx; clearing a cache makes it REBUILD lazily with the new settings.
+      // mergeRunner/diffViewer hold NO live OS process, so clearing them is always
+      // safe — an edited verifyCommand/baseBranch applies on the next merge/diff.
+      ctx.mergeRunner = undefined; // verifyCommand (+ base via renderer)
+      ctx.diffViewer = undefined; // base (rebuilt with current settings on next diff)
+      // sessionManager/serverManager own LIVE children that the before-quit sweep
+      // (index.ts) and the SESSION_INPUT/RESIZE handlers find THROUGH ctx. Nulling
+      // them mid-run would orphan the running claude/server from the sweep AND detach
+      // it from the next keystroke (a fresh manager has no record of it). So when
+      // IDLE we clear immediately (next spawn/start rebuilds); when BUSY we KEEP the
+      // manager but mark it dirty, and its injected onIdle callback clears the cache
+      // once the last child exits — so the new agent/server command truly takes
+      // effect "once the live work ends", not only on a later idle SETTINGS_SET.
+      if ((ctx.sessionManager?.liveWorktreeIds().length ?? 0) === 0) {
+        ctx.sessionSettingsDirty = false;
+        ctx.sessionManager = undefined; // idle: agentCommand applies on next spawn
+      } else {
+        ctx.sessionSettingsDirty = true; // busy: onIdle clears it after the last exit
+      }
+      if (!(ctx.serverManager?.hasLiveServer() ?? false)) {
+        ctx.serverSettingsDirty = false;
+        ctx.serverManager = undefined; // idle: serverCommand applies on next start
+      } else {
+        ctx.serverSettingsDirty = true; // busy: onIdle clears it after the server stops
+      }
+      return merged;
+    },
+  );
 
   ipcMain.handle(
     IPC.APP_QUIT_DECISION,
