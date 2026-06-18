@@ -196,7 +196,7 @@ function getSessionStore(ctx: IpcContext): SessionStore {
  * Kept sync so getSessionManager (and the SESSION_INPUT/RESIZE on-handlers it feeds)
  * stay synchronous — the Plan-2 delegation tests assert that.
  */
-function getSettingsStore(ctx: IpcContext): SettingsStore {
+export function getSettingsStore(ctx: IpcContext): SettingsStore {
   if (ctx.settingsStore) return ctx.settingsStore;
   throw new Error(
     'settingsStore not initialized — index.ts must set ctx.settingsStore before registerIpc',
