@@ -76,3 +76,18 @@
 - Inline decorations/gutter actions on each conflict hunk (accept-this-hunk).
 - rename/rename and content+rename combined conflicts: richer than keep/remove.
 - A dedicated merge:status push event so the conflict pane updates without polling.
+
+---
+
+## PR/CI panel — deferred (post-MVP)
+
+- **Live updates / polling:** add a GH_STATUS_CHANGED event + on-focus or interval polling
+  (30–60s while an open-pr is selected) for live CI. Deferred: burns the separate GraphQL
+  rate-limit pool (5000/hr) over a long IDE session; pull-only (on-select + manual refresh)
+  is enough for MVP and the no-PR common case rarely needs live updates.
+- **Richer per-check list:** expose the per-check rows (name/bucket/link) in an expandable
+  sub-panel instead of the collapsed passing/failing/pending summary.
+- **mergeable / mergeStateStatus:** intentionally OMITTED in MVP (transient UNKNOWN trap +
+  meaningless on MERGED/CLOSED). Add behind a "computing…" state with re-poll if surfaced.
+- **`git ls-remote` disambiguation:** distinguish "pushed but no PR" from "not pushed" more
+  precisely than the @{u} upstream check (no API quota cost).
