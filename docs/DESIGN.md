@@ -72,9 +72,8 @@ Renderer (React = GUI)
    (cross-cutting 필수: before-quit PTY kill-sweep — 어느 선택이든 필요)
 
 v2로 미룸 (YAGNI): Monaco diff 뷰어, PR/CI 패널, 브라우저 자동화, 멀티모델 팬아웃,
-병렬 서버(포트/DB 격리), **세션 영속화 b-full**(tmux/abduco 래퍼로 실제 `claude` 프로세스
-생존+재attach — "실행 중이던 턴 안 끊김"이 하드 요구가 될 때만, 데몬 말고 abduco 래퍼로),
-xterm 스크롤백 디스크 저장·재생(@xterm/addon-serialize, 실험적), 크로스머신 세션 이동
+병렬 서버(포트/DB 격리), 세션 영속화 b-full, xterm 스크롤백 저장·재생, 크로스머신 세션 이동.
+→ 규모·의존성·권장순서·트리거 포함 정식 백로그: **[docs/V2-BACKLOG.md](V2-BACKLOG.md)**
 
 ## 차별점 (Orca 대비 직접 만드는 이유)
 
