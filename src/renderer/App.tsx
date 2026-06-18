@@ -37,7 +37,7 @@ export function App(): React.JSX.Element {
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
 
   const sessionRecords = useSessionRecords();
-  const { settings, save: saveSettings } = useSettings();
+  const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   const [paneMode, setPaneMode] = useState<'terminal' | 'diff'>('terminal');
@@ -96,6 +96,7 @@ export function App(): React.JSX.Element {
           data-testid="settings-open"
           aria-label="settings"
           title="Settings"
+          disabled={settingsLoading}
           onClick={() => setSettingsOpen(true)}
         >
           ⚙
@@ -185,7 +186,7 @@ export function App(): React.JSX.Element {
           <LogPanel lines={logLines} />
         </section>
       </div>
-      {settingsOpen && (
+      {settingsOpen && !settingsLoading && (
         <SettingsModal
           settings={settings}
           onSave={(partial) => {
