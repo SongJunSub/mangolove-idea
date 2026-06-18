@@ -20,8 +20,10 @@ export function MergeControls({
 }: MergeControlsProps): React.JSX.Element {
   const canMerge = !!selected && !selected.isPrimary && !running;
   const stageLabel = progress
-    ? `${progress.stage}${progress.ok ? '' : ' ✗'}: ${progress.message}`
+    ? `${progress.stage}${progress.ok ? '' : progress.stage === 'conflict' ? ' ⚠' : ' ✗'}: ${progress.message}`
     : '';
+  const stageColor =
+    progress && progress.stage === 'conflict' ? '#e0a030' : progress && !progress.ok ? 'crimson' : '#888';
 
   return (
     <div data-testid="merge-controls" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -42,7 +44,7 @@ export function MergeControls({
       {stageLabel && (
         <span
           data-testid="merge-stage"
-          style={{ fontSize: 11, color: progress && !progress.ok ? 'crimson' : '#888' }}
+          style={{ fontSize: 11, color: stageColor }}
         >
           {stageLabel}
         </span>
