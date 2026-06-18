@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { parseNameStatus, parseBinaryPaths } from '../../src/main/git/diff-viewer';
+import { DiffViewer } from '../../src/main/git/diff-viewer';
+import { makeTempGitRepo, seedDiffScenario, type TempGitRepo } from '../helpers/temp-git-repo';
+import { afterEach, beforeEach } from 'vitest';
 
 describe('parseNameStatus', () => {
   it('parses added / modified / deleted', () => {
@@ -40,5 +43,66 @@ describe('parseBinaryPaths', () => {
     expect(parseBinaryPaths('-\t-\told.bin => new.bin\n')).toEqual(new Set(['new.bin']));
     // brace form: pre/{old => new}/post
     expect(parseBinaryPaths('-\t-\tdir/{a.bin => b.bin}\n')).toEqual(new Set(['dir/b.bin']));
+  });
+});
+
+describe('DiffViewer (real temp git repo)', () => {
+  let repo: TempGitRepo;
+  let viewer: DiffViewer;
+  let worktreeId: string;
+
+  beforeEach(async () => {
+    repo = await makeTempGitRepo();
+    viewer = new DiffViewer(repo.git, repo.dir);
+    ({ worktreeId } = await seedDiffScenario(repo));
+  });
+  afterEach(() => repo.cleanup());
+
+  it('lists changed files PR-style (A/M/D/R + binary flag)', async () => {
+    const files = await viewer.listChangedFiles({ worktreeId });
+    const byPath = Object.fromEntries(files.map((f) => [f.path, f]));
+    expect(byPath['added.txt']).toMatchObject({ status: 'added', binary: false });
+    expect(byPath['mod.txt']).toMatchObject({ status: 'modified', binary: false });
+    expect(byPath['del.txt']).toMatchObject({ status: 'deleted', binary: false });
+    expect(byPath['renamed.txt']).toMatchObject({ status: 'renamed', oldPath: 'keep.txt' });
+    expect(byPath['blob.bin']).toMatchObject({ status: 'added', binary: true });
+  });
+
+  it('getFileDiff(modified) returns merge-base original + branch modified', async () => {
+    const d = await viewer.getFileDiff({ worktreeId, path: 'mod.txt' });
+    expect(d).toEqual({
+      path: 'mod.txt', status: 'modified', original: 'old\n', modified: 'old\nnew\n', binary: false,
+    });
+  });
+
+  it('getFileDiff(added) has empty original', async () => {
+    const d = await viewer.getFileDiff({ worktreeId, path: 'added.txt' });
+    expect(d.status).toBe('added');
+    expect(d.original).toBe('');
+    expect(d.modified).toBe('brand new\n');
+  });
+
+  it('getFileDiff(deleted) has empty modified', async () => {
+    const d = await viewer.getFileDiff({ worktreeId, path: 'del.txt' });
+    expect(d.status).toBe('deleted');
+    expect(d.original).toBe('bye\n');
+    expect(d.modified).toBe('');
+  });
+
+  it('getFileDiff(binary) returns binary:true with empty contents', async () => {
+    const d = await viewer.getFileDiff({ worktreeId, path: 'blob.bin' });
+    expect(d).toMatchObject({ binary: true, original: '', modified: '' });
+  });
+
+  it('throws a clear error for an unknown worktree', async () => {
+    await expect(viewer.listChangedFiles({ worktreeId: '/nope' })).rejects.toThrow(
+      /unknown worktree/,
+    );
+  });
+
+  it('throws for a path not in the diff', async () => {
+    await expect(viewer.getFileDiff({ worktreeId, path: 'keep.txt' })).rejects.toThrow(
+      /not a changed file/,
+    );
   });
 });
