@@ -24,6 +24,7 @@ import type {
   ConflictResolveRequest,
   ConflictContinueRequest,
   ConflictAbortRequest,
+  ConflictInProgressRequest,
   QuitWarningEvent,
   AppInfo,
   ChangedFile,
@@ -82,6 +83,12 @@ export interface MangoApi {
     continue(req: ConflictContinueRequest): Promise<MergeResult>;
     /** `git merge --abort`: restore the target branch, drop MERGE_HEAD. */
     abort(req: ConflictAbortRequest): Promise<MergeResult>;
+    /**
+     * True while a merge is paused (`.git/MERGE_HEAD` present), recomputed from git.
+     * The ONLY truthful source for the 'all conflicts resolved but not yet committed'
+     * window: list() returns [] there, but the merge is still in progress.
+     */
+    inProgress(req: ConflictInProgressRequest): Promise<boolean>;
   };
   diff: {
     /** PR-style changed-file list: worktree branch vs base (default 'main'). */

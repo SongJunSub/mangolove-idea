@@ -252,6 +252,10 @@ export interface ConflictAbortRequest {
   readonly worktreeId: string;
 }
 
+export interface ConflictInProgressRequest {
+  readonly worktreeId: string;
+}
+
 /**
  * Emitted to the renderer at quit (MVP item 6) when agent sessions are live, so
  * the user can confirm before the PTYs are swept. NOTE: this is driven by LIVE

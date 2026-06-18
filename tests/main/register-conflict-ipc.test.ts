@@ -15,7 +15,7 @@ function makeIpcMain() {
 }
 
 describe('conflict IPC wiring', () => {
-  it('routes the 5 conflict channels to the injected ConflictResolver', async () => {
+  it('routes the conflict channels to the injected ConflictResolver', async () => {
     const resolver = {
       list: vi.fn().mockResolvedValue([{ path: 'a.txt', code: 'UU', hasOurs: true, hasTheirs: true }]),
       read: vi.fn().mockResolvedValue({ path: 'a.txt' }),
@@ -51,6 +51,10 @@ describe('conflict IPC wiring', () => {
 
     const abort = await handlers.get(IPC.MERGE_ABORT)!(null, { worktreeId: 'w' });
     expect(abort).toMatchObject({ status: 'failed' });
+
+    const merging = await handlers.get(IPC.MERGE_IN_PROGRESS)!(null, { worktreeId: 'w' });
+    expect(merging).toBe(true);
+    expect(resolver.inProgress).toHaveBeenCalled();
   });
 
   it('SETTINGS_SET keeps the conflictResolver while a merge is in progress', async () => {

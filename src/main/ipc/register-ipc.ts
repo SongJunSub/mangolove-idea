@@ -28,6 +28,7 @@ import type {
   ConflictResolveRequest,
   ConflictContinueRequest,
   ConflictAbortRequest,
+  ConflictInProgressRequest,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { DiffViewer } from '../git/diff-viewer';
@@ -461,6 +462,13 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     IPC.MERGE_ABORT,
     async (_event: unknown, req: ConflictAbortRequest): Promise<MergeResult> => {
       return (await getConflictResolver(ctx)).abort(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.MERGE_IN_PROGRESS,
+    async (_event: unknown, _req: ConflictInProgressRequest): Promise<boolean> => {
+      return (await getConflictResolver(ctx)).inProgress();
     },
   );
 
