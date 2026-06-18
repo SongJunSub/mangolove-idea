@@ -6,7 +6,7 @@
 > 규모: **S** = 한 PR / 며칠 · **M** = 한 플랜(Plan 0–5 급) · **L** = 여러 플랜 / 재설계.
 > 의존성은 MVP 기준. 각 항목은 착수 시 `writing-plans`로 정식 플랜화 후 진행한다.
 
-상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-18 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**.
+상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-18 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**.
 
 ---
 
@@ -16,7 +16,7 @@
 |------|:--:|------|------|
 | ~~**Monaco diff 뷰어**~~ ✅ **완료** | M | Plan 1 | PR-style diff(브랜치 vs base, merge-base 원본) + Monaco DiffEditor(raw monaco, React.lazy 별도 ~7MB 청크) + Terminal\|Diff 토글. read-only. 계획: docs/plans/2026-06-18-v2-monaco-diff.md. 머지 e9af0dc |
 | **xterm 스크롤백 저장·재생** | S | Plan 2 | 재시작 시 이전 터미널 화면을 시각 복원(`@xterm/addon-serialize`, 실험적). b-lite 보완. 작음 |
-| **머지 충돌 해결 UI** | M | Plan 4 | *v1을 만들며 드러난 후보.* 현재 충돌 시 `git merge --abort`로 안전 중단만 함 → 충돌 파일을 패널에 띄워 해결까지 |
+| ~~**머지 충돌 해결 UI**~~ ✅ **완료** | M | Plan 4 | 진짜 충돌은 머지를 일시정지(MERGE_HEAD 유지, `status:'conflict'`)하고 파일별 ours/theirs/manual + keep/remove(stage 누락)로 해결 → Continue(`commit --no-edit`, 충돌 0일 때만)/Abort. 비충돌 실패는 기존 safe-abort 그대로(Branch-by-Abstraction). stateless ConflictResolver(MERGE_HEAD/status 재계산) + owner() 귀속(단일 MERGE_HEAD 오귀속 방지) + 편집 Monaco(마커 위). 계획: docs/plans/2026-06-18-v2-merge-conflict.md. 머지 대기 |
 
 ## B. 외부 연동
 
