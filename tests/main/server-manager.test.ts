@@ -58,10 +58,13 @@ describe('ServerManager.start', () => {
     expect(states.map((s) => s.process.state)).toEqual(['starting', 'running']);
   });
 
-  it('uses commandOverride from the request over detection', async () => {
+  it('uses the env command override (deps, operator-controlled) over detection', async () => {
+    // Hardening: the override comes ONLY from the main-side env seam (deps), never
+    // from a renderer-supplied request field — so the renderer cannot inject a
+    // command into the shell:true spawn.
     const fake = makeFakeRunner();
-    const { mgr, calls } = makeManager({ fakes: [fake] });
-    await mgr.start({ worktreeId: WT, commandOverride: 'node fake-server.js' });
+    const { mgr, calls } = makeManager({ fakes: [fake], commandOverride: 'node fake-server.js' });
+    await mgr.start({ worktreeId: WT });
     expect(calls[0].command).toBe('node fake-server.js');
   });
 

@@ -4,7 +4,7 @@ import type { ServerStatus } from '../../shared/types';
 /** Return shape of the single-server hook. */
 export interface UseServer {
   readonly status: ServerStatus | null;
-  start(worktreeId: string, commandOverride?: string): Promise<void>;
+  start(worktreeId: string): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -28,8 +28,8 @@ export function useServer(): UseServer {
     };
   }, []);
 
-  const start = useCallback(async (worktreeId: string, commandOverride?: string): Promise<void> => {
-    const s = await window.mango.server.start({ worktreeId, commandOverride });
+  const start = useCallback(async (worktreeId: string): Promise<void> => {
+    const s = await window.mango.server.start({ worktreeId });
     setStatus(s);
   }, []);
 
