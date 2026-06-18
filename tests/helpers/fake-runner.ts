@@ -7,6 +7,10 @@ export interface FakeProcHandle extends IProcLike {
   emitStderr(chunk: string): void;
   /** Simulate the child exiting (no-op once killed/exited). */
   emitExit(code: number | null, signal?: string | null): void;
+  /** Subscribe to a spawn-level error (e.g. ENOENT for a missing binary). */
+  onError(cb: (err: Error) => void): void;
+  /** Simulate a spawn 'error' event (no exit follows). */
+  emitError(err: Error): void;
   /** True once kill() was called. */
   readonly killed: () => boolean;
 }
@@ -25,6 +29,7 @@ export function makeFakeRunner(pid = 5252): FakeProcHandle {
     onStdout: (cb) => void bus.on('stdout', cb),
     onStderr: (cb) => void bus.on('stderr', cb),
     onExit: (cb) => void bus.on('exit', cb),
+    onError: (cb) => void bus.on('procError', cb),
     emitStdout: (chunk) => bus.emit('stdout', chunk),
     emitStderr: (chunk) => bus.emit('stderr', chunk),
     emitExit: (code, signal = null) => {
@@ -32,6 +37,7 @@ export function makeFakeRunner(pid = 5252): FakeProcHandle {
       done = true;
       bus.emit('exit', { code, signal });
     },
+    emitError: (err) => bus.emit('procError', err),
     killed: () => done,
   };
 }
