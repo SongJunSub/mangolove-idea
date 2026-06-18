@@ -49,6 +49,15 @@ describe('SettingsStore', () => {
     expect('agentCommand' in after).toBe(false);
   });
 
+  it('load() drops a pre-existing empty string from a hand-edited/corrupt file (never surfaces "")', () => {
+    // A file written by an older/other code path (or hand-edited) carries "".
+    // sanitize() must enforce the same non-empty invariant as set().
+    writeFileSync(file, JSON.stringify({ agentCommand: '', baseBranch: 'main' }));
+    const loaded = new SettingsStore(file).load();
+    expect(loaded).toEqual({ baseBranch: 'main' });
+    expect('agentCommand' in loaded).toBe(false);
+  });
+
   it('sanitizes to ONLY the 4 known string fields (drops unknown keys + non-strings)', () => {
     const store = new SettingsStore(file);
     store.set({

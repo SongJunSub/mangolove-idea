@@ -76,14 +76,21 @@ export class SettingsStore {
     return merged;
   }
 
-  /** Projects an input to EXACTLY the four known STRING fields (drops anything else). */
+  /**
+   * Projects an input to EXACTLY the four known STRING fields (drops anything else).
+   * Enforces the SAME non-empty invariant as set(): an empty string is treated as
+   * UNSET (dropped), so a present key ALWAYS carries a non-empty value on BOTH read
+   * and write. This keeps get() from ever surfacing '' — robust to hand-edited or
+   * partially-corrupt files (consistent with the corrupt-safe philosophy above) and
+   * preserves "unset means fall back to env/default" downstream where `?? ` is used.
+   */
   private sanitize(raw: unknown): AppSettings {
     if (raw === null || typeof raw !== 'object') return {};
     const source = raw as Record<string, unknown>;
     const out: Record<string, string> = {};
     for (const key of KNOWN_KEYS) {
       const value = source[key];
-      if (typeof value === 'string') out[key] = value;
+      if (typeof value === 'string' && value !== '') out[key] = value;
     }
     return out;
   }
