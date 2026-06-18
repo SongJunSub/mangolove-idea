@@ -50,6 +50,10 @@ const api: MangoApi = {
     list: (req) => ipcRenderer.invoke(IPC.DIFF_LIST, req),
     file: (req) => ipcRenderer.invoke(IPC.DIFF_FILE, req),
   },
+  settings: {
+    get: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
+    set: (partial) => ipcRenderer.invoke(IPC.SETTINGS_SET, partial),
+  },
 };
 
 contextBridge.exposeInMainWorld('mango', api);
