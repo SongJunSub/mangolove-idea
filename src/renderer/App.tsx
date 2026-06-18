@@ -9,14 +9,20 @@ import { useMerge } from './hooks/use-merge';
 import { useSessionRecords } from './hooks/use-session-records';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
+import { ServerControls } from './components/toolbar/server-controls';
+import { MergeControls } from './components/toolbar/merge-controls';
+import { LogPanel } from './components/logs/log-panel';
+
 // Lazy-loaded so the xterm.js bundle (+ addon-fit + its CSS) is only fetched when
 // a worktree is first selected — keeps the initial renderer chunk smaller.
 const AgentTerminal = lazy(() =>
   import('./components/terminal/agent-terminal').then((m) => ({ default: m.AgentTerminal })),
 );
-import { ServerControls } from './components/toolbar/server-controls';
-import { MergeControls } from './components/toolbar/merge-controls';
-import { LogPanel } from './components/logs/log-panel';
+// Lazy so monaco's ~3.9 MB bundle is a SEPARATE async chunk, fetched only when the
+// Diff tab is first opened (mirrors AgentTerminal's React.lazy treatment of xterm).
+const DiffView = lazy(() =>
+  import('./components/diff/diff-view').then((m) => ({ default: m.DiffView })),
+);
 
 export function App(): React.JSX.Element {
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -30,10 +36,16 @@ export function App(): React.JSX.Element {
 
   const sessionRecords = useSessionRecords();
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
+  const [paneMode, setPaneMode] = useState<'terminal' | 'diff'>('terminal');
 
   useEffect(() => {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
   }, []);
+
+  // Reset to Terminal tab whenever a different worktree is selected.
+  useEffect(() => {
+    setPaneMode('terminal');
+  }, [selectedId]);
 
   const onQuitDecision = useCallback(async (quit: boolean): Promise<void> => {
     setQuitWarning(null);
@@ -97,13 +109,49 @@ export function App(): React.JSX.Element {
         />
         <section style={{ flex: 1, minWidth: 0 }}>
           {selectedId ? (
-            <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading terminal…</p>}>
-              <AgentTerminal
-                key={selectedId}
-                worktreeId={selectedId}
-                continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
-              />
-            </Suspense>
+            <>
+              <div
+                role="tablist"
+                aria-label="worktree view"
+                style={{ display: 'flex', gap: 4, marginBottom: 8 }}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={paneMode === 'terminal'}
+                  data-testid="tab-terminal"
+                  onClick={() => setPaneMode('terminal')}
+                >
+                  Terminal
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={paneMode === 'diff'}
+                  data-testid="tab-diff"
+                  onClick={() => setPaneMode('diff')}
+                >
+                  Diff
+                </button>
+              </div>
+              {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
+              <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
+                <Suspense
+                  fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading terminal…</p>}
+                >
+                  <AgentTerminal
+                    key={selectedId}
+                    worktreeId={selectedId}
+                    continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
+                  />
+                </Suspense>
+              </div>
+              {paneMode === 'diff' && (
+                <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading diff…</p>}>
+                  <DiffView key={`diff-${selectedId}`} worktreeId={selectedId} base="main" />
+                </Suspense>
+              )}
+            </>
           ) : (
             <p style={{ fontSize: 13, color: '#888' }}>Select a worktree to start its agent.</p>
           )}

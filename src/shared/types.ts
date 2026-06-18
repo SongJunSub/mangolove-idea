@@ -206,3 +206,43 @@ export interface AppInfo {
   /** True if `require('node-pty')` loaded without an ABI mismatch error. */
   readonly nodePtyLoaded: boolean;
 }
+
+// ── Diff viewer (V2 item A1) ──
+
+/** Per-file change kind in a PR-style diff. */
+export type ChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+
+/** One changed file in the worktree branch vs its base (merge-base) diff. */
+export interface ChangedFile {
+  /** Path shown to the user (the new/destination path for renames). */
+  readonly path: string;
+  readonly status: ChangeStatus;
+  /** Original path when status === 'renamed' (the pre-rename path), else undefined. */
+  readonly oldPath?: string;
+  /** True if git treats the file as binary (no text diff possible). */
+  readonly binary: boolean;
+}
+
+/** Full original/modified contents for one file, for Monaco's DiffEditor. */
+export interface FileDiff {
+  readonly path: string;
+  readonly status: ChangeStatus;
+  /** Base (merge-base) contents; '' for added or binary files. */
+  readonly original: string;
+  /** Branch contents; '' for deleted or binary files. */
+  readonly modified: string;
+  readonly binary: boolean;
+}
+
+export interface DiffListRequest {
+  readonly worktreeId: string;
+  /** Base branch to diff against; defaults to 'main' in the main process. */
+  readonly base?: string;
+}
+
+export interface DiffFileRequest {
+  readonly worktreeId: string;
+  readonly base?: string;
+  /** The changed file's path (the new path for renames). */
+  readonly path: string;
+}

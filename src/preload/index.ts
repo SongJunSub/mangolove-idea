@@ -46,6 +46,10 @@ const api: MangoApi = {
     run: (req) => ipcRenderer.invoke(IPC.MERGE_RUN, req),
     onProgress: (cb) => subscribe(IPC.MERGE_PROGRESS, cb),
   },
+  diff: {
+    list: (req) => ipcRenderer.invoke(IPC.DIFF_LIST, req),
+    file: (req) => ipcRenderer.invoke(IPC.DIFF_FILE, req),
+  },
 };
 
 contextBridge.exposeInMainWorld('mango', api);

@@ -19,6 +19,10 @@ import type {
   MergeProgressEvent,
   QuitWarningEvent,
   AppInfo,
+  ChangedFile,
+  FileDiff,
+  DiffListRequest,
+  DiffFileRequest,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -60,6 +64,12 @@ export interface MangoApi {
   merge: {
     run(req: MergeRequest): Promise<MergeResult>;
     onProgress(cb: (e: MergeProgressEvent) => void): Unsubscribe;
+  };
+  diff: {
+    /** PR-style changed-file list: worktree branch vs base (default 'main'). */
+    list(req: DiffListRequest): Promise<ChangedFile[]>;
+    /** Original (merge-base) + modified (branch) contents for one file. */
+    file(req: DiffFileRequest): Promise<FileDiff>;
   };
 }
 
