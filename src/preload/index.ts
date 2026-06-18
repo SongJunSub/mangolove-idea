@@ -45,6 +45,7 @@ const api: MangoApi = {
   merge: {
     run: (req) => ipcRenderer.invoke(IPC.MERGE_RUN, req),
     onProgress: (cb) => subscribe(IPC.MERGE_PROGRESS, cb),
+    // conflict-resolution bindings (Task 5): forward the contract methods to main over IPC
     conflicts: (req) => ipcRenderer.invoke(IPC.MERGE_CONFLICTS, req),
     readConflict: (req) => ipcRenderer.invoke(IPC.MERGE_READ_CONFLICT, req),
     resolve: (req) => ipcRenderer.invoke(IPC.MERGE_RESOLVE, req),
