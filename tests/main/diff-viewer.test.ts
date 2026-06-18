@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { parseNameStatus, parseBinaryPaths } from '../../src/main/git/diff-viewer';
 import { DiffViewer } from '../../src/main/git/diff-viewer';
 import { makeTempGitRepo, seedDiffScenario, type TempGitRepo } from '../helpers/temp-git-repo';
-import { afterEach, beforeEach } from 'vitest';
 
 describe('parseNameStatus', () => {
   it('parses added / modified / deleted', () => {

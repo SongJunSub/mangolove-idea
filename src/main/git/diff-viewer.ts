@@ -97,7 +97,13 @@ export class DiffViewer {
       const pathLine = lines.find((l) => l.startsWith('worktree '));
       if (!pathLine) continue;
       const p = pathLine.slice('worktree '.length).trim();
-      if (realpathSync(p) !== canonical) continue;
+      let realP: string;
+      try {
+        realP = realpathSync(p);
+      } catch {
+        continue; // stale worktree: directory removed from disk — skip it
+      }
+      if (realP !== canonical) continue;
       const br = lines.find((l) => l.startsWith('branch '));
       if (!br) throw new Error(`worktree ${worktreeId} has no branch (detached)`);
       return br.slice('branch '.length).trim().replace(/^refs\/heads\//, '');

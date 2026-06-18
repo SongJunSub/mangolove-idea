@@ -1,6 +1,6 @@
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, join as joinPath } from 'node:path';
+import { join as joinPath } from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
 
 /** A throwaway git repo in os.tmpdir() for manager tests (Plan 1+). */
@@ -15,7 +15,7 @@ export interface TempGitRepo {
  * Caller MUST invoke cleanup() (e.g. in afterEach) to remove it.
  */
 export async function makeTempGitRepo(): Promise<TempGitRepo> {
-  const dir = mkdtempSync(join(tmpdir(), 'mango-git-'));
+  const dir = mkdtempSync(joinPath(tmpdir(), 'mango-git-'));
   const git = simpleGit(dir);
   await git.init(['--initial-branch=main']);
   await git.addConfig('user.email', 'test@mango.local');
