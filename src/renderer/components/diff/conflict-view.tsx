@@ -29,7 +29,8 @@ export function ConflictView({
   cleanup,
   onResolved,
 }: ConflictViewProps): React.JSX.Element {
-  const { files, loading, error, resolve, continueMerge, abort, refresh } = useConflicts(worktreeId);
+  const { files, loading, error, resolve, continueMerge, abort, refresh } =
+    useConflicts(worktreeId);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export function ConflictView({
     choice: 'ours' | 'theirs' | 'manual' | 'keep' | 'remove',
   ): Promise<void> => {
     setBusy(true);
+    setFileError(null);
     try {
       const content =
         choice === 'manual' ? (editorRef.current?.getModel()?.getValue() ?? '') : undefined;
@@ -97,6 +99,8 @@ export function ConflictView({
         editorRef.current?.getModel()?.dispose();
         editorRef.current?.setModel(monaco.editor.createModel('', 'plaintext'));
       }
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -104,10 +108,13 @@ export function ConflictView({
 
   const onContinue = async (): Promise<void> => {
     setBusy(true);
+    setFileError(null);
     try {
       const res = await continueMerge(targetBranch, cleanup);
       if (res.status === 'merged') onResolved(true);
       else await refresh();
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -115,9 +122,12 @@ export function ConflictView({
 
   const onAbort = async (): Promise<void> => {
     setBusy(true);
+    setFileError(null);
     try {
       await abort();
       onResolved(false);
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -140,7 +150,12 @@ export function ConflictView({
         >
           Continue merge
         </button>
-        <button type="button" data-testid="conflict-abort" disabled={busy} onClick={() => void onAbort()}>
+        <button
+          type="button"
+          data-testid="conflict-abort"
+          disabled={busy}
+          onClick={() => void onAbort()}
+        >
           Abort merge
         </button>
       </div>
@@ -187,7 +202,11 @@ export function ConflictView({
                   type="button"
                   data-testid="conflict-ours"
                   disabled={busy || !f.hasOurs}
-                  title={f.hasOurs ? 'use the target (main) version' : 'no target version (missing stage)'}
+                  title={
+                    f.hasOurs
+                      ? 'use the target (main) version'
+                      : 'no target version (missing stage)'
+                  }
                   onClick={() => void onResolveChoice(f.path, 'ours')}
                 >
                   Use ours (target)
@@ -196,7 +215,9 @@ export function ConflictView({
                   type="button"
                   data-testid="conflict-theirs"
                   disabled={busy || !f.hasTheirs}
-                  title={f.hasTheirs ? 'use the feature version' : 'no feature version (missing stage)'}
+                  title={
+                    f.hasTheirs ? 'use the feature version' : 'no feature version (missing stage)'
+                  }
                   onClick={() => void onResolveChoice(f.path, 'theirs')}
                 >
                   Use theirs (feature)
