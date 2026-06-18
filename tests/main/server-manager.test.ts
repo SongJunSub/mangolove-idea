@@ -18,6 +18,11 @@ function makeRunnerFactory(fakes: FakeProcHandle[]) {
       if (!f) throw new Error('fake runner ran out of procs');
       return f as unknown as IProcLike;
     },
+    // ServerManager only uses the shell-line spawn; stub the argv variant so the
+    // literal still satisfies ProcessRunner (used by gh, never reached here).
+    spawnArgs: () => {
+      throw new Error('spawnArgs not used by ServerManager');
+    },
   };
   return { runner, calls };
 }
