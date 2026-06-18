@@ -104,8 +104,15 @@ export function App(): React.JSX.Element {
         cleanup: true,
       });
       if (result.status === 'conflict') {
-        setConflictWorktreeId(worktree.id);
-        setPaneMode('conflict');
+        // There is exactly ONE global MERGE_HEAD. A second merge while one is paused
+        // re-surfaces the EXISTING conflict, which may belong to a DIFFERENT worktree
+        // than the one just clicked. Attribute the Conflicts pane to the TRUE owner —
+        // ask merge.owner() rather than trusting worktree.id — so Continue never
+        // commits one worktree's merge and cleans up another's tree/branch. Only flip
+        // to the Conflicts pane when the owner is the worktree currently selected.
+        const ownerId = (await window.mango.merge.owner()) ?? result.worktreeId;
+        setConflictWorktreeId(ownerId);
+        if (ownerId === selectedId) setPaneMode('conflict');
         return;
       }
       if (result.merged) {

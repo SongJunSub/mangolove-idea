@@ -72,6 +72,64 @@ describe('conflict IPC wiring', () => {
     expect(resolver.inProgressWorktreeId).toHaveBeenCalled();
   });
 
+  it('MERGE_RUN re-surfaces the in-progress conflict to its TRUE owner, not the clicked worktree', async () => {
+    // A merge for worktree 'A' is paused (MERGE_HEAD = tip of A). The user then
+    // clicks Merge on worktree 'B'. MERGE_RUN must short-circuit on the paused
+    // merge AND attribute it to its owner 'A' — never to the clicked 'B' — so
+    // Continue/cleanup acts on A's tree/branch, not B's.
+    const resolver = {
+      inProgress: vi.fn().mockResolvedValue(true),
+      inProgressWorktreeId: vi.fn().mockResolvedValue('A'),
+      list: vi
+        .fn()
+        .mockResolvedValue([{ path: 'a.txt', code: 'UU', hasOurs: true, hasTheirs: true }]),
+    } as unknown as ConflictResolver;
+    const ctx = createIpcContext();
+    ctx.conflictResolver = resolver;
+    ctx.sessionStore = { all: () => [] } as never;
+    ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
+    const { ipcMain, handlers } = makeIpcMain();
+    registerIpc(ipcMain, ctx);
+
+    const result = await handlers.get(IPC.MERGE_RUN)!(null, {
+      worktreeId: 'B',
+      targetBranch: 'main',
+      runVerifyHook: true,
+      cleanup: true,
+    });
+    expect(result).toMatchObject({
+      worktreeId: 'A',
+      status: 'conflict',
+      merged: false,
+      cleanedUp: false,
+      conflicted: ['a.txt'],
+    });
+  });
+
+  it('MERGE_RUN falls back to the clicked worktree when no worktree owns MERGE_HEAD', async () => {
+    // MERGE_HEAD present but no managed worktree's branch matches it (owner is null):
+    // fall back to the request's worktreeId so the conflict still surfaces.
+    const resolver = {
+      inProgress: vi.fn().mockResolvedValue(true),
+      inProgressWorktreeId: vi.fn().mockResolvedValue(null),
+      list: vi.fn().mockResolvedValue([]),
+    } as unknown as ConflictResolver;
+    const ctx = createIpcContext();
+    ctx.conflictResolver = resolver;
+    ctx.sessionStore = { all: () => [] } as never;
+    ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
+    const { ipcMain, handlers } = makeIpcMain();
+    registerIpc(ipcMain, ctx);
+
+    const result = await handlers.get(IPC.MERGE_RUN)!(null, {
+      worktreeId: 'B',
+      targetBranch: 'main',
+      runVerifyHook: true,
+      cleanup: true,
+    });
+    expect(result).toMatchObject({ worktreeId: 'B', status: 'conflict' });
+  });
+
   it('SETTINGS_SET keeps the conflictResolver while a merge is in progress', async () => {
     const resolver = { inProgress: vi.fn().mockResolvedValue(true) } as unknown as ConflictResolver;
     const ctx = createIpcContext();

@@ -401,8 +401,14 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       const resolver = await getConflictResolver(ctx);
       if (await resolver.inProgress()) {
         const conflicted = (await resolver.list()).map((f) => f.path);
+        // There is exactly ONE global MERGE_HEAD. The paused merge may belong to a
+        // DIFFERENT worktree than the one just clicked, so attribute the conflict to
+        // its TRUE owner (the worktree whose feature branch is MERGE_HEAD) — never to
+        // req.worktreeId. Otherwise Continue would commit the owner's merge but run
+        // cleanup against the clicked worktree, wiping the wrong tree/branch.
+        const ownerId = (await resolver.inProgressWorktreeId()) ?? req.worktreeId;
         return {
-          worktreeId: req.worktreeId,
+          worktreeId: ownerId,
           merged: false,
           cleanedUp: false,
           status: 'conflict',
