@@ -5,6 +5,7 @@ import type { ServerManager } from '../managers/server-manager';
 import type { LogStore } from '../managers/log-store';
 import type { MergeRunner } from '../git/merge-runner';
 import type { SessionStore } from '../managers/session-store';
+import type { SettingsStore } from '../managers/settings-store';
 import type { DiffViewer } from '../git/diff-viewer';
 
 /**
@@ -27,6 +28,8 @@ export interface IpcContext {
   mergeRunner?: MergeRunner;
   /** Lazily constructed in register-ipc; injectable in tests (Plan 5). */
   sessionStore?: SessionStore;
+  /** Constructed EAGERLY in index.ts before registerIpc; injectable in tests (V2 E). */
+  settingsStore?: SettingsStore;
   /** Set true once the user confirms quit so before-quit stops re-intercepting (Plan 5). */
   confirmedQuit?: boolean;
   /** Lazily constructed in register-ipc; injectable in tests (V2 A1). */

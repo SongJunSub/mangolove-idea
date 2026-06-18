@@ -5,6 +5,7 @@ import { registerIpc } from './ipc/register-ipc';
 import { IPC } from '../shared/ipc-channels';
 import { QuitController } from './app/quit-controller';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
+import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
 import type { QuitWarningEvent } from '../shared/types';
 
 const ctx = createIpcContext();
@@ -62,6 +63,10 @@ app.whenReady().then(() => {
   // getSessionManager stay synchronous and the SESSION_INPUT/RESIZE on-handlers
   // keep their synchronous delegation (the Plan-2 tests assert it).
   ctx.sessionStore = new SessionStore(getDefaultSessionsPath(() => app.getPath('userData')));
+  // Construct the SettingsStore eagerly (same reason as SessionStore: we hold
+  // the real electron `app` for the userData path) and assign it BEFORE
+  // registerIpc so getSettingsStore stays synchronous.
+  ctx.settingsStore = new SettingsStore(getDefaultSettingsPath(() => app.getPath('userData')));
   registerIpc(ipcMain, ctx);
   createWindow();
 
