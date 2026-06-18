@@ -280,6 +280,39 @@ describe('registerIpc — server + logs', () => {
   });
 });
 
+describe('registerIpc — diff (V2 A1)', () => {
+  function makeIpcMain() {
+    const handlers = new Map<string, (...a: unknown[]) => unknown>();
+    const ipcMain = {
+      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
+      on: vi.fn(),
+    };
+    return { handlers, ipcMain };
+  }
+
+  it('DIFF_LIST delegates to diffViewer.listChangedFiles', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const files = [{ path: 'a.txt', status: 'modified', binary: false }];
+    const dv = { listChangedFiles: vi.fn(async () => files), getFileDiff: vi.fn() };
+    registerIpc(ipcMain as never, { mainWindow: null, diffViewer: dv as never });
+    const req = { worktreeId: '/wt', base: 'main' };
+    const out = await handlers.get('diff:list')!({}, req);
+    expect(dv.listChangedFiles).toHaveBeenCalledWith(req);
+    expect(out).toEqual(files);
+  });
+
+  it('DIFF_FILE delegates to diffViewer.getFileDiff', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const fd = { path: 'a.txt', status: 'modified', original: 'x', modified: 'y', binary: false };
+    const dv = { listChangedFiles: vi.fn(), getFileDiff: vi.fn(async () => fd) };
+    registerIpc(ipcMain as never, { mainWindow: null, diffViewer: dv as never });
+    const req = { worktreeId: '/wt', path: 'a.txt' };
+    const out = await handlers.get('diff:file')!({}, req);
+    expect(dv.getFileDiff).toHaveBeenCalledWith(req);
+    expect(out).toEqual(fd);
+  });
+});
+
 describe('registerIpc — app quit + session records (Plan 5)', () => {
   function makeIpcMain() {
     const handlers = new Map<string, (...a: unknown[]) => unknown>();

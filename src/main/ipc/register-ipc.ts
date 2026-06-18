@@ -16,8 +16,13 @@ import type {
   LogLine,
   MergeRequest,
   MergeResult,
+  ChangedFile,
+  FileDiff,
+  DiffListRequest,
+  DiffFileRequest,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
+import { DiffViewer } from '../git/diff-viewer';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
@@ -209,6 +214,20 @@ async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
 }
 
 /**
+ * Resolves the DiffViewer: prefer ctx (tests inject); else build a real one.
+ * MUST be async: main is ESM (`verbatimModuleSyntax`), so `require` is undefined in
+ * module scope — simple-git loads via dynamic `import`, reusing `getWorktreeManager`
+ * exactly like `getMergeRunner`. DiffViewer is read-only so a fresh simpleGit is fine.
+ */
+async function getDiffViewer(ctx: IpcContext): Promise<DiffViewer> {
+  if (ctx.diffViewer) return ctx.diffViewer;
+  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const { simpleGit } = await import('simple-git');
+  ctx.diffViewer = new DiffViewer(simpleGit(repoRoot), repoRoot);
+  return ctx.diffViewer;
+}
+
+/**
  * Registers ALL main-process IPC handlers in one place. Plan 1 wires the real
  * WORKTREE_LIST/CREATE/REMOVE handlers, delegating to the WorktreeManager on ctx.
  */
@@ -292,6 +311,20 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     IPC.MERGE_RUN,
     async (_event: unknown, req: MergeRequest): Promise<MergeResult> => {
       return (await getMergeRunner(ctx)).run(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.DIFF_LIST,
+    async (_event: unknown, req: DiffListRequest): Promise<ChangedFile[]> => {
+      return (await getDiffViewer(ctx)).listChangedFiles(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.DIFF_FILE,
+    async (_event: unknown, req: DiffFileRequest): Promise<FileDiff> => {
+      return (await getDiffViewer(ctx)).getFileDiff(req);
     },
   );
 

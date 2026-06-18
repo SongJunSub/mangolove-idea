@@ -5,6 +5,7 @@ import type { ServerManager } from '../managers/server-manager';
 import type { LogStore } from '../managers/log-store';
 import type { MergeRunner } from '../git/merge-runner';
 import type { SessionStore } from '../managers/session-store';
+import type { DiffViewer } from '../git/diff-viewer';
 
 /**
  * Holds main-process singletons + the main window ref for event emitters.
@@ -28,6 +29,8 @@ export interface IpcContext {
   sessionStore?: SessionStore;
   /** Set true once the user confirms quit so before-quit stops re-intercepting (Plan 5). */
   confirmedQuit?: boolean;
+  /** Lazily constructed in register-ipc; injectable in tests (V2 A1). */
+  diffViewer?: DiffViewer;
   /** Injected by index.ts so the quit handler can actually quit (app.quit). */
   requestQuit?: () => void;
 }
