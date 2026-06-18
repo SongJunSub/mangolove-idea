@@ -143,6 +143,17 @@ function getSessionManager(ctx: IpcContext): SessionManager {
     },
     store: getSessionStore(ctx),
     clock: Date.now,
+    // Deferred live-apply: if SETTINGS_SET edited the agentCommand while this
+    // manager was busy, it was KEPT (so the quit sweep + keystrokes still find the
+    // live PTY). Once the last PTY exits, drop the cache so the next spawn rebuilds
+    // with the new agentCommand. Guarded by the dirty flag so a plain session end
+    // (no pending edit) keeps the warm, correctly-configured manager.
+    onIdle: () => {
+      if (ctx.sessionSettingsDirty) {
+        ctx.sessionSettingsDirty = false;
+        ctx.sessionManager = undefined;
+      }
+    },
   });
   return ctx.sessionManager;
 }
@@ -220,6 +231,15 @@ function getServerManager(ctx: IpcContext): ServerManager {
     // Command source precedence: persisted setting > env seam (smoke) > undefined
     // (=> ServerManager auto-detection of gradle/npm wins).
     commandOverride: resolveCommands(getSettingsStore(ctx).get()).serverCommand,
+    // Deferred live-apply (mirror of getSessionManager): if SETTINGS_SET edited the
+    // serverCommand while a server was live, the manager was KEPT. Once the server
+    // stops/exits, drop the cache so the next start rebuilds with the new command.
+    onIdle: () => {
+      if (ctx.serverSettingsDirty) {
+        ctx.serverSettingsDirty = false;
+        ctx.serverManager = undefined;
+      }
+    },
   });
   return ctx.serverManager;
 }
@@ -393,14 +413,22 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       // sessionManager/serverManager own LIVE children that the before-quit sweep
       // (index.ts) and the SESSION_INPUT/RESIZE handlers find THROUGH ctx. Nulling
       // them mid-run would orphan the running claude/server from the sweep AND detach
-      // it from the next keystroke (a fresh manager has no record of it). So clear
-      // them ONLY when idle; while busy, the new agent/server command takes effect
-      // once the live work ends.
+      // it from the next keystroke (a fresh manager has no record of it). So when
+      // IDLE we clear immediately (next spawn/start rebuilds); when BUSY we KEEP the
+      // manager but mark it dirty, and its injected onIdle callback clears the cache
+      // once the last child exits — so the new agent/server command truly takes
+      // effect "once the live work ends", not only on a later idle SETTINGS_SET.
       if ((ctx.sessionManager?.liveWorktreeIds().length ?? 0) === 0) {
-        ctx.sessionManager = undefined; // agentCommand (next spawn)
+        ctx.sessionSettingsDirty = false;
+        ctx.sessionManager = undefined; // idle: agentCommand applies on next spawn
+      } else {
+        ctx.sessionSettingsDirty = true; // busy: onIdle clears it after the last exit
       }
       if (!(ctx.serverManager?.hasLiveServer() ?? false)) {
-        ctx.serverManager = undefined; // serverCommand (next start)
+        ctx.serverSettingsDirty = false;
+        ctx.serverManager = undefined; // idle: serverCommand applies on next start
+      } else {
+        ctx.serverSettingsDirty = true; // busy: onIdle clears it after the server stops
       }
       return merged;
     },

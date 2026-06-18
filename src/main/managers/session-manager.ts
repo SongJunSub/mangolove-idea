@@ -35,6 +35,13 @@ export interface SessionManagerDeps {
   readonly store?: SessionRecordSink;
   /** Clock for SessionRecord.updatedAt; default Date.now (Plan 5). */
   readonly clock?: () => number;
+  /**
+   * Fired when the LAST live PTY goes away (kill or natural exit), i.e. the
+   * manager transitions from busy -> idle. register-ipc uses this to perform a
+   * settings edit that was DEFERRED while busy: clearing ctx.sessionManager so
+   * the next spawn rebuilds with the new agentCommand. Optional => no-op.
+   */
+  readonly onIdle?: () => void;
 }
 
 /** Internal per-worktree bookkeeping. */
@@ -60,6 +67,7 @@ export class SessionManager {
   private readonly resolveBranch?: (worktreeId: string) => Promise<string | undefined>;
   private readonly store?: SessionRecordSink;
   private readonly clock: () => number;
+  private readonly onIdle?: () => void;
   private readonly sessions = new Map<string, Session>();
 
   constructor(deps: SessionManagerDeps) {
@@ -70,6 +78,7 @@ export class SessionManager {
     this.resolveBranch = deps.resolveBranch;
     this.store = deps.store;
     this.clock = deps.clock ?? Date.now;
+    this.onIdle = deps.onIdle;
   }
 
   /** Spawns (or replaces) the PTY for a worktree and returns its AgentSession. */
@@ -132,6 +141,9 @@ export class SessionManager {
     if (!s.exited) {
       s.exited = true;
       s.pty.kill();
+      // Idle notification is fired by handleExit (the PTY's exit event always
+      // follows kill, sync from the fake / async from real node-pty), so it runs
+      // exactly once whether the session ends by kill or by natural exit.
     }
     return { ok: true };
   }
@@ -169,6 +181,16 @@ export class SessionManager {
     session.exited = true;
     this.emitter.emitExit({ worktreeId, exitCode: e.exitCode, signal: e.signal });
     this.emitStatus(worktreeId, 'exited', undefined, session.continued);
+    this.notifyIfIdle();
+  }
+
+  /**
+   * Fires onIdle exactly when the LAST live PTY has gone away. Called from the
+   * kill/natural-exit paths (NOT the quit sweep) so a settings edit deferred while
+   * busy can take effect "once the live work ends" by rebuilding on next spawn.
+   */
+  private notifyIfIdle(): void {
+    if (this.liveWorktreeIds().length === 0) this.onIdle?.();
   }
 
   private emitStatus(

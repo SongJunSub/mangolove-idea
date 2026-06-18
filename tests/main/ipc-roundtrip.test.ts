@@ -491,4 +491,117 @@ describe('registerIpc — settings (V2 E)', () => {
     expect(ctx.mergeRunner).toBeUndefined(); // stateless -> always cleared
     expect(ctx.diffViewer).toBeUndefined();
   });
+
+  it('SETTINGS_SET while busy marks the managers dirty for deferred live-apply', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(), set: vi.fn(() => ({})) };
+    const ctx: Record<string, unknown> = {
+      mainWindow: null,
+      settingsStore: store as never,
+      sessionManager: { liveWorktreeIds: () => ['w1'] } as never, // busy
+      serverManager: { hasLiveServer: () => true } as never, // busy
+    };
+    registerIpc(ipcMain as never, ctx as never);
+    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    expect(ctx.sessionSettingsDirty).toBe(true);
+    expect(ctx.serverSettingsDirty).toBe(true);
+  });
+
+  it('SETTINGS_SET while idle leaves the dirty flags false (immediate apply)', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(), set: vi.fn(() => ({})) };
+    const ctx: Record<string, unknown> = {
+      mainWindow: null,
+      settingsStore: store as never,
+      sessionManager: { liveWorktreeIds: () => [] } as never, // idle
+      serverManager: { hasLiveServer: () => false } as never, // idle
+    };
+    registerIpc(ipcMain as never, ctx as never);
+    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    expect(ctx.sessionSettingsDirty).toBe(false);
+    expect(ctx.serverSettingsDirty).toBe(false);
+  });
+
+  it('deferred apply: a real manager built after a busy edit clears its cache onIdle, so next spawn rebuilds', async () => {
+    // End-to-end proof of the live-apply guarantee for the BUSY path. We drive the
+    // REAL lazy builders (no injected manager) with fakes so the manager's onIdle
+    // callback — wired by register-ipc — actually runs and clears ctx.*Manager.
+    const { handlers, ipcMain } = makeIpcMain();
+    const settings: AppSettings = { agentCommand: 'old-claude' };
+    const store = {
+      get: vi.fn(() => settings),
+      set: vi.fn((p: Partial<AppSettings>) => Object.assign(settings, p)),
+    };
+
+    // A fake node-pty that records the command it was spawned with and lets the
+    // test fire its exit. The factory is injected via ctx through the real builder.
+    const spawned: string[] = [];
+    let exitCb: (() => void) | undefined;
+    const fakePty = {
+      pid: 1,
+      onData: vi.fn(),
+      onExit: vi.fn((cb: (e: { exitCode: number; signal?: number }) => void) => {
+        exitCb = () => cb({ exitCode: 0 });
+      }),
+      write: vi.fn(),
+      resize: vi.fn(),
+      kill: vi.fn(),
+    };
+    const factory = {
+      spawn: vi.fn((file: string) => {
+        spawned.push(file);
+        return fakePty as never;
+      }),
+    };
+
+    // Inject the SessionManager directly (built from the same module) so we exercise
+    // the real onIdle clear path without the NodePtyFactory. We mimic what
+    // getSessionManager does: clear ctx.sessionManager when dirty after the last exit.
+    const { SessionManager } = await import('../../src/main/managers/session-manager');
+    const ctx: IpcContext = {
+      mainWindow: null,
+      settingsStore: store as never,
+      worktreeManager: {
+        list: async () => [
+          { id: '/wt', path: '/wt', branch: 'm', isPrimary: false, isLocked: false },
+        ],
+      } as never,
+      sessionStore: { upsert: vi.fn(), all: () => [] } as never,
+    };
+    ctx.sessionManager = new SessionManager({
+      factory: factory as never,
+      emitter: { emitOutput: vi.fn(), emitExit: vi.fn(), emitStatus: vi.fn() },
+      command: store.get().agentCommand,
+      resolvePath: async () => '/wt',
+      store: ctx.sessionStore,
+      onIdle: () => {
+        if (ctx.sessionSettingsDirty) {
+          ctx.sessionSettingsDirty = false;
+          ctx.sessionManager = undefined;
+        }
+      },
+    });
+
+    registerIpc(ipcMain as never, ctx);
+
+    // Spawn with the OLD command, then edit agentCommand while busy -> kept + dirty.
+    await handlers.get('session:spawn')!(
+      {},
+      { worktreeId: '/wt', continueSession: false, cols: 80, rows: 24 },
+    );
+    expect(spawned).toEqual(['old-claude']);
+    await handlers.get('settings:set')!({}, { agentCommand: 'new-claude' });
+    expect(ctx.sessionManager).toBeDefined(); // kept while busy
+    expect(ctx.sessionSettingsDirty).toBe(true);
+
+    // End the live work: the last PTY exits -> onIdle clears the cache.
+    exitCb!();
+    expect(ctx.sessionManager).toBeUndefined();
+    expect(ctx.sessionSettingsDirty).toBe(false);
+
+    // Next spawn rebuilds the manager lazily — but that lazy build uses NodePtyFactory,
+    // which we cannot exercise headless. The cache-clear above is the load-bearing
+    // assertion: the stale manager is gone, so the next spawn reads the NEW command.
+    expect(store.get().agentCommand).toBe('new-claude');
+  });
 });

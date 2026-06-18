@@ -32,6 +32,15 @@ export interface IpcContext {
   settingsStore?: SettingsStore;
   /** Set true once the user confirms quit so before-quit stops re-intercepting (Plan 5). */
   confirmedQuit?: boolean;
+  /**
+   * Set true by SETTINGS_SET when the live sessionManager was KEPT (busy) so its
+   * cached agentCommand is stale. The manager's onIdle callback consumes this once
+   * the last PTY exits, clearing ctx.sessionManager so the next spawn rebuilds with
+   * the new settings — delivering live-apply "once the live work ends" (V2 E).
+   */
+  sessionSettingsDirty?: boolean;
+  /** Same as sessionSettingsDirty, for a busy serverManager's stale serverCommand. */
+  serverSettingsDirty?: boolean;
   /** Lazily constructed in register-ipc; injectable in tests (V2 A1). */
   diffViewer?: DiffViewer;
   /** Injected by index.ts so the quit handler can actually quit (app.quit). */
