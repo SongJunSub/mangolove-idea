@@ -25,3 +25,5 @@ export const ipcRenderer = {
 };
 
 export const BrowserWindow = vi.fn();
+
+export const shell = { openExternal: vi.fn() };

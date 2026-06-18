@@ -8,6 +8,7 @@ import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { DiffViewer } from '../git/diff-viewer';
 import type { ConflictResolver } from '../git/conflict-resolver';
+import type { GhStatusReader } from '../git/gh-status-reader';
 
 /**
  * Holds main-process singletons + the main window ref for event emitters.
@@ -44,6 +45,12 @@ export interface IpcContext {
   serverSettingsDirty?: boolean;
   /** Lazily constructed in register-ipc; injectable in tests (V2 A1). */
   diffViewer?: DiffViewer;
+  /**
+   * Lazily constructed in register-ipc; injectable in tests (V2 PR/CI panel). Holds
+   * NO live OS process and NO settings-derived command, so it is NOT nulled on
+   * SETTINGS_SET. The RESULT is never cached — only the reader.
+   */
+  ghStatusReader?: GhStatusReader;
   /**
    * Lazily constructed in register-ipc; injectable in tests (V2 merge conflict).
    * STATEFUL only in the sense that it owns the in-progress merge — it is NOT nulled

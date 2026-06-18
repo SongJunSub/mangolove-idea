@@ -29,9 +29,13 @@ import type {
   ConflictContinueRequest,
   ConflictAbortRequest,
   ConflictInProgressRequest,
+  GhStatus,
+  GhStatusRequest,
+  OpenExternalRequest,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { DiffViewer } from '../git/diff-viewer';
+import { GhStatusReader } from '../git/gh-status-reader';
 import { ConflictResolver } from '../git/conflict-resolver';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
 import { WorktreeManager } from '../managers/worktree-manager';
@@ -299,6 +303,63 @@ async function getDiffViewer(ctx: IpcContext): Promise<DiffViewer> {
 }
 
 /**
+ * Resolves the GhStatusReader: prefer ctx (tests inject); else build a real one.
+ * Copies getDiffViewer's lazy shape. owner/repo come from the origin remote URL;
+ * resolveBranch/resolvePath read WorktreeManager.list() (Worktree.branch / .path);
+ * hasUpstream runs a per-worktree
+ * `git rev-parse --abbrev-ref --symbolic-full-name @{u}` (no upstream => not-pushed).
+ * NEVER reads a token; passes process.env through only for PATH/keyring.
+ */
+async function getGhStatusReader(ctx: IpcContext): Promise<GhStatusReader> {
+  if (ctx.ghStatusReader) return ctx.ghStatusReader;
+  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const { simpleGit } = await import('simple-git');
+  const root = simpleGit(repoRoot);
+  const remote = (await root.remote(['get-url', 'origin']).catch(() => '')) ?? '';
+  const { owner, repo } = parseOwnerRepo(remote.trim());
+
+  const manager = await getWorktreeManager(ctx);
+  const pathOf = async (worktreeId: string): Promise<string> => {
+    const trees = await manager.list();
+    const t = trees.find((x) => x.id === worktreeId);
+    if (!t) throw new Error(`unknown worktree ${worktreeId}`);
+    return t.path;
+  };
+
+  ctx.ghStatusReader = new GhStatusReader({
+    runner: new NodeProcessRunner(),
+    repoRoot,
+    owner,
+    repo,
+    resolveBranch: async (worktreeId) => {
+      const trees = await manager.list();
+      const t = trees.find((x) => x.id === worktreeId);
+      if (!t) throw new Error(`unknown worktree ${worktreeId}`);
+      return t.branch;
+    },
+    resolvePath: pathOf,
+    hasUpstream: async (worktreeId) => {
+      const wtPath = await pathOf(worktreeId);
+      try {
+        await simpleGit(wtPath).raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
+        return true;
+      } catch {
+        // exit 128 'fatal: no upstream configured for branch' => not pushed.
+        return false;
+      }
+    },
+  });
+  return ctx.ghStatusReader;
+}
+
+/** Parses an origin URL (ssh or https) into {owner, repo}; empty on no match. */
+export function parseOwnerRepo(url: string): { owner: string; repo: string } {
+  // git@github.com:owner/repo.git  OR  https://github.com/owner/repo(.git)
+  const m = /[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url);
+  return m ? { owner: m[1], repo: m[2] } : { owner: '', repo: '' };
+}
+
+/**
  * Resolves the ConflictResolver: prefer ctx (tests inject); else build a real one
  * bound to the PRIMARY repoRoot (where MERGE_HEAD lives). Reuses the cached
  * WorktreeManager exactly like getMergeRunner. STATELESS — it recomputes truth from
@@ -430,6 +491,32 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     IPC.DIFF_FILE,
     async (_event: unknown, req: DiffFileRequest): Promise<FileDiff> => {
       return (await getDiffViewer(ctx)).getFileDiff(req);
+    },
+  );
+
+  ipcMain.handle(
+    IPC.GH_STATUS,
+    async (_event: unknown, req: GhStatusRequest): Promise<GhStatus> => {
+      // GH_STATUS NEVER throws raw across the boundary — any failure becomes {kind:'error'}.
+      try {
+        const reader = await getGhStatusReader(ctx);
+        return await reader.status(req);
+      } catch (error) {
+        return { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC.APP_OPEN_EXTERNAL,
+    async (_event: unknown, req: OpenExternalRequest): Promise<Ack> => {
+      try {
+        const { shell } = await import('electron');
+        await shell.openExternal(req.url);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
     },
   );
 
