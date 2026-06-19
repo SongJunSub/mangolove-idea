@@ -32,6 +32,9 @@ import type {
   DiffListRequest,
   DiffFileRequest,
   AppSettings,
+  GhStatus,
+  GhStatusRequest,
+  OpenExternalRequest,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -43,6 +46,8 @@ export interface MangoApi {
     ping(): Promise<AppInfo>;
     onQuitWarning(cb: (e: QuitWarningEvent) => void): Unsubscribe;
     sendQuitDecision(quit: boolean): Promise<Ack>;
+    /** Open a URL in the OS default browser (read-only action; used by the PR panel). */
+    openExternal(req: OpenExternalRequest): Promise<Ack>;
   };
   worktree: {
     list(): Promise<Worktree[]>;
@@ -108,6 +113,10 @@ export interface MangoApi {
     get(): Promise<AppSettings>;
     /** Persists a partial; returns the merged, sanitized settings. */
     set(partial: Partial<AppSettings>): Promise<AppSettings>;
+  };
+  gh: {
+    /** Read-only PR/CI status for the worktree's branch (gh keyring auth; no token in app). */
+    status(req: GhStatusRequest): Promise<GhStatus>;
   };
 }
 

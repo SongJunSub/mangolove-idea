@@ -13,6 +13,8 @@ import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
 import { ServerControls } from './components/toolbar/server-controls';
 import { MergeControls } from './components/toolbar/merge-controls';
+import { GhStatusPanel } from './components/toolbar/gh-status-panel';
+import { useGhStatus } from './hooks/use-gh-status';
 import { LogPanel } from './components/logs/log-panel';
 
 // Lazy-loaded so the xterm.js bundle (+ addon-fit + its CSS) is only fetched when
@@ -39,6 +41,12 @@ export function App(): React.JSX.Element {
   const logLines = useLogs();
   const statuses = useWorktreeStatus(worktrees, serverStatus);
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
+  const {
+    status: ghStatus,
+    loading: ghLoading,
+    error: ghError,
+    refresh: refreshGh,
+  } = useGhStatus(selectedId);
 
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
@@ -161,6 +169,14 @@ export function App(): React.JSX.Element {
         running={merging}
         progress={mergeProgress}
         onMerge={(wt) => void onMerge(wt)}
+      />
+      <GhStatusPanel
+        selectedId={selectedId}
+        status={ghStatus}
+        loading={ghLoading}
+        error={ghError}
+        onRefresh={refreshGh}
+        onOpen={(url) => void window.mango.app.openExternal({ url })}
       />
       <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
         <WorktreeList

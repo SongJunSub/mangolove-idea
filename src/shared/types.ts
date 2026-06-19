@@ -333,6 +333,68 @@ export interface DiffFileRequest {
   readonly path: string;
 }
 
+// ── PR/CI status panel (V2) ──
+
+/** Request the gh-backed PR/CI status for one worktree. */
+export interface GhStatusRequest {
+  readonly worktreeId: string;
+}
+
+/** Ask main to open a URL in the OS default browser (the only "action"). */
+export interface OpenExternalRequest {
+  readonly url: string;
+}
+
+/** Collapsed CI summary derived ONLY from gh's per-check `bucket` field. */
+export interface GhCiSummary {
+  /** 'none' = a PR with zero reported checks. */
+  readonly summary: 'passing' | 'failing' | 'pending' | 'none';
+  readonly counts: {
+    readonly pass: number;
+    readonly fail: number;
+    readonly pending: number;
+    readonly skipping: number;
+    readonly cancel: number;
+  };
+}
+
+/** PR header for an open/merged/closed PR on the worktree's branch. */
+export interface GhPrInfo {
+  readonly number: number;
+  /** gh `state`: OPEN | MERGED | CLOSED. */
+  readonly state: 'OPEN' | 'MERGED' | 'CLOSED';
+  readonly title: string;
+  readonly url: string;
+  readonly isDraft: boolean;
+  /**
+   * gh `reviewDecision`: APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | '' (the
+   * EMPTY STRING when no review is required — handle it, do not assume one of three).
+   */
+  readonly reviewDecision: '' | 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED';
+}
+
+/**
+ * Discriminated union on `kind`. The COMMON path here is not-pushed / no-pr (repo
+ * merges to main directly); those are calm first-class states, NOT errors.
+ *  - gh-missing   : the gh binary is not installed (spawn ENOENT).
+ *  - not-authed   : gh is installed but not logged in (exit 4 / 'gh auth login').
+ *  - no-remote    : no git/GitHub remote configured.
+ *  - not-pushed   : the branch has no upstream — detected LOCALLY, gh never spawned.
+ *  - no-pr        : pushed but no PR exists yet.
+ *  - open-pr      : a PR exists (state may be OPEN | MERGED | CLOSED); carries pr + ci.
+ *  - rate-limited : GitHub API rate limit / HTTP 403.
+ *  - error        : anything else; carries a trimmed friendly message.
+ */
+export type GhStatus =
+  | { readonly kind: 'gh-missing' }
+  | { readonly kind: 'not-authed' }
+  | { readonly kind: 'no-remote' }
+  | { readonly kind: 'not-pushed' }
+  | { readonly kind: 'no-pr' }
+  | { readonly kind: 'open-pr'; readonly pr: GhPrInfo; readonly ci: GhCiSummary }
+  | { readonly kind: 'rate-limited' }
+  | { readonly kind: 'error'; readonly message: string };
+
 // ── Settings (V2 item E) ──
 
 /**

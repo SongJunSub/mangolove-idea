@@ -16,6 +16,7 @@ const api: MangoApi = {
     ping: () => ipcRenderer.invoke(IPC.APP_PING),
     onQuitWarning: (cb) => subscribe(IPC.APP_QUIT_WARNING, cb), // wired in Plan 5
     sendQuitDecision: (quit) => ipcRenderer.invoke(IPC.APP_QUIT_DECISION, { quit }),
+    openExternal: (req) => ipcRenderer.invoke(IPC.APP_OPEN_EXTERNAL, req),
   },
   worktree: {
     list: () => ipcRenderer.invoke(IPC.WORKTREE_LIST),
@@ -57,6 +58,9 @@ const api: MangoApi = {
   diff: {
     list: (req) => ipcRenderer.invoke(IPC.DIFF_LIST, req),
     file: (req) => ipcRenderer.invoke(IPC.DIFF_FILE, req),
+  },
+  gh: {
+    status: (req) => ipcRenderer.invoke(IPC.GH_STATUS, req),
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.SETTINGS_GET),

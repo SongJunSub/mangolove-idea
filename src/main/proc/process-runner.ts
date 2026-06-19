@@ -24,12 +24,19 @@ export interface IProcLike {
   onStdout(cb: (chunk: string) => void): void;
   onStderr(cb: (chunk: string) => void): void;
   onExit(cb: (e: ProcExitEvent) => void): void;
+  /** Spawn-level failure (e.g. ENOENT for a missing binary). Fires INSTEAD of onExit. */
+  onError(cb: (err: Error) => void): void;
 }
 
 /** Factory abstraction so ServerManager is unit-testable with a fake runner. */
 export interface ProcessRunner {
   /** Spawns `command` as a shell line in opts.cwd with piped stdout/stderr. */
   spawn(command: string, opts: ProcSpawnOptions): IProcLike;
+  /**
+   * Spawns an argv array WITHOUT a shell (no shell:true injection surface). Used for
+   * structured commands like gh where args (e.g. a branch token) must not be word-split.
+   */
+  spawnArgs(file: string, args: readonly string[], opts: ProcSpawnOptions): IProcLike;
 }
 
 /**
@@ -54,6 +61,26 @@ export class NodeProcessRunner implements ProcessRunner {
       onStdout: (cb) => void child.stdout?.on('data', (c: string) => cb(c)),
       onStderr: (cb) => void child.stderr?.on('data', (c: string) => cb(c)),
       onExit: (cb) => void child.on('exit', (code, signal) => cb({ code, signal })),
+      onError: (cb) => void child.on('error', (e: Error) => cb(e)),
+    };
+  }
+
+  spawnArgs(file: string, args: readonly string[], opts: ProcSpawnOptions): IProcLike {
+    const child = spawn(file, [...args], {
+      shell: false,
+      cwd: opts.cwd,
+      env: opts.env ?? process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    return {
+      pid: child.pid,
+      kill: (signal) => void child.kill(signal ?? 'SIGTERM'),
+      onStdout: (cb) => void child.stdout?.on('data', (c: string) => cb(c)),
+      onStderr: (cb) => void child.stderr?.on('data', (c: string) => cb(c)),
+      onExit: (cb) => void child.on('exit', (code, signal) => cb({ code, signal })),
+      onError: (cb) => void child.on('error', (e: Error) => cb(e)),
     };
   }
 }

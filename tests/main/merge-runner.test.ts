@@ -22,7 +22,14 @@ function makeVerifyRunner(code: number) {
         onStdout: () => {},
         onStderr: () => {},
         onExit: (cb) => void exitCbs.push(cb),
+        // Verify hook never spawn-errors here; satisfy the IProcLike surface.
+        onError: () => {},
       };
+    },
+    // MergeRunner only runs the verify hook via the shell-line spawn; stub the
+    // argv variant so the literal still satisfies ProcessRunner.
+    spawnArgs: () => {
+      throw new Error('spawnArgs not used by MergeRunner');
     },
   };
   return { runner, calls };
