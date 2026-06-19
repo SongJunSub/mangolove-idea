@@ -30,16 +30,6 @@ export interface AgentTerminalProps {
  * the restored screen is cleanly REPLACED by claude's `--continue` redraw with zero overlap.
  * If no live output ever arrives, the restored screen simply stays (acceptable).
  *
- * RESET DRAIN-GATE: term.write(saved) parses ASYNCHRONOUSLY through xterm's WriteBuffer; a
- * write that takes >12ms yields via setTimeout, leaving the rest of `saved` QUEUED. term.reset()
- * clears the screen but does NOT clear that queue, so a live byte arriving mid-replay would
- * sequence as [stale queued `saved`] -> reset -> [live] -> [stale remainder repaints over live]
- * = the exact double-render this feature avoids. To GUARANTEE the invariant we gate the reset on
- * the replay write's completion callback (`replayDrained`): the first live byte resets+writes
- * IMMEDIATELY if the replay has already drained, otherwise it DEFERS reset+first-write into the
- * replay's completion callback. Either way reset() runs only after every replay byte is parsed
- * and live bytes land strictly after — no stale `saved` remainder can survive the reset.
- *
  * CAPTURE: after output, a serialize+persist is scheduled at most once per PERSIST_THROTTLE_MS
  * (never per byte — serialize is O(buffer)); a FINAL serialize+persist runs in the cleanup so
  * switching/closing a worktree captures its latest screen. On unmount it kills the PTY and
@@ -73,16 +63,6 @@ export function AgentTerminal({
     let disposed = false;
     let liveStarted = false;
     let persistTimer: ReturnType<typeof setTimeout> | null = null;
-    // Drain-gate state for reset-before-live (see the RESET DRAIN-GATE doc above).
-    // `replayWritten`: a replay write was issued (so its callback owns the not-yet-drained reset).
-    // `replayDrained`: the replay write's parser callback has fired (the queue is empty).
-    // `resetDone`: the reset-before-live has actually run; after this, live chunks pipe straight.
-    // `pendingLive`: live chunks that arrived AFTER the first byte but BEFORE the replay drained,
-    //   accumulated IN ORDER so the deferred reset flushes them all post-reset with zero overlap.
-    let replayWritten = false;
-    let replayDrained = false;
-    let resetDone = false;
-    let pendingLive = '';
 
     const term = new Terminal({
       cursorBlink: true,
@@ -117,57 +97,22 @@ export function AgentTerminal({
       }, PERSIST_THROTTLE_MS);
     };
 
-    /**
-     * Reset-before-live: wipe the restored placeholder ONCE, then write all live output buffered
-     * so far (the first chunk plus any that raced in while the replay was still draining), in
-     * order. MUST be called only once the replay write (if any) has fully drained, so reset()
-     * cannot leave stale `saved` bytes queued ahead of the live output (post-reset repaint).
-     */
-    const runResetBeforeLive = (): void => {
-      resetDone = true;
-      const buffered = pendingLive;
-      pendingLive = '';
-      term.reset();
-      if (buffered.length > 0) term.write(buffered);
-    };
-
-    // REPLAY: restore the last screen instantly, BEFORE the session spawns/redraws. The
-    // completion callback marks the parser queue drained and, if the first live byte already
-    // arrived mid-replay, runs the deferred reset (which lands AFTER the last replay byte).
+    // REPLAY: restore the last screen instantly, BEFORE the session spawns/redraws.
     void window.mango.scrollback.get(worktreeId).then((saved) => {
       // Only valid before live output begins; once reset-before-live has fired, a late
       // restore would re-introduce the stale screen. Guard on !liveStarted && !disposed.
-      if (saved && !liveStarted && !disposed) {
-        replayWritten = true;
-        term.write(saved, () => {
-          replayDrained = true;
-          if (disposed) return;
-          // If live output already started, its chunks are parked in pendingLive; now that the
-          // replay queue is empty, perform the deferred reset-before-live with FIFO ordering.
-          if (liveStarted && !resetDone) runResetBeforeLive();
-        });
-      } else {
-        // No replay was issued (nothing saved, or live/unmount already won the race): the write
-        // queue holds no `saved` bytes, so a (possibly already-latched) first live byte can reset
-        // immediately. Flush any chunk parked before this resolved.
-        replayDrained = true;
-        if (liveStarted && !resetDone && !disposed) runResetBeforeLive();
-      }
+      if (saved && !liveStarted && !disposed) term.write(saved);
     });
 
     const onData = term.onData((data) => sendInputRef.current(data));
 
     const offOutput = window.mango.session.onOutput((e) => {
       if (e.worktreeId !== worktreeId) return;
-      if (!resetDone) {
-        // Before the placeholder has been wiped: latch live (so a late replay no-ops) and
-        // accumulate every chunk IN ORDER. If the replay queue is already drained, wipe + flush
-        // now; otherwise the replay completion callback flushes pendingLive after it drains.
+      if (!liveStarted) {
+        // FIRST live byte: wipe the restored placeholder ONCE, then pipe live output so
+        // claude's --continue redraw (or a fresh session) replaces it with zero overlap.
+        term.reset();
         liveStarted = true;
-        pendingLive += e.data;
-        if (!replayWritten || replayDrained) runResetBeforeLive();
-        schedulePersist();
-        return;
       }
       term.write(e.data);
       schedulePersist();
