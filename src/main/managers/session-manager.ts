@@ -235,7 +235,12 @@ export class SessionManager {
     pid: number | undefined,
     continued: boolean,
   ): AgentSession {
-    // hasActiveTurn: honest false for Plan 2 — real turn detection is Plan 5.
+    // AgentSession.hasActiveTurn stays false here ON PURPOSE: this status snapshot is a
+    // POINT-IN-TIME event, but turn activity is a live, time-decaying signal. Real turn
+    // detection (V2 C) lives in the hasActiveTurn(worktreeId) METHOD + activeTurnWorktreeIds(),
+    // which the before-quit warning reads on demand. Nothing consumes this field today; it is
+    // kept only to preserve the AgentSession shape. (Don't compute it here — it would bake a
+    // stale 'active' into a status that is emitted on lifecycle changes, not on output.)
     return { worktreeId, pid, status, hasActiveTurn: false, continued };
   }
 
