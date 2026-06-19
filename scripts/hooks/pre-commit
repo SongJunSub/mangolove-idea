@@ -1,0 +1,32 @@
+#!/bin/sh
+# MangoLove reliability gate — deterministic format enforcement.
+#
+# Why: `format:check` (prettier --check .) failed 3x in a row right after
+# subagent workflows (Settings, merge-conflict, PR/CI) and had to be hand-fixed
+# each time. A prompt-level "always run format" rule is unreliable; a hook is not.
+# (See methodology/strict.md "신뢰성 게이트": move forced rules out of prose into code.)
+#
+# What: auto-format every staged file with Prettier and re-stage it, so each commit
+# is prettier-clean. NON-blocking by design — it fixes + re-stages rather than
+# rejecting, so programmatic/subagent commits stay green too. Honors .prettierignore
+# (the hand-written Korean *.md prose is excluded there, so it is never reflowed).
+#
+# Wired via `core.hooksPath = scripts/hooks` (set by the `prepare` npm script on
+# install, and committed here so every clone gets it).
+
+prettier="./node_modules/.bin/prettier"
+[ -x "$prettier" ] || exit 0 # fresh clone before `npm install` — nothing to run
+
+# Staged, still-present files (Added/Copied/Modified).
+files=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$files" ] && exit 0
+
+# Format in place (NUL-delimited for paths with spaces). --ignore-unknown skips
+# files Prettier doesn't handle; Prettier itself honors .prettierignore.
+printf '%s\n' "$files" | tr '\n' '\0' \
+  | xargs -0 "$prettier" --write --ignore-unknown --log-level warn 2>/dev/null || true
+
+# Re-stage whatever was touched (no-op for files Prettier left unchanged).
+printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 git add 2>/dev/null || true
+
+exit 0

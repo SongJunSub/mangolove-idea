@@ -9,6 +9,7 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath scripts/hooks || true",
     "postinstall": "electron-rebuild -f -w node-pty",
     "rebuild": "electron-rebuild -f -w node-pty",
     "dev": "electron-vite dev",
