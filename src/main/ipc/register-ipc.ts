@@ -702,8 +702,18 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     // UNIFORM restart: read the new repoRoot fresh at startup so every
     // repoRoot-bound manager + the renderer rebuild cleanly (no runtime cache
     // invalidation of worktree/diff/conflict/gh/merge managers).
+    //
+    // Route the quit through the SAME confirmed forced-quit path as APP_QUIT_DECISION,
+    // NOT a raw app.quit(). A raw quit re-fires app.on('before-quit') ->
+    // QuitController.onBeforeQuit, which preventDefault()s + pops a quit-warning when
+    // live worktree sessions exist (reachable once a change-repo affordance lands) —
+    // swallowing the relaunch and leaving repoRoot persisted but the app running on
+    // STALE in-memory managers (a half-state). Setting confirmedQuit + requestQuit()
+    // (wired in index.ts to quitController.decide(true)) makes the re-fired before-quit
+    // fall through cleanly: relaunch is honored, no veto, no unexpected popup.
     app.relaunch();
-    app.quit();
+    ctx.confirmedQuit = true;
+    ctx.requestQuit?.();
     return { ok: true, repoRoot: dir };
   });
 
