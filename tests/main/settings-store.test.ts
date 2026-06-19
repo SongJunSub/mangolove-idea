@@ -74,6 +74,15 @@ describe('SettingsStore', () => {
     expect(new SettingsStore(file).get()).toEqual({ agentCommand: 'a', serverCommand: 'echo hi' });
   });
 
+  it('round-trips repoRoot (a known string key) and sanitizes a non-string repoRoot', () => {
+    const store = new SettingsStore(file);
+    store.set({ repoRoot: '/Users/me/project' });
+    expect(new SettingsStore(file).get()).toEqual({ repoRoot: '/Users/me/project' });
+    // a non-string repoRoot from a hand-edited file must be dropped, not surfaced
+    writeFileSync(file, JSON.stringify({ repoRoot: 123, baseBranch: 'main' }));
+    expect(new SettingsStore(file).load()).toEqual({ baseBranch: 'main' });
+  });
+
   it('load() treats a corrupt file as {} (never throws), and set() recovers', () => {
     writeFileSync(file, '{ this is not json');
     const store = new SettingsStore(file);

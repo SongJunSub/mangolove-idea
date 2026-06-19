@@ -419,4 +419,10 @@ export interface AppSettings {
   readonly serverCommand?: string;
   /** Default base branch for merge target + diff; unset => 'main'. */
   readonly baseBranch?: string;
+  /**
+   * Absolute path of the git repo MangoLove operates on. Set ONLY via the
+   * repo-picker flow (REPO_PICK), never surfaced in the Settings modal. Unset =>
+   * resolveRepoRoot() falls back to cwd (dev) or null (Finder launch w/ bad cwd).
+   */
+  readonly repoRoot?: string;
 }

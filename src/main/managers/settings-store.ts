@@ -11,19 +11,20 @@ export function getDefaultSettingsPath(getUserDataPath: () => string): string {
   return join(getUserDataPath(), 'settings.json');
 }
 
-/** The four known AppSettings keys — the ONLY keys ever read/written. */
+/** The five known AppSettings keys — the ONLY keys ever read/written. */
 const KNOWN_KEYS: readonly (keyof AppSettings)[] = [
   'agentCommand',
   'verifyCommand',
   'serverCommand',
   'baseBranch',
+  'repoRoot',
 ];
 
 /**
  * Persists the V2 item E AppSettings to a single JSON file whose path is injected
  * (tests use a temp file). Mirrors SessionStore EXACTLY: never throws on a
  * missing/corrupt/non-object file (treated as empty {}), sanitizes to ONLY the
- * four known STRING fields (drops unknown keys, ignores non-strings), and writes
+ * five known STRING fields (drops unknown keys, ignores non-strings), and writes
  * atomically (temp file + rename) so a crash mid-write cannot leave a half file.
  *
  * EVERY field is optional: an unset field means the caller falls back to the env
@@ -77,7 +78,7 @@ export class SettingsStore {
   }
 
   /**
-   * Projects an input to EXACTLY the four known STRING fields (drops anything else).
+   * Projects an input to EXACTLY the five known STRING fields (drops anything else).
    * Enforces the SAME non-empty invariant as set(): an empty string is treated as
    * UNSET (dropped), so a present key ALWAYS carries a non-empty value on BOTH read
    * and write. This keeps get() from ever surfacing '' — robust to hand-edited or
