@@ -70,6 +70,10 @@ const api: MangoApi = {
     get: (worktreeId) => ipcRenderer.invoke(IPC.SCROLLBACK_GET, worktreeId),
     set: (req) => ipcRenderer.invoke(IPC.SCROLLBACK_SET, req),
   },
+  repo: {
+    get: () => ipcRenderer.invoke(IPC.REPO_GET),
+    pick: () => ipcRenderer.invoke(IPC.REPO_PICK),
+  },
 };
 
 contextBridge.exposeInMainWorld('mango', api);

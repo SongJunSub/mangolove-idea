@@ -426,3 +426,16 @@ export interface AppSettings {
    */
   readonly repoRoot?: string;
 }
+
+// ── Repo root picker (V2 packaging) ──
+
+/**
+ * Result of the REPO_PICK flow. On success the main process has ALREADY persisted
+ * repoRoot and is about to relaunch — so the renderer rarely observes `ok:true`
+ * (the window is replaced). The error/canceled shapes let the renderer keep the
+ * empty-state up without a restart.
+ */
+export type RepoPickResult =
+  | { readonly ok: true; readonly repoRoot: string }
+  | { readonly ok: false; readonly canceled: true }
+  | { readonly ok: false; readonly error: string };
