@@ -9,9 +9,9 @@ import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
 import { ScrollbackStore, getDefaultScrollbackPath } from './managers/scrollback-store';
 import type { QuitWarningEvent } from '../shared/types';
+import { resolveRepoRoot } from './util/resolve-repo-root';
 
 const ctx = createIpcContext();
-ctx.repoRoot = process.cwd();
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -88,6 +88,14 @@ app.whenReady().then(() => {
   // the real electron `app` for the userData path) and assign it BEFORE
   // registerIpc so getSettingsStore stays synchronous.
   ctx.settingsStore = new SettingsStore(getDefaultSettingsPath(() => app.getPath('userData')));
+  // Finder-launched .app has cwd='/', so cwd is NOT a safe repoRoot. Prefer the
+  // persisted repoRoot (SettingsStore), else cwd if it is itself a git work tree
+  // (the dev case), else null (renderer shows the repo-picker empty-state). ctx.repoRoot
+  // is read LAZILY by the getters, so setting it here (before registerIpc) is in time.
+  ctx.repoRoot = resolveRepoRoot({
+    persisted: ctx.settingsStore.get().repoRoot,
+    cwd: process.cwd(),
+  });
   // Construct the ScrollbackStore eagerly (same reason as the others: we hold the real
   // electron `app` for the userData path) and assign it BEFORE registerIpc so the sync
   // getScrollbackStore resolver finds it on the SCROLLBACK_GET/SET handlers.

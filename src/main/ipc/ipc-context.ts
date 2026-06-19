@@ -17,8 +17,14 @@ import type { GhStatusReader } from '../git/gh-status-reader';
  */
 export interface IpcContext {
   mainWindow: BrowserWindow | null;
-  /** Absolute path of the repo MangoLove operates on (set by main/index.ts). */
-  repoRoot?: string;
+  /**
+   * Absolute path of the repo MangoLove operates on, or null/undefined when no
+   * repo is selected (Finder launch with cwd='/' and no persisted repoRoot). Set by
+   * main/index.ts via resolveRepoRoot(). The repoRoot-bound getters assert it via
+   * requireRepoRoot (throws a friendly error if absent); the renderer gates the
+   * worktree UI behind a non-null repoRoot so the assert is defensive.
+   */
+  repoRoot?: string | null;
   /** Lazily constructed in register-ipc from repoRoot; injectable in tests. */
   worktreeManager?: WorktreeManager;
   /** Lazily constructed in register-ipc; injectable in tests. */
