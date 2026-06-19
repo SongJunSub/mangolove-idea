@@ -6,7 +6,7 @@
 > 규모: **S** = 한 PR / 며칠 · **M** = 한 플랜(Plan 0–5 급) · **L** = 여러 플랜 / 재설계.
 > 의존성은 MVP 기준. 각 항목은 착수 시 `writing-plans`로 정식 플랜화 후 진행한다.
 
-상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-18 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**.
+상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-19 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**, **B PR/CI 패널 완료**.
 
 ---
 
@@ -22,7 +22,7 @@
 
 | 기능 | 규모 | 의존성 | 가치 / 메모 |
 |------|:--:|------|------|
-| **PR / CI 패널** | M | Plan 1 | 브랜치의 PR 상태·CI 체크를 앱에서 확인 (gh CLI / GitHub API). 인증 설계 필요 |
+| ~~**PR / CI 패널**~~ ✅ **완료** | M | Plan 1 | 선택한 워크트리 브랜치의 GitHub PR 상태 + CI 체크를 **gh CLI**(keyring 인증, 토큰 비노출)로 read-only 조회. stateless GhStatusReader + 순수 classifyGhStatus/summarizeChecks + GH_STATUS/APP_OPEN_EXTERNAL IPC + useGhStatus 훅 + GhStatusPanel. 8-kind union(no-pr/not-pushed 등 차분한 1급 상태), not-pushed는 gh 미스폰 단락. openExternal은 https github.com만(스킴 검증). 계획: docs/plans/2026-06-18-v2-prci-panel.md. 머지 대기 |
 | **브라우저 자동화** | M | Plan 3 | 로컬 서버 기동 후 Playwright로 화면 확인까지 한 화면에서 |
 
 ## C. 에이전트·세션 심화 (무겁고 불확실 — 명확한 수요 생길 때)
