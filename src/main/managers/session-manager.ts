@@ -1,6 +1,15 @@
 import type { Ack, AgentSession, AgentStatus, SessionRecord } from '../../shared/types';
 import type { IPtyLike, PtyExitEvent, PtyFactory } from '../pty/pty-factory';
 
+/**
+ * A turn is "active" iff the PTY emitted output within the last ACTIVE_TURN_MS.
+ * Output-activity heuristic (NOT TUI-string parsing): during a turn claude streams
+ * tokens/tool output continuously; when idle it is quiet. Version-independent.
+ * 1500 ms tolerates the gap between streamed tokens while collapsing to "idle"
+ * within ~1.5 s of the turn ending.
+ */
+const ACTIVE_TURN_MS = 1500;
+
 /** Plan-2 spawn input (mirrors SpawnSessionRequest minus transport concerns). */
 export interface SpawnArgs {
   readonly worktreeId: string;
@@ -51,6 +60,12 @@ interface Session {
   readonly continued: boolean;
   /** Guards against double exit emission (kill then natural exit). */
   exited: boolean;
+  /**
+   * Epoch ms (via injected clock) of the most recent PTY output. Initialized to
+   * spawn time so a still-loading session counts as an active turn until it goes
+   * quiet. Drives hasActiveTurn (output-activity heuristic, V2 C).
+   */
+  lastOutputAt: number;
 }
 
 /**
@@ -108,10 +123,22 @@ export class SessionManager {
     const ptyArgs = continueSession ? ['--continue'] : [];
     const pty = this.factory.spawn(this.command, ptyArgs, { cwd, cols, rows });
 
-    const session: Session = { pty, status: 'running', continued: continueSession, exited: false };
+    const session: Session = {
+      pty,
+      status: 'running',
+      continued: continueSession,
+      exited: false,
+      // Count a just-spawned (still-loading, no-output-yet) session as active until
+      // it goes quiet for ACTIVE_TURN_MS — better to warn than silently kill spin-up.
+      lastOutputAt: this.clock(),
+    };
     this.sessions.set(worktreeId, session);
 
-    pty.onData((data) => this.emitter.emitOutput({ worktreeId, data }));
+    pty.onData((data) => {
+      // Stamp every output byte: this is the whole turn-detection signal.
+      session.lastOutputAt = this.clock();
+      this.emitter.emitOutput({ worktreeId, data });
+    });
     pty.onExit((e) => this.handleExit(worktreeId, session, e));
 
     const running = this.buildSession(worktreeId, 'running', pty.pid, continueSession);
@@ -208,7 +235,12 @@ export class SessionManager {
     pid: number | undefined,
     continued: boolean,
   ): AgentSession {
-    // hasActiveTurn: honest false for Plan 2 — real turn detection is Plan 5.
+    // AgentSession.hasActiveTurn stays false here ON PURPOSE: this status snapshot is a
+    // POINT-IN-TIME event, but turn activity is a live, time-decaying signal. Real turn
+    // detection (V2 C) lives in the hasActiveTurn(worktreeId) METHOD + activeTurnWorktreeIds(),
+    // which the before-quit warning reads on demand. Nothing consumes this field today; it is
+    // kept only to preserve the AgentSession shape. (Don't compute it here — it would bake a
+    // stale 'active' into a status that is emitted on lifecycle changes, not on output.)
     return { worktreeId, pid, status, hasActiveTurn: false, continued };
   }
 
@@ -219,6 +251,28 @@ export class SessionManager {
       if (!session.exited) ids.push(worktreeId);
     }
     return ids;
+  }
+
+  /**
+   * True iff the worktree has a LIVE (non-exited) session whose last PTY output was
+   * within ACTIVE_TURN_MS — i.e. a turn is in flight right now. The before-quit
+   * WARNING keys on this (a running turn would be lost on quit); an idle live session
+   * is lossless (b-lite re-spawns it via `claude --continue`). Output-activity
+   * heuristic, NOT TUI parsing (V2 C).
+   */
+  hasActiveTurn(worktreeId: string): boolean {
+    const s = this.sessions.get(worktreeId);
+    if (!s || s.exited) return false;
+    return this.clock() - s.lastOutputAt < ACTIVE_TURN_MS;
+  }
+
+  /**
+   * Live worktrees that currently have an active turn (subset of liveWorktreeIds).
+   * The before-quit warning fires only when this is non-empty. The kill-sweep on
+   * confirmed quit STILL uses liveWorktreeIds()/killAll() (kills idle sessions too).
+   */
+  activeTurnWorktreeIds(): string[] {
+    return this.liveWorktreeIds().filter((id) => this.hasActiveTurn(id));
   }
 
   /**

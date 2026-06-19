@@ -6,7 +6,7 @@
 > 규모: **S** = 한 PR / 며칠 · **M** = 한 플랜(Plan 0–5 급) · **L** = 여러 플랜 / 재설계.
 > 의존성은 MVP 기준. 각 항목은 착수 시 `writing-plans`로 정식 플랜화 후 진행한다.
 
-상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-19 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**, **B PR/CI 패널 완료**, **xterm 스크롤백 재생 완료**, **패키징·배포 완료**, **임베디드 브라우저 뷰 완료**.
+상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-19 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**, **B PR/CI 패널 완료**, **xterm 스크롤백 재생 완료**, **패키징·배포 완료**, **임베디드 브라우저 뷰 완료**, **턴 감지(`hasActiveTurn`) 완료**.
 
 ---
 
@@ -29,7 +29,7 @@
 
 | 기능 | 규모 | 의존성 | 가치 / 트리거 |
 |------|:--:|------|------|
-| **실제 턴 감지 (`hasActiveTurn`)** | M | Plan 2 | *드러난 후보.* b-lite가 의도적으로 포기한 것. claude TUI 출력 파싱 → 종료 경고를 "라이브 세션"이 아닌 "실행 중인 턴" 기준으로 정밀화. **b-full의 전제** |
+| ~~**실제 턴 감지 (`hasActiveTurn`)**~~ ✅ **완료** | M | Plan 2 | 종료 경고를 "라이브 세션"이 아닌 **"실행 중인 턴"** 기준으로 정밀화. 접근: **출력 활동 휴리스틱**(claude TUI 문자열 파싱 X — 버전 취약) — PTY가 최근 `ACTIVE_TURN_MS`(1500ms) 내 출력했으면 턴 진행 중. `SessionManager.lastOutputAt`(주입 clock 스탬프) + `hasActiveTurn`/`activeTurnWorktreeIds`. 경고 트리거만 `liveWorktreeIds`→`activeTurnWorktreeIds`로 교체(idle 라이브 세션은 `--continue`로 무손실). kill-sweep는 그대로 `killAll()`(idle 포함 전부). 신규 IPC/매니저 0. **b-full의 전제**. 계획: docs/plans/2026-06-19-v2-turn-detection.md |
 | **세션 영속화 b-full** | L | Plan 2, 턴 감지 | 앱을 꺼도 `claude` 프로세스 생존 + 재attach (tmux/abduco 래퍼, 데몬 X). ⚠️ **트리거: "실행 중이던 턴 끊김 절대 불가"가 하드 요구일 때만.** 리서치 결론상 그 전엔 b-lite로 충분 |
 | **멀티모델 팬아웃** | L | Plan 2 | 한 작업을 여러 모델/에이전트에 병렬로 던지고 비교. 가장 큰 기능 — 별도 설계 권장 |
 | **크로스머신 세션 이동** | L | b-full | 다른 머신에서 세션 이어가기. 로컬 도구 범위를 가장 벗어남 |

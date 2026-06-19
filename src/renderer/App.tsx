@@ -368,9 +368,9 @@ export function App(): React.JSX.Element {
           <div style={{ background: '#fff', borderRadius: 8, padding: 24, maxWidth: 380 }}>
             <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
             <p style={{ fontSize: 13 }}>
-              {quitWarning.activeWorktreeIds.length} agent session(s) are live. They will be
-              terminated (their conversations are saved by claude and resume with{' '}
-              <code>--continue</code> next time). Quit anyway?
+              {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and would
+              be interrupted. (Conversations are saved by claude and resume with{' '}
+              <code>--continue</code> next time — only the in-flight turn is lost.) Quit anyway?
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
               <button type="button" onClick={() => void onQuitDecision(false)}>

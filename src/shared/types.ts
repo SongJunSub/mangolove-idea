@@ -257,13 +257,15 @@ export interface ConflictInProgressRequest {
 }
 
 /**
- * Emitted to the renderer at quit (MVP item 6) when agent sessions are live, so
- * the user can confirm before the PTYs are swept. NOTE: this is driven by LIVE
- * (running, non-exited) PTYs, not by turn detection — `hasActiveTurn` stays false
- * (b-lite declines real turn detection; warning-on-live-session is the honest MVP).
+ * Emitted to the renderer at quit when an agent TURN is in flight, so the user can
+ * confirm before the PTYs are swept. As of V2 C this is driven by TURN DETECTION
+ * (output-activity heuristic: a session that emitted output within ACTIVE_TURN_MS),
+ * NOT by mere liveness — an idle live session is lossless to quit (b-lite re-spawns
+ * it via `claude --continue`). The kill-sweep on confirmed quit still kills ALL live
+ * PTYs; only this WARNING keys on active turns.
  */
 export interface QuitWarningEvent {
-  /** worktreeIds that currently have a running (non-exited) claude PTY. */
+  /** worktreeIds that currently have an ACTIVE TURN (live PTY, output within ACTIVE_TURN_MS). */
   readonly activeWorktreeIds: readonly string[];
 }
 

@@ -45,6 +45,7 @@ function makeManager(opts: {
   resolvePath?: (id: string) => Promise<string | undefined>;
   command?: string;
   onIdle?: () => void;
+  clock?: () => number;
 }) {
   const { factory, calls } = makeFakeFactory(opts.fakes);
   const { emitter, outputs, exits, statuses } = makeSpyEmitter();
@@ -54,6 +55,7 @@ function makeManager(opts: {
     command: opts.command ?? 'claude',
     resolvePath: opts.resolvePath ?? (async (id) => id),
     onIdle: opts.onIdle,
+    clock: opts.clock,
   });
   return { mgr, calls, outputs, exits, statuses };
 }
@@ -243,5 +245,75 @@ describe('SessionManager onIdle (deferred live-apply hook, V2 E)', () => {
     expect(onIdle).not.toHaveBeenCalled();
     b.emitExit(0); // now idle
     expect(onIdle).toHaveBeenCalledOnce();
+  });
+});
+
+describe('SessionManager turn detection (output-activity heuristic, V2 C)', () => {
+  // A mutable clock so the test advances "now" deterministically.
+  function mutableClock(start = 1000) {
+    let t = start;
+    return { now: () => t, advance: (ms: number) => void (t += ms) };
+  }
+
+  it('hasActiveTurn is true right after the session spawns (still-loading counts as active)', async () => {
+    const clock = mutableClock();
+    const { mgr } = makeManager({ fakes: [makeFakePty(1)], clock: clock.now });
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    // lastOutputAt was initialized to spawn time; clock has not advanced.
+    expect(mgr.hasActiveTurn(WT)).toBe(true);
+  });
+
+  it('hasActiveTurn is true while output keeps arriving within ACTIVE_TURN_MS', async () => {
+    const clock = mutableClock();
+    const fake = makeFakePty(1);
+    const { mgr } = makeManager({ fakes: [fake], clock: clock.now });
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    clock.advance(1499); // just under the threshold since spawn
+    expect(mgr.hasActiveTurn(WT)).toBe(true);
+    fake.emitData('token'); // re-stamps lastOutputAt to now (1000 + 1499)
+    clock.advance(1499); // again just under the threshold since the last output
+    expect(mgr.hasActiveTurn(WT)).toBe(true);
+  });
+
+  it('hasActiveTurn is false once the gap since last output reaches ACTIVE_TURN_MS', async () => {
+    const clock = mutableClock();
+    const { mgr } = makeManager({ fakes: [makeFakePty(1)], clock: clock.now });
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    clock.advance(1500); // exactly the threshold -> NOT < ACTIVE_TURN_MS
+    expect(mgr.hasActiveTurn(WT)).toBe(false);
+  });
+
+  it('hasActiveTurn is false for an exited session even if it emitted recently', async () => {
+    const clock = mutableClock();
+    const fake = makeFakePty(1);
+    const { mgr } = makeManager({ fakes: [fake], clock: clock.now });
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    fake.emitData('mid-turn'); // recent output...
+    fake.emitExit(0); // ...but the session has exited
+    expect(mgr.hasActiveTurn(WT)).toBe(false);
+  });
+
+  it('hasActiveTurn is false for a worktree with no session', () => {
+    const { mgr } = makeManager({ fakes: [] });
+    expect(mgr.hasActiveTurn('/ghost')).toBe(false);
+  });
+
+  it('activeTurnWorktreeIds returns only the live sessions still inside ACTIVE_TURN_MS', async () => {
+    const clock = mutableClock();
+    const a = makeFakePty(1);
+    const b = makeFakePty(2);
+    const c = makeFakePty(3);
+    const { mgr } = makeManager({ fakes: [a, b, c], clock: clock.now });
+    await mgr.spawn({ worktreeId: '/wt/a', continueSession: false, cols: 80, rows: 24 });
+    await mgr.spawn({ worktreeId: '/wt/b', continueSession: false, cols: 80, rows: 24 });
+    await mgr.spawn({ worktreeId: '/wt/c', continueSession: false, cols: 80, rows: 24 });
+    // Let everyone go quiet past the threshold...
+    clock.advance(2000);
+    // ...then only A emits again, so only A is "active".
+    a.emitData('still working');
+    expect(mgr.activeTurnWorktreeIds().sort()).toEqual(['/wt/a']);
+    // B exits (dead): never counts. C stays idle: also excluded.
+    b.emitExit(0);
+    expect(mgr.activeTurnWorktreeIds().sort()).toEqual(['/wt/a']);
   });
 });
