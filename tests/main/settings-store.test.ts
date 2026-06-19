@@ -58,7 +58,7 @@ describe('SettingsStore', () => {
     expect('agentCommand' in loaded).toBe(false);
   });
 
-  it('sanitizes to ONLY the 4 known string fields (drops unknown keys + non-strings)', () => {
+  it('sanitizes to ONLY the 5 known string fields (drops unknown keys + non-strings)', () => {
     const store = new SettingsStore(file);
     store.set({
       agentCommand: 'a',

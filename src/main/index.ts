@@ -63,18 +63,26 @@ app.whenReady().then(() => {
   // PATH FIX (packaged macOS only): a Finder-launched .app inherits launchd's
   // minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), NOT the user's login-shell
   // PATH — so `claude` (~/.local/bin), `gh`/`git`/`npm` (/opt/homebrew/bin) would
-  // ENOENT. Run the login shell once to capture its real PATH and merge it in.
-  // env passthrough is already wired in every spawner (pty-factory, process-runner,
+  // ENOENT. Run the login shell once to capture its real PATH and use it (a login
+  // shell's PATH is a superset that already contains the launchd entries). env
+  // passthrough is already wired in every spawner (pty-factory, process-runner,
   // gh-status-reader), so fixing process.env.PATH once fixes them all. Guarded by
   // app.isPackaged so `npm run dev` (which already has the dev shell PATH) is a
   // literal no-op; try/catch keeps the launchd PATH on any failure (degrade quietly).
   if (app.isPackaged && process.platform === 'darwin') {
     try {
-      const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', 'printf "%s" "$PATH"'], {
-        encoding: 'utf8',
-        timeout: 5000,
-      });
-      if (out.trim()) process.env.PATH = out.trim();
+      // `-il` runs the user's interactive rc files (where nvm/asdf/etc. set PATH).
+      // Those rc files can ALSO print banners to STDOUT, which would otherwise be
+      // prepended to the captured value and corrupt PATH. Wrap the value in sentinels
+      // and extract ONLY between them, so any banner noise is ignored.
+      const out = execFileSync(
+        process.env.SHELL || '/bin/zsh',
+        ['-ilc', 'printf "__MLPATH__%s__MLPATH__" "$PATH"'],
+        { encoding: 'utf8', timeout: 5000 },
+      );
+      const match = out.match(/__MLPATH__([\s\S]*?)__MLPATH__/);
+      const captured = match?.[1]?.trim();
+      if (captured) process.env.PATH = captured;
     } catch {
       // keep the launchd PATH; spawning degrades gracefully (gh -> gh-missing etc.)
     }
