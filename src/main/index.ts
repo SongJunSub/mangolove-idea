@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { createIpcContext } from './ipc/ipc-context';
 import { registerIpc } from './ipc/register-ipc';
@@ -59,6 +60,25 @@ const quitController = new QuitController({
 ctx.requestQuit = () => quitController.decide(true);
 
 app.whenReady().then(() => {
+  // PATH FIX (packaged macOS only): a Finder-launched .app inherits launchd's
+  // minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), NOT the user's login-shell
+  // PATH — so `claude` (~/.local/bin), `gh`/`git`/`npm` (/opt/homebrew/bin) would
+  // ENOENT. Run the login shell once to capture its real PATH and merge it in.
+  // env passthrough is already wired in every spawner (pty-factory, process-runner,
+  // gh-status-reader), so fixing process.env.PATH once fixes them all. Guarded by
+  // app.isPackaged so `npm run dev` (which already has the dev shell PATH) is a
+  // literal no-op; try/catch keeps the launchd PATH on any failure (degrade quietly).
+  if (app.isPackaged && process.platform === 'darwin') {
+    try {
+      const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', 'printf "%s" "$PATH"'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      if (out.trim()) process.env.PATH = out.trim();
+    } catch {
+      // keep the launchd PATH; spawning degrades gracefully (gh -> gh-missing etc.)
+    }
+  }
   // Construct the SessionStore eagerly (we hold the real electron `app` for the
   // userData path) and assign it BEFORE registerIpc, so getSessionStore /
   // getSessionManager stay synchronous and the SESSION_INPUT/RESIZE on-handlers
