@@ -53,6 +53,10 @@ function emitQuitWarning(activeWorktreeIds: readonly string[]): void {
 
 const quitController = new QuitController({
   liveWorktreeIds: () => ctx.sessionManager?.liveWorktreeIds() ?? [],
+  // The before-quit WARNING keys on ACTIVE TURNS (a running turn would be lost on quit),
+  // NOT on live sessions — an idle live session is lossless (b-lite re-spawns it via
+  // `claude --continue`). The sweep below still calls killAll() (kills idle ones too).
+  activeTurnWorktreeIds: () => ctx.sessionManager?.activeTurnWorktreeIds() ?? [],
   emitQuitWarning,
   sweep: () => {
     ctx.sessionManager?.killAll(); // orphan-claude prevention (binding invariant §7).

@@ -3,8 +3,14 @@ import { QuitController, type QuitControllerDeps } from '../../src/main/app/quit
 
 function deps(over: Partial<QuitControllerDeps> = {}) {
   const calls: string[] = [];
+  const liveWorktreeIds = over.liveWorktreeIds ?? (() => ['/wt/a', '/wt/b']);
   const base = {
-    liveWorktreeIds: () => ['/wt/a', '/wt/b'],
+    liveWorktreeIds,
+    // The warning now keys on ACTIVE TURNS, not merely live sessions. Default to
+    // mirror liveWorktreeIds so the existing warn-on-quit AND no-live-no-warn tests
+    // are unchanged (an override of liveWorktreeIds flows through); idle-only cases
+    // override this to [].
+    activeTurnWorktreeIds: () => liveWorktreeIds(),
     emitQuitWarning: vi.fn((ids: readonly string[]) => calls.push(`warn:${ids.join(',')}`)),
     sweep: vi.fn(() => calls.push('sweep')),
     quitNow: vi.fn(() => calls.push('quitNow')),
@@ -66,5 +72,37 @@ describe('QuitController', () => {
     ctrl.onBeforeQuit({ preventDefault: vi.fn() });
     ctrl.onBeforeQuit({ preventDefault: vi.fn() });
     expect(base.sweep).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT warn when sessions are LIVE but all IDLE (no active turn): lets quit proceed, still sweeps', () => {
+    // Live sessions exist (kill-sweep must still run) but none has an active turn,
+    // so the warning must NOT fire — an idle session is lossless (claude --continue).
+    const { base } = deps({
+      liveWorktreeIds: () => ['/wt/a', '/wt/b'],
+      activeTurnWorktreeIds: () => [],
+    });
+    const ctrl = new QuitController(base);
+    const e = { preventDefault: vi.fn() };
+    ctrl.onBeforeQuit(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(base.emitQuitWarning).not.toHaveBeenCalled();
+    expect(base.sweep).toHaveBeenCalledOnce(); // killAll still runs (kills idle sessions too)
+  });
+
+  it('warns with the ACTIVE-TURN worktrees (subset of live) and sweeps ALL on confirm', () => {
+    // /wt/a and /wt/b are live, but only /wt/a has an active turn.
+    const { base, calls } = deps({
+      liveWorktreeIds: () => ['/wt/a', '/wt/b'],
+      activeTurnWorktreeIds: () => ['/wt/a'],
+    });
+    const ctrl = new QuitController(base);
+    const e = { preventDefault: vi.fn() };
+    ctrl.onBeforeQuit(e);
+    expect(e.preventDefault).toHaveBeenCalledOnce();
+    expect(base.emitQuitWarning).toHaveBeenCalledWith(['/wt/a']); // active turns only
+    expect(base.sweep).not.toHaveBeenCalled(); // not yet
+    ctrl.decide(true);
+    // Confirmed quit sweeps (killAll kills ALL live sessions, idle /wt/b included) then quits.
+    expect(calls).toEqual(['warn:/wt/a', 'sweep', 'quitNow']);
   });
 });

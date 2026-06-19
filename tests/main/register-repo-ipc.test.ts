@@ -119,6 +119,9 @@ describe('repo IPC wiring', () => {
     const emitQuitWarning = vi.fn();
     const controller = new QuitController({
       liveWorktreeIds: () => ['wt-1'], // a live PTY exists -> non-confirmed quit is vetoed.
+      // The warning now keys on active turns; this session has one in flight so the
+      // non-confirmed quit is still vetoed (the REPO_PICK path must use forced quit).
+      activeTurnWorktreeIds: () => ['wt-1'],
       emitQuitWarning,
       sweep: vi.fn(),
       quitNow: () => mocks.quit(),
