@@ -6,7 +6,7 @@
 > 규모: **S** = 한 PR / 며칠 · **M** = 한 플랜(Plan 0–5 급) · **L** = 여러 플랜 / 재설계.
 > 의존성은 MVP 기준. 각 항목은 착수 시 `writing-plans`로 정식 플랜화 후 진행한다.
 
-상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-19 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**, **B PR/CI 패널 완료**.
+상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-19 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**, **B PR/CI 패널 완료**, **xterm 스크롤백 재생 완료**.
 
 ---
 
@@ -15,7 +15,7 @@
 | 기능 | 규모 | 의존성 | 가치 / 메모 |
 |------|:--:|------|------|
 | ~~**Monaco diff 뷰어**~~ ✅ **완료** | M | Plan 1 | PR-style diff(브랜치 vs base, merge-base 원본) + Monaco DiffEditor(raw monaco, React.lazy 별도 ~7MB 청크) + Terminal\|Diff 토글. read-only. 계획: docs/plans/2026-06-18-v2-monaco-diff.md. 머지 e9af0dc |
-| **xterm 스크롤백 저장·재생** | S | Plan 2 | 재시작 시 이전 터미널 화면을 시각 복원(`@xterm/addon-serialize`, 실험적). b-lite 보완. 작음 |
+| ~~**xterm 스크롤백 저장·재생**~~ ✅ **완료** | S | Plan 2 | reset-before-live 재생: 마운트 시 직전 직렬화 화면을 즉시 복원(갭 필러) → 첫 라이브 바이트에 `term.reset()` 1회 후 `--continue` 라이브로 교체(중복/garble 0). `ScrollbackStore`(per-worktree, temp+rename, corrupt-safe, 256 KB tail-cap) + SCROLLBACK_GET/SET 4-layer IPC + `SerializeAddon`(`@xterm/addon-serialize@0.14.0`). 계획: docs/plans/2026-06-19-v2-xterm-scrollback.md |
 | ~~**머지 충돌 해결 UI**~~ ✅ **완료** | M | Plan 4 | 진짜 충돌은 머지를 일시정지(MERGE_HEAD 유지, `status:'conflict'`)하고 파일별 ours/theirs/manual + keep/remove(stage 누락)로 해결 → Continue(`commit --no-edit`, 충돌 0일 때만)/Abort. 비충돌 실패는 기존 safe-abort 그대로(Branch-by-Abstraction). stateless ConflictResolver(MERGE_HEAD/status 재계산) + owner() 귀속(단일 MERGE_HEAD 오귀속 방지) + 편집 Monaco(마커 위). 계획: docs/plans/2026-06-18-v2-merge-conflict.md. 머지 대기 |
 
 ## B. 외부 연동
@@ -91,3 +91,22 @@
   meaningless on MERGED/CLOSED). Add behind a "computing…" state with re-poll if surfaced.
 - **`git ls-remote` disambiguation:** distinguish "pushed but no PR" from "not pushed" more
   precisely than the @{u} upstream check (no API quota cost).
+
+---
+
+# V2 Backlog — Scrollback replay (deferred ideas, 2026-06-19)
+
+- **Merge-runner cleanup of scrollback:** `merge-runner.ts#cleanupWorktree` removes worktrees
+  directly (not via the WORKTREE_REMOVE IPC handler), so it does NOT drop the scrollback entry.
+  Backstopped by the per-entry 256 KB cap. Revisit if scrollback.json growth is ever observed.
+- **Per-worktree last-access pruning / global cap:** today only a PER-ENTRY byte cap exists.
+  Could add a global entry-count LRU cap if a user accumulates very many worktrees over time.
+- **Configurable scrollback line bound:** `SERIALIZE_SCROLLBACK_LINES` (1000) and
+  `PERSIST_THROTTLE_MS` (1500) are constants. Could surface in Settings (V2 E) if needed.
+- **flush-on-quit:** the before-quit sweep kills PTYs but does not force a final serialize of
+  every open terminal (the unmount cleanup covers worktree switches; a hard quit relies on the
+  last throttled persist, ≤1.5 s stale). Acceptable; revisit if users want pixel-exact restore.
+- **RTL component test:** `@testing-library/react` is absent; the reset-before-live latch +
+  throttle are covered only by typecheck + the manual smoke. Adding RTL + jsdom would let us
+  unit-test the latch (mock window.mango.scrollback + session.onOutput, assert term.reset()
+  called exactly once on the first output).

@@ -6,6 +6,7 @@ import { IPC } from '../shared/ipc-channels';
 import { QuitController } from './app/quit-controller';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
+import { ScrollbackStore, getDefaultScrollbackPath } from './managers/scrollback-store';
 import type { QuitWarningEvent } from '../shared/types';
 
 const ctx = createIpcContext();
@@ -67,6 +68,12 @@ app.whenReady().then(() => {
   // the real electron `app` for the userData path) and assign it BEFORE
   // registerIpc so getSettingsStore stays synchronous.
   ctx.settingsStore = new SettingsStore(getDefaultSettingsPath(() => app.getPath('userData')));
+  // Construct the ScrollbackStore eagerly (same reason as the others: we hold the real
+  // electron `app` for the userData path) and assign it BEFORE registerIpc so the sync
+  // getScrollbackStore resolver finds it on the SCROLLBACK_GET/SET handlers.
+  ctx.scrollbackStore = new ScrollbackStore(
+    getDefaultScrollbackPath(() => app.getPath('userData')),
+  );
   registerIpc(ipcMain, ctx);
   createWindow();
 

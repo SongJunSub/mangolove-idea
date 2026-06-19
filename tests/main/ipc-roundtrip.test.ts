@@ -605,3 +605,95 @@ describe('registerIpc — settings (V2 E)', () => {
     expect(store.get().agentCommand).toBe('new-claude');
   });
 });
+
+describe('registerIpc — scrollback (V2)', () => {
+  function makeIpcMain() {
+    const handlers = new Map<string, (...a: unknown[]) => unknown>();
+    const ipcMain = {
+      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
+      on: vi.fn(),
+    };
+    return { handlers, ipcMain };
+  }
+
+  it('SCROLLBACK_GET returns the stored buffer for a worktree', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(() => 'SAVED\x1b[0m'), set: vi.fn(), remove: vi.fn() };
+    registerIpc(ipcMain as never, { mainWindow: null, scrollbackStore: store as never });
+    const out = await handlers.get('scrollback:get')!({}, '/wt');
+    expect(store.get).toHaveBeenCalledWith('/wt');
+    expect(out).toBe('SAVED\x1b[0m');
+  });
+
+  it('SCROLLBACK_GET returns null (not undefined) when nothing is stored', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(() => undefined), set: vi.fn(), remove: vi.fn() };
+    registerIpc(ipcMain as never, { mainWindow: null, scrollbackStore: store as never });
+    const out = await handlers.get('scrollback:get')!({}, '/wt');
+    expect(out).toBeNull(); // IPC-serializable: undefined would arrive as undefined; we normalize to null
+  });
+
+  it('SCROLLBACK_SET persists {worktreeId, data} and returns an Ack', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const store = { get: vi.fn(), set: vi.fn(), remove: vi.fn() };
+    registerIpc(ipcMain as never, { mainWindow: null, scrollbackStore: store as never });
+    const ack = await handlers.get('scrollback:set')!({}, { worktreeId: '/wt', data: 'BUF' });
+    expect(store.set).toHaveBeenCalledWith('/wt', 'BUF');
+    expect(ack).toEqual({ ok: true });
+  });
+
+  it('WORKTREE_REMOVE best-effort removes the scrollback entry on success', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const wt = { list: vi.fn(), create: vi.fn(), remove: vi.fn(async () => undefined) };
+    const store = { get: vi.fn(), set: vi.fn(), remove: vi.fn() };
+    registerIpc(ipcMain as never, {
+      mainWindow: null,
+      worktreeManager: wt as never,
+      scrollbackStore: store as never,
+    });
+    const ack = await handlers.get('worktree:remove')!({}, { worktreeId: '/wt' });
+    expect(ack).toEqual({ ok: true });
+    expect(store.remove).toHaveBeenCalledWith('/wt');
+  });
+
+  it('WORKTREE_REMOVE does NOT remove scrollback when the worktree removal fails', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const wt = {
+      list: vi.fn(),
+      create: vi.fn(),
+      remove: vi.fn(async () => {
+        throw new Error('cannot remove the primary working tree');
+      }),
+    };
+    const store = { get: vi.fn(), set: vi.fn(), remove: vi.fn() };
+    registerIpc(ipcMain as never, {
+      mainWindow: null,
+      worktreeManager: wt as never,
+      scrollbackStore: store as never,
+    });
+    const ack = (await handlers.get('worktree:remove')!({}, { worktreeId: '/r' })) as {
+      ok: boolean;
+    };
+    expect(ack.ok).toBe(false);
+    expect(store.remove).not.toHaveBeenCalled();
+  });
+
+  it('WORKTREE_REMOVE still returns ok:true if scrollback cleanup throws (best-effort)', async () => {
+    const { handlers, ipcMain } = makeIpcMain();
+    const wt = { list: vi.fn(), create: vi.fn(), remove: vi.fn(async () => undefined) };
+    const store = {
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(() => {
+        throw new Error('disk full');
+      }),
+    };
+    registerIpc(ipcMain as never, {
+      mainWindow: null,
+      worktreeManager: wt as never,
+      scrollbackStore: store as never,
+    });
+    const ack = await handlers.get('worktree:remove')!({}, { worktreeId: '/wt' });
+    expect(ack).toEqual({ ok: true }); // cleanup is best-effort; never demotes the remove
+  });
+});

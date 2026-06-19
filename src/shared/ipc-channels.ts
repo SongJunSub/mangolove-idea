@@ -54,6 +54,10 @@ export const IPC = {
   // settings (V2 E) — persisted per-project config (renderer -> main, invoke)
   SETTINGS_GET: 'settings:get', // invoke (-> AppSettings)
   SETTINGS_SET: 'settings:set', // invoke (Partial<AppSettings> -> AppSettings)
+
+  // scrollback (V2) — per-worktree serialized terminal screen for conflict-free replay
+  SCROLLBACK_GET: 'scrollback:get', // invoke (worktreeId -> string | null)
+  SCROLLBACK_SET: 'scrollback:set', // invoke ({worktreeId, data} -> Ack)
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

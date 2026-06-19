@@ -6,6 +6,7 @@ import type { LogStore } from '../managers/log-store';
 import type { MergeRunner } from '../git/merge-runner';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
+import type { ScrollbackStore } from '../managers/scrollback-store';
 import type { DiffViewer } from '../git/diff-viewer';
 import type { ConflictResolver } from '../git/conflict-resolver';
 import type { GhStatusReader } from '../git/gh-status-reader';
@@ -32,6 +33,11 @@ export interface IpcContext {
   sessionStore?: SessionStore;
   /** Constructed EAGERLY in index.ts before registerIpc; injectable in tests (V2 E). */
   settingsStore?: SettingsStore;
+  /**
+   * Per-worktree serialized-terminal cache for conflict-free scrollback replay.
+   * Constructed EAGERLY in index.ts before registerIpc; injectable in tests (V2 scrollback).
+   */
+  scrollbackStore?: ScrollbackStore;
   /** Set true once the user confirms quit so before-quit stops re-intercepting (Plan 5). */
   confirmedQuit?: boolean;
   /**
