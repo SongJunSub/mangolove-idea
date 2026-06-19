@@ -1,6 +1,7 @@
 {
   "name": "mangolove-idea",
   "version": "0.1.0",
+  "author": "JunSub_Dev",
   "description": "Local dev orchestrator for parallel git-worktree work beside IntelliJ IDEA.",
   "private": true,
   "type": "module",
@@ -21,7 +22,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --mac --arm64",
+    "dist:dir": "npm run build && electron-builder --mac --arm64 --dir"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",
@@ -38,6 +41,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.0",
     "electron": "42.4.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "5.0.0",
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
@@ -49,5 +53,36 @@
     "typescript-eslint": "8.61.1",
     "vite": "7.3.5",
     "vitest": "4.1.9"
+  },
+  "build": {
+    "appId": "me.onda.mangolove-idea",
+    "productName": "MangoLove IDEA",
+    "electronVersion": "42.4.0",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/main/**/*",
+      "out/preload/**/*",
+      "out/renderer/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/node-pty/build/Release/*"
+    ],
+    "npmRebuild": false,
+    "mac": {
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools"
+    }
   }
 }
