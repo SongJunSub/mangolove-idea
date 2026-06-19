@@ -17,6 +17,8 @@ import { MergeControls } from './components/toolbar/merge-controls';
 import { GhStatusPanel } from './components/toolbar/gh-status-panel';
 import { useGhStatus } from './hooks/use-gh-status';
 import { LogPanel } from './components/logs/log-panel';
+import { detectServerUrl } from './lib/detect-server-url';
+import { BrowserPane } from './components/browser/browser-pane';
 
 // Lazy-loaded so the xterm.js bundle (+ addon-fit + its CSS) is only fetched when
 // a worktree is first selected — keeps the initial renderer chunk smaller.
@@ -41,6 +43,7 @@ export function App(): React.JSX.Element {
   const { worktrees, loading, error, create, remove, refresh } = useWorktrees();
   const { status: serverStatus, start: startServer, stop: stopServer } = useServer();
   const logLines = useLogs();
+  const detectedServerUrl = detectServerUrl(logLines);
   const statuses = useWorktreeStatus(worktrees, serverStatus);
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
   const {
@@ -54,7 +57,9 @@ export function App(): React.JSX.Element {
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
-  const [paneMode, setPaneMode] = useState<'terminal' | 'diff' | 'conflict'>('terminal');
+  const [paneMode, setPaneMode] = useState<'terminal' | 'diff' | 'conflict' | 'browser'>(
+    'terminal',
+  );
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
 
@@ -256,6 +261,15 @@ export function App(): React.JSX.Element {
                 >
                   Diff
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={paneMode === 'browser'}
+                  data-testid="tab-browser"
+                  onClick={() => setPaneMode('browser')}
+                >
+                  Browser
+                </button>
                 {conflictWorktreeId === selectedId && (
                   <button
                     type="button"
@@ -285,6 +299,9 @@ export function App(): React.JSX.Element {
                 <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading diff…</p>}>
                   <DiffView key={`diff-${selectedId}`} worktreeId={selectedId} base={baseBranch} />
                 </Suspense>
+              )}
+              {paneMode === 'browser' && (
+                <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
               )}
               {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
                 <Suspense
