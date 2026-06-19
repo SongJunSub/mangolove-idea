@@ -8,6 +8,7 @@ import { useWorktreeStatus } from './hooks/use-worktree-status';
 import { useMerge } from './hooks/use-merge';
 import { useSessionRecords } from './hooks/use-session-records';
 import { useSettings } from './hooks/use-settings';
+import { useRepo } from './hooks/use-repo';
 import { SettingsModal } from './components/settings/settings-modal';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
@@ -33,6 +34,7 @@ const ConflictView = lazy(() =>
 );
 
 export function App(): React.JSX.Element {
+  const repo = useRepo();
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [pingError, setPingError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -140,10 +142,50 @@ export function App(): React.JSX.Element {
     }
   }, []);
 
+  // Repo-picker gate: until a git repo is selected, show a centered empty-state
+  // INSTEAD of the worktree UI. While loading the initial REPO_GET, render nothing
+  // (avoids a flash of the empty-state before a persisted repo resolves).
+  if (repo.loading) {
+    return <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24 }} />;
+  }
+  if (repo.repoRoot === null) {
+    return (
+      <main
+        style={{
+          fontFamily: 'system-ui, sans-serif',
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+        }}
+      >
+        <h1 style={{ margin: 0 }}>MangoLove IDEA</h1>
+        <p data-testid="repo-empty-state" style={{ fontSize: 14, color: '#666' }}>
+          Select your git repository to begin
+        </p>
+        <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
+          Select repository…
+        </button>
+      </main>
+    );
+  }
+
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24 }}>
       <h1>MangoLove IDEA</h1>
-      <p>Plan 4: merge + cleanup + unified status sidebar.</p>
+      <div
+        data-testid="repo-header"
+        style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
+      >
+        <code style={{ fontSize: 13, color: '#444' }}>
+          {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
+        </code>
+        <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
+          change repo
+        </button>
+      </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Toolbar onCreate={create} />
