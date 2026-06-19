@@ -46,6 +46,7 @@ import { NodeProcessRunner } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
+import type { ScrollbackStore } from '../managers/scrollback-store';
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
 interface AppLike {
@@ -224,6 +225,19 @@ export function getSettingsStore(ctx: IpcContext): SettingsStore {
   if (ctx.settingsStore) return ctx.settingsStore;
   throw new Error(
     'settingsStore not initialized — index.ts must set ctx.settingsStore before registerIpc',
+  );
+}
+
+/**
+ * Resolves the ScrollbackStore SYNCHRONOUSLY. Constructed eagerly in index.ts (which holds
+ * the real electron `app` for the userData path) and assigned to ctx.scrollbackStore BEFORE
+ * registerIpc; tests inject ctx.scrollbackStore directly. Kept sync (mirrors getSessionStore)
+ * so the SCROLLBACK_GET/SET handlers delegate without an await hop.
+ */
+export function getScrollbackStore(ctx: IpcContext): ScrollbackStore {
+  if (ctx.scrollbackStore) return ctx.scrollbackStore;
+  throw new Error(
+    'scrollbackStore not initialized — index.ts must set ctx.scrollbackStore before registerIpc',
   );
 }
 
