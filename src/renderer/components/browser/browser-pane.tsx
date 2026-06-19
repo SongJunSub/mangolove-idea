@@ -43,7 +43,13 @@ export function BrowserPane({ detectedUrl }: BrowserPaneProps): React.JSX.Elemen
 
   /** Commit the draft as the loaded URL (Enter or the Go button). */
   const go = (): void => {
-    setUrl(draft.trim());
+    const trimmed = draft.trim();
+    // Normalize the address bar to the loaded value (so the bar and the <webview>
+    // never disagree) and mark it overridden so a later detected-URL change cannot
+    // clobber a URL the user explicitly committed.
+    setDraft(trimmed);
+    setOverridden(true);
+    setUrl(trimmed);
   };
 
   /** Reload the guest via the webview ref (no-op when nothing is loaded). */
