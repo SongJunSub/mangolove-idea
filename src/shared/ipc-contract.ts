@@ -35,6 +35,7 @@ import type {
   GhStatus,
   GhStatusRequest,
   OpenExternalRequest,
+  ScrollbackSetRequest,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -113,6 +114,12 @@ export interface MangoApi {
     get(): Promise<AppSettings>;
     /** Persists a partial; returns the merged, sanitized settings. */
     set(partial: Partial<AppSettings>): Promise<AppSettings>;
+  };
+  scrollback: {
+    /** Last serialized terminal screen for a worktree, or null if none saved. */
+    get(worktreeId: string): Promise<string | null>;
+    /** Persist a worktree's serialized terminal screen (store caps the size). */
+    set(req: ScrollbackSetRequest): Promise<Ack>;
   };
   gh: {
     /** Read-only PR/CI status for the worktree's branch (gh keyring auth; no token in app). */

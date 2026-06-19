@@ -345,6 +345,13 @@ export interface OpenExternalRequest {
   readonly url: string;
 }
 
+/** Payload for SCROLLBACK_SET: persist one worktree's serialized terminal screen. */
+export interface ScrollbackSetRequest {
+  readonly worktreeId: string;
+  /** SerializeAddon ANSI string (capped by the store to SCROLLBACK_MAX_BYTES). */
+  readonly data: string;
+}
+
 /** Collapsed CI summary derived ONLY from gh's per-check `bucket` field. */
 export interface GhCiSummary {
   /** 'none' = a PR with zero reported checks. */

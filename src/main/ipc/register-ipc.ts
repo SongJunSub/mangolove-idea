@@ -32,6 +32,7 @@ import type {
   GhStatus,
   GhStatusRequest,
   OpenExternalRequest,
+  ScrollbackSetRequest,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { DiffViewer } from '../git/diff-viewer';
@@ -417,6 +418,15 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       const manager = await getWorktreeManager(ctx);
       try {
         await manager.remove(req);
+        // Best-effort: drop the stale scrollback so removed worktrees do not accumulate
+        // buffers. Guarded (store may be absent in a partial test ctx) and try/catch'd so a
+        // cleanup failure NEVER demotes the successful removal Ack. Relies on the per-entry
+        // size cap as the backstop if this ever no-ops.
+        try {
+          ctx.scrollbackStore?.remove(req.worktreeId);
+        } catch {
+          // ignore — scrollback cleanup is non-essential; the size cap bounds growth anyway
+        }
         return { ok: true };
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -650,6 +660,22 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
         ctx.serverSettingsDirty = true; // busy: onIdle clears it after the server stops
       }
       return merged;
+    },
+  );
+
+  ipcMain.handle(
+    IPC.SCROLLBACK_GET,
+    async (_event: unknown, worktreeId: string): Promise<string | null> => {
+      // Normalize undefined -> null so the invoke result is an explicit, serializable value.
+      return getScrollbackStore(ctx).get(worktreeId) ?? null;
+    },
+  );
+
+  ipcMain.handle(
+    IPC.SCROLLBACK_SET,
+    async (_event: unknown, req: ScrollbackSetRequest): Promise<Ack> => {
+      getScrollbackStore(ctx).set(req.worktreeId, req.data);
+      return { ok: true };
     },
   );
 
