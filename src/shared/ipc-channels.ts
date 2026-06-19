@@ -58,6 +58,10 @@ export const IPC = {
   // scrollback (V2) — per-worktree serialized terminal screen for conflict-free replay
   SCROLLBACK_GET: 'scrollback:get', // invoke (worktreeId -> string | null)
   SCROLLBACK_SET: 'scrollback:set', // invoke ({worktreeId, data} -> Ack)
+
+  // repo root (V2 packaging) — pick/persist the git repo MangoLove operates on
+  REPO_GET: 'repo:get', // invoke (-> string | null = ctx.repoRoot)
+  REPO_PICK: 'repo:pick', // invoke (-> RepoPickResult; persists + relaunches on success)
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

@@ -258,7 +258,15 @@ describe('registerIpc — merge', () => {
     const { handlers, ipcMain } = makeIpcMain();
     const result = { worktreeId: '/wt', merged: true, cleanedUp: true };
     const mr = { run: vi.fn(async () => result) };
-    registerIpc(ipcMain as never, { mainWindow: null, mergeRunner: mr as never });
+    // MERGE_RUN consults getConflictResolver(ctx) first; with the repoRoot-bound
+    // getters now null-guarded (requireRepoRoot), the lazy resolver build needs a
+    // repoRoot. cwd is the project repo (a real git work tree, MERGE_HEAD absent),
+    // so inProgress() is false and the handler delegates to the injected mergeRunner.
+    registerIpc(ipcMain as never, {
+      mainWindow: null,
+      repoRoot: process.cwd(),
+      mergeRunner: mr as never,
+    });
     const req = { worktreeId: '/wt', targetBranch: 'main', runVerifyHook: true, cleanup: true };
     const out = await handlers.get('merge:run')!({}, req);
     expect(mr.run).toHaveBeenCalledWith(req);

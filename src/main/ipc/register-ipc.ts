@@ -33,6 +33,7 @@ import type {
   GhStatusRequest,
   OpenExternalRequest,
   ScrollbackSetRequest,
+  RepoPickResult,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { DiffViewer } from '../git/diff-viewer';
@@ -48,6 +49,18 @@ import type { IpcContext } from './ipc-context';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { ScrollbackStore } from '../managers/scrollback-store';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+/**
+ * Asserts a repo is selected and returns it. The renderer GATES all worktree ops
+ * behind a non-null repoRoot, so this throw is DEFENSIVE only — it surfaces a
+ * friendly message if a repoRoot-bound op is somehow invoked with no repo.
+ */
+function requireRepoRoot(ctx: IpcContext): string {
+  if (ctx.repoRoot == null) throw new Error('no repository selected');
+  return ctx.repoRoot;
+}
 
 /** Minimal slice of Electron `app` we depend on (keeps the logic testable). */
 interface AppLike {
@@ -110,7 +123,7 @@ export function resolveCommands(settings: AppSettings): ResolvedCommands {
  */
 async function getWorktreeManager(ctx: IpcContext): Promise<WorktreeManager> {
   if (ctx.worktreeManager) return ctx.worktreeManager;
-  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const repoRoot = requireRepoRoot(ctx);
   const { simpleGit } = await import('simple-git');
   ctx.worktreeManager = new WorktreeManager(simpleGit(repoRoot), repoRoot);
   return ctx.worktreeManager;
@@ -290,7 +303,7 @@ function buildMergeEmitter(ctx: IpcContext): MergeEmitter {
  */
 async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
   if (ctx.mergeRunner) return ctx.mergeRunner;
-  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const repoRoot = requireRepoRoot(ctx);
   const { simpleGit } = await import('simple-git');
   const worktrees = await getWorktreeManager(ctx);
   ctx.mergeRunner = new MergeRunner({
@@ -311,7 +324,7 @@ async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
  */
 async function getDiffViewer(ctx: IpcContext): Promise<DiffViewer> {
   if (ctx.diffViewer) return ctx.diffViewer;
-  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const repoRoot = requireRepoRoot(ctx);
   const { simpleGit } = await import('simple-git');
   ctx.diffViewer = new DiffViewer(simpleGit(repoRoot), repoRoot);
   return ctx.diffViewer;
@@ -327,7 +340,7 @@ async function getDiffViewer(ctx: IpcContext): Promise<DiffViewer> {
  */
 async function getGhStatusReader(ctx: IpcContext): Promise<GhStatusReader> {
   if (ctx.ghStatusReader) return ctx.ghStatusReader;
-  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const repoRoot = requireRepoRoot(ctx);
   const { simpleGit } = await import('simple-git');
   const root = simpleGit(repoRoot);
   const remote = (await root.remote(['get-url', 'origin']).catch(() => '')) ?? '';
@@ -382,7 +395,7 @@ export function parseOwnerRepo(url: string): { owner: string; repo: string } {
  */
 async function getConflictResolver(ctx: IpcContext): Promise<ConflictResolver> {
   if (ctx.conflictResolver) return ctx.conflictResolver;
-  const repoRoot = ctx.repoRoot ?? process.cwd();
+  const repoRoot = requireRepoRoot(ctx);
   const { simpleGit } = await import('simple-git');
   const worktrees = await getWorktreeManager(ctx);
   ctx.conflictResolver = new ConflictResolver({ git: simpleGit(repoRoot), worktrees });
@@ -662,6 +675,47 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       return merged;
     },
   );
+
+  ipcMain.handle(IPC.REPO_GET, async (): Promise<string | null> => {
+    // Normalize undefined -> null so the invoke result is an explicit, serializable
+    // value matching the Promise<string | null> contract (mirrors SCROLLBACK_GET).
+    return ctx.repoRoot ?? null;
+  });
+
+  ipcMain.handle(IPC.REPO_PICK, async (): Promise<RepoPickResult> => {
+    const { dialog, app } = await import('electron');
+    const res = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Select a git repository',
+    });
+    if (res.canceled || res.filePaths.length === 0) {
+      return { ok: false, canceled: true };
+    }
+    const dir = res.filePaths[0];
+    // valid git work tree = a `.git` entry (dir for a primary repo, file for a
+    // linked worktree). Cheap existence check, no git spawn — same rule as
+    // resolveRepoRoot so the picked dir survives the next-startup resolve.
+    if (!existsSync(join(dir, '.git'))) {
+      return { ok: false, error: 'not a git repository' };
+    }
+    getSettingsStore(ctx).set({ repoRoot: dir });
+    // UNIFORM restart: read the new repoRoot fresh at startup so every
+    // repoRoot-bound manager + the renderer rebuild cleanly (no runtime cache
+    // invalidation of worktree/diff/conflict/gh/merge managers).
+    //
+    // Route the quit through the SAME confirmed forced-quit path as APP_QUIT_DECISION,
+    // NOT a raw app.quit(). A raw quit re-fires app.on('before-quit') ->
+    // QuitController.onBeforeQuit, which preventDefault()s + pops a quit-warning when
+    // live worktree sessions exist (reachable once a change-repo affordance lands) —
+    // swallowing the relaunch and leaving repoRoot persisted but the app running on
+    // STALE in-memory managers (a half-state). Setting confirmedQuit + requestQuit()
+    // (wired in index.ts to quitController.decide(true)) makes the re-fired before-quit
+    // fall through cleanly: relaunch is honored, no veto, no unexpected popup.
+    app.relaunch();
+    ctx.confirmedQuit = true;
+    ctx.requestQuit?.();
+    return { ok: true, repoRoot: dir };
+  });
 
   ipcMain.handle(
     IPC.SCROLLBACK_GET,

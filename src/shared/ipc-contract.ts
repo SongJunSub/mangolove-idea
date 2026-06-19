@@ -36,6 +36,7 @@ import type {
   GhStatusRequest,
   OpenExternalRequest,
   ScrollbackSetRequest,
+  RepoPickResult,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -124,6 +125,15 @@ export interface MangoApi {
   gh: {
     /** Read-only PR/CI status for the worktree's branch (gh keyring auth; no token in app). */
     status(req: GhStatusRequest): Promise<GhStatus>;
+  };
+  repo: {
+    /** The currently-selected repo root, or null when none is set. */
+    get(): Promise<string | null>;
+    /**
+     * Open a native folder picker; on a valid git repo, persist it and relaunch.
+     * Returns {canceled} or {error} when nothing was persisted.
+     */
+    pick(): Promise<RepoPickResult>;
   };
 }
 

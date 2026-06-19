@@ -6,7 +6,7 @@
 > 규모: **S** = 한 PR / 며칠 · **M** = 한 플랜(Plan 0–5 급) · **L** = 여러 플랜 / 재설계.
 > 의존성은 MVP 기준. 각 항목은 착수 시 `writing-plans`로 정식 플랜화 후 진행한다.
 
-상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-19 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**, **B PR/CI 패널 완료**, **xterm 스크롤백 재생 완료**.
+상태: 작성 2026-06-18. v1 완성 기준. 갱신 2026-06-19 — **A1 Monaco diff 뷰어 완료**, **E 설정 UI 완료**, **머지 충돌 해결 UI 완료**, **B PR/CI 패널 완료**, **xterm 스크롤백 재생 완료**, **패키징·배포 완료**.
 
 ---
 
@@ -46,7 +46,7 @@
 |------|:--:|------|------|
 | ~~**설정 UI**~~ ✅ **완료** | M | — | agent / verify / server 명령 + base 브랜치를 기어(⚙) 모달에서 편집·영속화. `SettingsStore`(temp+rename, sanitize, corrupt-safe) + 우선순위 **settings > env > default**(`resolveCommands`) → env seam(`MANGO_AGENT_CMD` · `MANGO_VERIFY_CMD` · `MANGO_SERVER_CMD`) 스모크 유지. live-apply: stateless `mergeRunner`/`diffViewer`는 항상 캐시 클리어, 라이브 자식을 가진 `sessionManager`/`serverManager`는 idle일 때만(고아 방지). 계획: docs/plans/2026-06-18-v2-settings.md |
 | **멀티레포 / 멀티윈도우** | L | — | 지금은 단일 레포(`process.cwd()`). 여러 레포를 열기 |
-| **패키징·배포 (electron-builder)** | M | — | 지금은 `npm run dev` 실행. 서명된 설치본. `electron-builder`는 dev dep로 이미 잡아둠 |
+| ~~**패키징·배포 (electron-builder)**~~ ✅ **완료** | M | — | electron-builder@26.15.3로 mac arm64 dmg 패키징. node-pty `build/Release/*`(pty.node + spawn-helper) asarUnpack, `npmRebuild:false`(ABI-146는 electron-rebuild postinstall 산출), ad-hoc 서명(`mac.identity:null`). Finder 런치 PATH 픽스(packaged darwin: `$SHELL -ilc`로 로그인 셸 PATH 머지 → claude/gh/git/npm 스폰) + repo-root 피커(`resolveRepoRoot`: persisted SettingsStore.repoRoot → cwd → null, REPO_GET/PICK IPC, dialog→검증→persist→relaunch). 계획: docs/plans/2026-06-19-v2-packaging.md |
 
 ---
 

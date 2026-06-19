@@ -419,4 +419,23 @@ export interface AppSettings {
   readonly serverCommand?: string;
   /** Default base branch for merge target + diff; unset => 'main'. */
   readonly baseBranch?: string;
+  /**
+   * Absolute path of the git repo MangoLove operates on. Set ONLY via the
+   * repo-picker flow (REPO_PICK), never surfaced in the Settings modal. Unset =>
+   * resolveRepoRoot() falls back to cwd (dev) or null (Finder launch w/ bad cwd).
+   */
+  readonly repoRoot?: string;
 }
+
+// ── Repo root picker (V2 packaging) ──
+
+/**
+ * Result of the REPO_PICK flow. On success the main process has ALREADY persisted
+ * repoRoot and is about to relaunch — so the renderer rarely observes `ok:true`
+ * (the window is replaced). The error/canceled shapes let the renderer keep the
+ * empty-state up without a restart.
+ */
+export type RepoPickResult =
+  | { readonly ok: true; readonly repoRoot: string }
+  | { readonly ok: false; readonly canceled: true }
+  | { readonly ok: false; readonly error: string };

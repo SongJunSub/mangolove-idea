@@ -58,7 +58,7 @@ describe('SettingsStore', () => {
     expect('agentCommand' in loaded).toBe(false);
   });
 
-  it('sanitizes to ONLY the 4 known string fields (drops unknown keys + non-strings)', () => {
+  it('sanitizes to ONLY the 5 known string fields (drops unknown keys + non-strings)', () => {
     const store = new SettingsStore(file);
     store.set({
       agentCommand: 'a',
@@ -72,6 +72,15 @@ describe('SettingsStore', () => {
     expect(raw).not.toContain('SECRET');
     expect(Object.keys(JSON.parse(raw)).sort()).toEqual(['agentCommand', 'serverCommand']);
     expect(new SettingsStore(file).get()).toEqual({ agentCommand: 'a', serverCommand: 'echo hi' });
+  });
+
+  it('round-trips repoRoot (a known string key) and sanitizes a non-string repoRoot', () => {
+    const store = new SettingsStore(file);
+    store.set({ repoRoot: '/Users/me/project' });
+    expect(new SettingsStore(file).get()).toEqual({ repoRoot: '/Users/me/project' });
+    // a non-string repoRoot from a hand-edited file must be dropped, not surfaced
+    writeFileSync(file, JSON.stringify({ repoRoot: 123, baseBranch: 'main' }));
+    expect(new SettingsStore(file).load()).toEqual({ baseBranch: 'main' });
   });
 
   it('load() treats a corrupt file as {} (never throws), and set() recovers', () => {
