@@ -23,6 +23,13 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false, // preload needs Node built-ins (node:module via pty-factory chain)
+      // Enables the <webview> tag (DISABLED by default) for the embedded Browser pane
+      // (V2 B). Safe here: single-user local dev tool; the host renderer loads only our
+      // bundled app under a strict CSP (minimal XSS surface), and a <webview> GUEST gets
+      // its own WebContents with contextIsolation ON + nodeIntegration OFF (we add no
+      // `nodeintegration` attr) so the embedded localhost page cannot reach window.mango /
+      // ipcRenderer. No new IPC; APP_OPEN_EXTERNAL is untouched.
+      webviewTag: true,
     },
   });
   ctx.mainWindow = win;
