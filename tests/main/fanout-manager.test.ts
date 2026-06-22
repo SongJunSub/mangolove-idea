@@ -171,4 +171,75 @@ describe('FanoutManager', () => {
     const mgr = makeManager(laneRunner, emitter);
     expect(mgr.get()).toBe(null);
   });
+
+  it('select() merges the chosen lane into base and removes the OTHER lane worktrees', async () => {
+    const { laneRunner } = makeFakeLaneRunner();
+    const { emitter } = makeEmitter();
+    const mgr = makeManager(laneRunner, emitter);
+
+    await mgr.start({ prompt: 'do it', models: ['opus', 'haiku'], skipPermissions: false });
+    await waitTerminal(mgr);
+
+    const result = await mgr.select({ laneId: 'haiku' });
+    expect(result.merged).toBe(true);
+    expect(result.status).toBe('merged');
+
+    // The winner's edit landed on base (main).
+    const log = await repo.git.log();
+    expect(log.all.some((c) => c.message.includes('fanout: haiku lane'))).toBe(true);
+
+    // Every fan-out worktree is gone (winner cleaned by MergeRunner, loser removed by us).
+    const trees = await worktrees.list();
+    expect(trees.filter((t) => t.branch.startsWith('fanout/'))).toHaveLength(0);
+    // No orphan lane branches remain (winner deleted by MergeRunner, losers by us).
+    const branches = await repo.git.branchLocal();
+    expect(branches.all.filter((b) => b.startsWith('fanout/'))).toHaveLength(0);
+    // The run is cleared after a successful select.
+    expect(mgr.get()).toBe(null);
+  });
+
+  it('abort() removes ALL lane worktrees and clears the run', async () => {
+    const { laneRunner } = makeFakeLaneRunner();
+    const { emitter } = makeEmitter();
+    const mgr = makeManager(laneRunner, emitter);
+
+    await mgr.start({ prompt: 'p', models: ['opus', 'haiku'], skipPermissions: false });
+    await waitTerminal(mgr);
+
+    const ack = await mgr.abort();
+    expect(ack.ok).toBe(true);
+    const trees = await worktrees.list();
+    expect(trees.filter((t) => t.branch.startsWith('fanout/'))).toHaveLength(0);
+    // No orphan lane branches remain (none merged → all force-deleted).
+    const branches = await repo.git.branchLocal();
+    expect(branches.all.filter((b) => b.startsWith('fanout/'))).toHaveLength(0);
+    expect(mgr.get()).toBe(null);
+  });
+
+  it('select() rejects an unknown laneId', async () => {
+    const { laneRunner } = makeFakeLaneRunner();
+    const { emitter } = makeEmitter();
+    const mgr = makeManager(laneRunner, emitter);
+    await mgr.start({ prompt: 'p', models: ['haiku'], skipPermissions: false });
+    await waitTerminal(mgr);
+    await expect(mgr.select({ laneId: 'nope' })).rejects.toThrow(/unknown lane/i);
+  });
+
+  it('select() with no active run rejects', async () => {
+    const { laneRunner } = makeFakeLaneRunner();
+    const { emitter } = makeEmitter();
+    const mgr = makeManager(laneRunner, emitter);
+    await expect(mgr.select({ laneId: 'haiku' })).rejects.toThrow(/no active/i);
+  });
+
+  it('after abort(), a fresh start() is allowed again', async () => {
+    const { laneRunner } = makeFakeLaneRunner();
+    const { emitter } = makeEmitter();
+    const mgr = makeManager(laneRunner, emitter);
+    await mgr.start({ prompt: 'p', models: ['haiku'], skipPermissions: false });
+    await waitTerminal(mgr);
+    await mgr.abort();
+    const res = await mgr.start({ prompt: 'p2', models: ['opus'], skipPermissions: false });
+    expect(res.lanes).toHaveLength(1);
+  });
 });

@@ -269,15 +269,68 @@ export class FanoutManager {
     this.deps.emitter.emitLaneStatus({ id: this.run.id, lane: toLane(lane) });
   }
 
-  // ── select/abort bodies (Task 4) ───────────────────────────────────────────
+  // ── select/abort bodies ─────────────────────────────────────────────────────
+  /**
+   * Merges the winning lane's branch into base via MergeRunner (runVerifyHook:false,
+   * cleanup:true — the winner's worktree + branch are removed on success, reusing
+   * MergeRunner's conflict/safe-abort path verbatim). On a clean merge, the OTHER
+   * lane worktrees are removed and the run is cleared. A conflict/failed result keeps
+   * the run (the renderer surfaces it via the returned MergeResult) so the user can
+   * retry/abort — we do NOT clean up the losers until the winner truly merged.
+   */
   protected async doSelect(req: FanoutSelectRequest): Promise<MergeResult> {
-    void req;
-    throw new Error('not implemented until Task 4');
+    if (this.run === null) throw new Error('no active fan-out run');
+    const winner = this.run.lanes.find((l) => l.laneId === req.laneId);
+    if (!winner) throw new Error(`unknown lane ${req.laneId}`);
+
+    const result = await this.deps.merge.run({
+      worktreeId: winner.worktreeId,
+      targetBranch: this.run.base,
+      runVerifyHook: false,
+      cleanup: true,
+    });
+
+    if (result.status !== 'merged') return result; // keep run; renderer shows conflict/failed
+
+    // Remove every OTHER lane's worktree THEN its branch (the winner's worktree+branch
+    // were cleaned by MergeRunner). Worktree-remove must precede branch -D.
+    for (const lane of this.run.lanes) {
+      if (lane.laneId === winner.laneId) continue;
+      try {
+        await this.deps.worktrees.remove({ worktreeId: lane.worktreeId, force: true });
+      } catch {
+        // best-effort: a removal failure does not undo a successful merge.
+      }
+      await this.deleteBranch(lane.branch);
+    }
+    this.run = null;
+    return result;
   }
 
+  /**
+   * Kills any still-running lane processes, then removes EVERY lane worktree
+   * (force, so an in-flight edit does not block removal), and clears the run. Never
+   * merges. Best-effort per worktree so one failure does not strand the rest.
+   */
   protected async doAbort(): Promise<Ack> {
-    void this.deleteBranch;
-    throw new Error('not implemented until Task 4');
+    if (this.run === null) return { ok: true };
+    for (const lane of this.run.lanes) {
+      try {
+        lane.proc?.kill();
+      } catch {
+        // best-effort kill — continue to worktree removal regardless.
+      }
+    }
+    for (const lane of this.run.lanes) {
+      try {
+        await this.deps.worktrees.remove({ worktreeId: lane.worktreeId, force: true });
+      } catch {
+        // best-effort: keep removing the remaining lanes.
+      }
+      await this.deleteBranch(lane.branch); // none merged → force-delete every lane branch
+    }
+    this.run = null;
+    return { ok: true };
   }
 }
 
