@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildAppInfo, registerIpc, resolveCommands } from '../../src/main/ipc/register-ipc';
+import { buildAppInfo, resolveCommands } from '../../src/main/ipc/register-ipc';
+import { registerIpcForTest } from '../helpers/register-ipc-for-test';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 import type { AppSettings } from '../../src/shared/types';
 
@@ -86,30 +87,14 @@ describe('resolveCommands — settings > env > default precedence', () => {
 });
 
 describe('registerIpc', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const onHandlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((channel: string, fn: (...a: unknown[]) => unknown) => {
-        handlers.set(channel, fn);
-      }),
-      on: vi.fn((channel: string, fn: (...a: unknown[]) => unknown) => {
-        onHandlers.set(channel, fn);
-      }),
-    };
-    return { handlers, onHandlers, ipcMain };
-  }
-
   it('registers a handler for app:ping that returns AppInfo', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
-    registerIpc(ipcMain as never, { mainWindow: null });
+    const { handlers, fakeEvent } = registerIpcForTest({ mainWindow: null });
     expect(handlers.has('app:ping')).toBe(true);
-    const pingResult = (await handlers.get('app:ping')!({})) as { electronVersion: string };
+    const pingResult = (await handlers.get('app:ping')!(fakeEvent)) as { electronVersion: string };
     expect(typeof pingResult.electronVersion).toBe('string');
   });
 
   it('worktree:list delegates to the injected WorktreeManager', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const fakeManager = {
       list: vi.fn(async () => [
         { id: '/r', path: '/r', branch: 'main', isPrimary: true, isLocked: false },
@@ -117,8 +102,11 @@ describe('registerIpc', () => {
       create: vi.fn(),
       remove: vi.fn(),
     };
-    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
-    const list = await handlers.get('worktree:list')!({});
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      worktreeManager: fakeManager as never,
+    });
+    const list = await handlers.get('worktree:list')!(fakeEvent);
     expect(fakeManager.list).toHaveBeenCalledOnce();
     expect(list).toEqual([
       { id: '/r', path: '/r', branch: 'main', isPrimary: true, isLocked: false },
@@ -126,7 +114,6 @@ describe('registerIpc', () => {
   });
 
   it('worktree:create delegates the request and returns the Worktree', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const created = {
       id: '/r/.worktrees/feat',
       path: '/r/.worktrees/feat',
@@ -139,29 +126,33 @@ describe('registerIpc', () => {
       create: vi.fn(async () => created),
       remove: vi.fn(),
     };
-    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      worktreeManager: fakeManager as never,
+    });
     const req = { baseBranch: 'main', newBranch: 'feat' };
-    const result = await handlers.get('worktree:create')!({}, req);
+    const result = await handlers.get('worktree:create')!(fakeEvent, req);
     expect(fakeManager.create).toHaveBeenCalledWith(req);
     expect(result).toEqual(created);
   });
 
   it('worktree:remove returns Ack ok:true on success', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const fakeManager = {
       list: vi.fn(),
       create: vi.fn(),
       remove: vi.fn(async () => undefined),
     };
-    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      worktreeManager: fakeManager as never,
+    });
     const req = { worktreeId: '/r/.worktrees/feat' };
-    const ack = await handlers.get('worktree:remove')!({}, req);
+    const ack = await handlers.get('worktree:remove')!(fakeEvent, req);
     expect(fakeManager.remove).toHaveBeenCalledWith(req);
     expect(ack).toEqual({ ok: true });
   });
 
   it('worktree:remove returns Ack ok:false with the error message on failure', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const fakeManager = {
       list: vi.fn(),
       create: vi.fn(),
@@ -169,8 +160,11 @@ describe('registerIpc', () => {
         throw new Error('cannot remove the primary working tree');
       }),
     };
-    registerIpc(ipcMain as never, { mainWindow: null, worktreeManager: fakeManager as never });
-    const ack = (await handlers.get('worktree:remove')!({}, { worktreeId: '/r' })) as {
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      worktreeManager: fakeManager as never,
+    });
+    const ack = (await handlers.get('worktree:remove')!(fakeEvent, { worktreeId: '/r' })) as {
       ok: boolean;
       error?: string;
     };
@@ -180,16 +174,6 @@ describe('registerIpc', () => {
 });
 
 describe('registerIpc — session', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const onHandlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
-      on: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void onHandlers.set(c, fn)),
-    };
-    return { handlers, onHandlers, ipcMain };
-  }
-
   function fakeSession() {
     return {
       spawn: vi.fn(async () => ({
@@ -207,83 +191,72 @@ describe('registerIpc — session', () => {
   }
 
   it('SESSION_SPAWN delegates to sessionManager.spawn and returns the AgentSession', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const sm = fakeSession();
-    registerIpc(ipcMain as never, { mainWindow: null, sessionManager: sm as never });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      sessionManager: sm as never,
+    });
     const req = { worktreeId: '/wt', continueSession: false, cols: 80, rows: 24 };
-    const session = await handlers.get('session:spawn')!({}, req);
+    const session = await handlers.get('session:spawn')!(fakeEvent, req);
     expect(sm.spawn).toHaveBeenCalledWith(req);
     expect(session).toMatchObject({ worktreeId: '/wt', status: 'running', pid: 7 });
   });
 
   it('SESSION_KILL delegates to sessionManager.kill and returns the Ack', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const sm = fakeSession();
-    registerIpc(ipcMain as never, { mainWindow: null, sessionManager: sm as never });
-    const ack = await handlers.get('session:kill')!({}, { worktreeId: '/wt' });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      sessionManager: sm as never,
+    });
+    const ack = await handlers.get('session:kill')!(fakeEvent, { worktreeId: '/wt' });
     expect(sm.kill).toHaveBeenCalledWith('/wt');
     expect(ack).toEqual({ ok: true });
   });
 
   it('SESSION_INPUT is an ipcMain.on handler that delegates to write', () => {
-    const { onHandlers, ipcMain } = makeIpcMain();
     const sm = fakeSession();
-    registerIpc(ipcMain as never, { mainWindow: null, sessionManager: sm as never });
+    const { onHandlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      sessionManager: sm as never,
+    });
     const req = { worktreeId: '/wt', data: 'ls\r' };
-    onHandlers.get('session:input')!({}, req);
+    onHandlers.get('session:input')!(fakeEvent, req);
     expect(sm.write).toHaveBeenCalledWith(req);
   });
 
   it('SESSION_RESIZE is an ipcMain.on handler that delegates to resize', () => {
-    const { onHandlers, ipcMain } = makeIpcMain();
     const sm = fakeSession();
-    registerIpc(ipcMain as never, { mainWindow: null, sessionManager: sm as never });
+    const { onHandlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      sessionManager: sm as never,
+    });
     const req = { worktreeId: '/wt', cols: 120, rows: 40 };
-    onHandlers.get('session:resize')!({}, req);
+    onHandlers.get('session:resize')!(fakeEvent, req);
     expect(sm.resize).toHaveBeenCalledWith(req);
   });
 });
 
 describe('registerIpc — merge', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
-      on: vi.fn(),
-    };
-    return { handlers, ipcMain };
-  }
-
   it('MERGE_RUN delegates to mergeRunner.run and returns the MergeResult', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const result = { worktreeId: '/wt', merged: true, cleanedUp: true };
     const mr = { run: vi.fn(async () => result) };
     // MERGE_RUN consults getConflictResolver(ctx) first; with the repoRoot-bound
     // getters now null-guarded (requireRepoRoot), the lazy resolver build needs a
     // repoRoot. cwd is the project repo (a real git work tree, MERGE_HEAD absent),
     // so inProgress() is false and the handler delegates to the injected mergeRunner.
-    registerIpc(ipcMain as never, {
+    const { handlers, fakeEvent } = registerIpcForTest({
       mainWindow: null,
       repoRoot: process.cwd(),
       mergeRunner: mr as never,
     });
     const req = { worktreeId: '/wt', targetBranch: 'main', runVerifyHook: true, cleanup: true };
-    const out = await handlers.get('merge:run')!({}, req);
+    const out = await handlers.get('merge:run')!(fakeEvent, req);
     expect(mr.run).toHaveBeenCalledWith(req);
     expect(out).toEqual(result);
   });
 });
 
 describe('registerIpc — server + logs', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
-      on: vi.fn(),
-    };
-    return { handlers, ipcMain };
-  }
-
   function fakeServer() {
     const status = { process: { worktreeId: '/wt', kind: 'npm', state: 'running', pid: 9 } };
     return {
@@ -302,101 +275,96 @@ describe('registerIpc — server + logs', () => {
   }
 
   it('SERVER_START delegates to serverManager.start and returns the ServerStatus', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const sm = fakeServer();
-    registerIpc(ipcMain as never, { mainWindow: null, serverManager: sm as never });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      serverManager: sm as never,
+    });
     const req = { worktreeId: '/wt' };
-    const out = await handlers.get('server:start')!({}, req);
+    const out = await handlers.get('server:start')!(fakeEvent, req);
     expect(sm.start).toHaveBeenCalledWith(req);
     expect(out).toMatchObject({ process: { state: 'running', pid: 9 } });
   });
 
   it('SERVER_STOP delegates to serverManager.stop', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const sm = fakeServer();
-    registerIpc(ipcMain as never, { mainWindow: null, serverManager: sm as never });
-    const out = await handlers.get('server:stop')!({}, {});
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      serverManager: sm as never,
+    });
+    const out = await handlers.get('server:stop')!(fakeEvent, {});
     expect(sm.stop).toHaveBeenCalledWith({});
     expect(out).toMatchObject({ process: { state: 'stopped' } });
   });
 
   it('SERVER_STATUS delegates to serverManager.status with the requested worktreeId', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const sm = fakeServer();
-    registerIpc(ipcMain as never, { mainWindow: null, serverManager: sm as never });
-    const out = await handlers.get('server:status')!({}, { worktreeId: '/wt' });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      serverManager: sm as never,
+    });
+    const out = await handlers.get('server:status')!(fakeEvent, { worktreeId: '/wt' });
     expect(sm.status).toHaveBeenCalledWith('/wt');
     expect(out).toMatchObject({ process: { state: 'running' } });
   });
 
   it('LOG_SNAPSHOT returns the LogStore snapshot', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const ls = fakeLogStore();
-    registerIpc(ipcMain as never, { mainWindow: null, logStore: ls as never });
-    const out = await handlers.get('log:snapshot')!({}, { worktreeId: '/wt' });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      logStore: ls as never,
+    });
+    const out = await handlers.get('log:snapshot')!(fakeEvent, { worktreeId: '/wt' });
     expect(ls.snapshot).toHaveBeenCalledWith('/wt');
     expect(out).toEqual([{ seq: 0, ts: 1, stream: 'stdout', level: 'info', text: 'x' }]);
   });
 });
 
 describe('registerIpc — diff (V2 A1)', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
-      on: vi.fn(),
-    };
-    return { handlers, ipcMain };
-  }
-
   it('DIFF_LIST delegates to diffViewer.listChangedFiles', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const files = [{ path: 'a.txt', status: 'modified', binary: false }];
     const dv = { listChangedFiles: vi.fn(async () => files), getFileDiff: vi.fn() };
-    registerIpc(ipcMain as never, { mainWindow: null, diffViewer: dv as never });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      diffViewer: dv as never,
+    });
     const req = { worktreeId: '/wt', base: 'main' };
-    const out = await handlers.get('diff:list')!({}, req);
+    const out = await handlers.get('diff:list')!(fakeEvent, req);
     expect(dv.listChangedFiles).toHaveBeenCalledWith(req);
     expect(out).toEqual(files);
   });
 
   it('DIFF_FILE delegates to diffViewer.getFileDiff', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const fd = { path: 'a.txt', status: 'modified', original: 'x', modified: 'y', binary: false };
     const dv = { listChangedFiles: vi.fn(), getFileDiff: vi.fn(async () => fd) };
-    registerIpc(ipcMain as never, { mainWindow: null, diffViewer: dv as never });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      diffViewer: dv as never,
+    });
     const req = { worktreeId: '/wt', path: 'a.txt' };
-    const out = await handlers.get('diff:file')!({}, req);
+    const out = await handlers.get('diff:file')!(fakeEvent, req);
     expect(dv.getFileDiff).toHaveBeenCalledWith(req);
     expect(out).toEqual(fd);
   });
 });
 
 describe('registerIpc — app quit + session records (Plan 5)', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
-      on: vi.fn(),
-    };
-    return { handlers, ipcMain };
-  }
-
   it('SESSION_RECORDS returns the recorded worktree paths from the SessionStore', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = {
       all: vi.fn(() => [
         { worktreePath: '/wt/a', branch: 'f', hadActiveSession: true, updatedAt: 1 },
         { worktreePath: '/wt/b', branch: 'g', hadActiveSession: true, updatedAt: 2 },
       ]),
     };
-    registerIpc(ipcMain as never, { mainWindow: null, sessionStore: store as never });
-    const out = await handlers.get('session:records')!({});
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      sessionStore: store as never,
+    });
+    const out = await handlers.get('session:records')!(fakeEvent);
     expect(out).toEqual(['/wt/a', '/wt/b']);
   });
 
   it('APP_QUIT_DECISION(quit:true) kills all sessions, disposes server, and returns ok', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const session = { killAll: vi.fn(), liveWorktreeIds: vi.fn(() => []) };
     const server = { dispose: vi.fn() };
     const ctx: IpcContext = {
@@ -404,8 +372,8 @@ describe('registerIpc — app quit + session records (Plan 5)', () => {
       sessionManager: session as never,
       serverManager: server as never,
     };
-    registerIpc(ipcMain as never, ctx);
-    const ack = await handlers.get('app:quit-decision')!({}, { quit: true });
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const ack = await handlers.get('app:quit-decision')!(fakeEvent, { quit: true });
     expect(session.killAll).toHaveBeenCalledOnce();
     expect(server.dispose).toHaveBeenCalledOnce();
     expect(ctx.confirmedQuit).toBe(true);
@@ -413,7 +381,6 @@ describe('registerIpc — app quit + session records (Plan 5)', () => {
   });
 
   it('APP_QUIT_DECISION(quit:false) does NOT sweep and returns ok', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const session = { killAll: vi.fn(), liveWorktreeIds: vi.fn(() => []) };
     const server = { dispose: vi.fn() };
     const ctx: IpcContext = {
@@ -421,8 +388,8 @@ describe('registerIpc — app quit + session records (Plan 5)', () => {
       sessionManager: session as never,
       serverManager: server as never,
     };
-    registerIpc(ipcMain as never, ctx);
-    const ack = await handlers.get('app:quit-decision')!({}, { quit: false });
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const ack = await handlers.get('app:quit-decision')!(fakeEvent, { quit: false });
     expect(session.killAll).not.toHaveBeenCalled();
     expect(server.dispose).not.toHaveBeenCalled();
     expect(ctx.confirmedQuit).toBeFalsy();
@@ -431,39 +398,33 @@ describe('registerIpc — app quit + session records (Plan 5)', () => {
 });
 
 describe('registerIpc — settings (V2 E)', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
-      on: vi.fn(),
-    };
-    return { handlers, ipcMain };
-  }
-
   it('SETTINGS_GET returns the SettingsStore.get() snapshot', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(() => ({ agentCommand: 'a' })), set: vi.fn() };
-    registerIpc(ipcMain as never, { mainWindow: null, settingsStore: store as never });
-    const out = await handlers.get('settings:get')!({});
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      settingsStore: store as never,
+    });
+    const out = await handlers.get('settings:get')!(fakeEvent);
     expect(store.get).toHaveBeenCalledOnce();
     expect(out).toEqual({ agentCommand: 'a' });
   });
 
   it('SETTINGS_SET persists the partial and returns the merged settings', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const merged = { agentCommand: 'a', verifyCommand: 'true' };
     const store = { get: vi.fn(), set: vi.fn(() => merged) };
-    registerIpc(ipcMain as never, { mainWindow: null, settingsStore: store as never });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      settingsStore: store as never,
+    });
     const req = { verifyCommand: 'true' };
-    const out = await handlers.get('settings:set')!({}, req);
+    const out = await handlers.get('settings:set')!(fakeEvent, req);
     expect(store.set).toHaveBeenCalledWith(req);
     expect(out).toEqual(merged);
   });
 
   it('SETTINGS_SET clears ALL caches when session+server are idle', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(), set: vi.fn(() => ({})) };
-    const ctx = {
+    const ctx: IpcContext = {
       mainWindow: null,
       settingsStore: store as never,
       sessionManager: { liveWorktreeIds: () => [] } as never, // idle
@@ -471,8 +432,8 @@ describe('registerIpc — settings (V2 E)', () => {
       mergeRunner: { tag: 'merge' } as never,
       diffViewer: { tag: 'diff' } as never,
     };
-    registerIpc(ipcMain as never, ctx);
-    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    await handlers.get('settings:set')!(fakeEvent, { agentCommand: 'x' });
     expect(ctx.sessionManager).toBeUndefined();
     expect(ctx.serverManager).toBeUndefined();
     expect(ctx.mergeRunner).toBeUndefined();
@@ -480,11 +441,10 @@ describe('registerIpc — settings (V2 E)', () => {
   });
 
   it('SETTINGS_SET KEEPS live session/server managers (no orphan) but always clears merge/diff', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(), set: vi.fn(() => ({})) };
     const liveSession = { liveWorktreeIds: () => ['w1'] }; // busy
     const liveServer = { liveServerWorktreeIds: () => ['w1'] }; // busy
-    const ctx = {
+    const ctx: IpcContext = {
       mainWindow: null,
       settingsStore: store as never,
       sessionManager: liveSession as never,
@@ -492,8 +452,8 @@ describe('registerIpc — settings (V2 E)', () => {
       mergeRunner: { tag: 'merge' } as never,
       diffViewer: { tag: 'diff' } as never,
     };
-    registerIpc(ipcMain as never, ctx);
-    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    await handlers.get('settings:set')!(fakeEvent, { agentCommand: 'x' });
     expect(ctx.sessionManager).toBe(liveSession); // kept -> sweep still finds it
     expect(ctx.serverManager).toBe(liveServer); // kept -> sweep still finds it
     expect(ctx.mergeRunner).toBeUndefined(); // stateless -> always cleared
@@ -501,31 +461,29 @@ describe('registerIpc — settings (V2 E)', () => {
   });
 
   it('SETTINGS_SET while busy marks the managers dirty for deferred live-apply', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(), set: vi.fn(() => ({})) };
-    const ctx: Record<string, unknown> = {
+    const ctx: IpcContext = {
       mainWindow: null,
       settingsStore: store as never,
       sessionManager: { liveWorktreeIds: () => ['w1'] } as never, // busy
       serverManager: { liveServerWorktreeIds: () => ['w1'] } as never, // busy
     };
-    registerIpc(ipcMain as never, ctx as never);
-    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    await handlers.get('settings:set')!(fakeEvent, { agentCommand: 'x' });
     expect(ctx.sessionSettingsDirty).toBe(true);
     expect(ctx.serverSettingsDirty).toBe(true);
   });
 
   it('SETTINGS_SET while idle leaves the dirty flags false (immediate apply)', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(), set: vi.fn(() => ({})) };
-    const ctx: Record<string, unknown> = {
+    const ctx: IpcContext = {
       mainWindow: null,
       settingsStore: store as never,
       sessionManager: { liveWorktreeIds: () => [] } as never, // idle
       serverManager: { liveServerWorktreeIds: () => [] } as never, // idle
     };
-    registerIpc(ipcMain as never, ctx as never);
-    await handlers.get('settings:set')!({}, { agentCommand: 'x' });
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    await handlers.get('settings:set')!(fakeEvent, { agentCommand: 'x' });
     expect(ctx.sessionSettingsDirty).toBe(false);
     expect(ctx.serverSettingsDirty).toBe(false);
   });
@@ -534,7 +492,6 @@ describe('registerIpc — settings (V2 E)', () => {
     // End-to-end proof of the live-apply guarantee for the BUSY path. We drive the
     // REAL lazy builders (no injected manager) with fakes so the manager's onIdle
     // callback — wired by register-ipc — actually runs and clears ctx.*Manager.
-    const { handlers, ipcMain } = makeIpcMain();
     const settings: AppSettings = { agentCommand: 'old-claude' };
     const store = {
       get: vi.fn(() => settings),
@@ -590,15 +547,17 @@ describe('registerIpc — settings (V2 E)', () => {
       },
     });
 
-    registerIpc(ipcMain as never, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
     // Spawn with the OLD command, then edit agentCommand while busy -> kept + dirty.
-    await handlers.get('session:spawn')!(
-      {},
-      { worktreeId: '/wt', continueSession: false, cols: 80, rows: 24 },
-    );
+    await handlers.get('session:spawn')!(fakeEvent, {
+      worktreeId: '/wt',
+      continueSession: false,
+      cols: 80,
+      rows: 24,
+    });
     expect(spawned).toEqual(['old-claude']);
-    await handlers.get('settings:set')!({}, { agentCommand: 'new-claude' });
+    await handlers.get('settings:set')!(fakeEvent, { agentCommand: 'new-claude' });
     expect(ctx.sessionManager).toBeDefined(); // kept while busy
     expect(ctx.sessionSettingsDirty).toBe(true);
 
@@ -615,57 +574,55 @@ describe('registerIpc — settings (V2 E)', () => {
 });
 
 describe('registerIpc — scrollback (V2)', () => {
-  function makeIpcMain() {
-    const handlers = new Map<string, (...a: unknown[]) => unknown>();
-    const ipcMain = {
-      handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
-      on: vi.fn(),
-    };
-    return { handlers, ipcMain };
-  }
-
   it('SCROLLBACK_GET returns the stored buffer for a worktree', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(() => 'SAVED\x1b[0m'), set: vi.fn(), remove: vi.fn() };
-    registerIpc(ipcMain as never, { mainWindow: null, scrollbackStore: store as never });
-    const out = await handlers.get('scrollback:get')!({}, '/wt');
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      scrollbackStore: store as never,
+    });
+    const out = await handlers.get('scrollback:get')!(fakeEvent, '/wt');
     expect(store.get).toHaveBeenCalledWith('/wt');
     expect(out).toBe('SAVED\x1b[0m');
   });
 
   it('SCROLLBACK_GET returns null (not undefined) when nothing is stored', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(() => undefined), set: vi.fn(), remove: vi.fn() };
-    registerIpc(ipcMain as never, { mainWindow: null, scrollbackStore: store as never });
-    const out = await handlers.get('scrollback:get')!({}, '/wt');
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      scrollbackStore: store as never,
+    });
+    const out = await handlers.get('scrollback:get')!(fakeEvent, '/wt');
     expect(out).toBeNull(); // IPC-serializable: undefined would arrive as undefined; we normalize to null
   });
 
   it('SCROLLBACK_SET persists {worktreeId, data} and returns an Ack', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(), set: vi.fn(), remove: vi.fn() };
-    registerIpc(ipcMain as never, { mainWindow: null, scrollbackStore: store as never });
-    const ack = await handlers.get('scrollback:set')!({}, { worktreeId: '/wt', data: 'BUF' });
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      scrollbackStore: store as never,
+    });
+    const ack = await handlers.get('scrollback:set')!(fakeEvent, {
+      worktreeId: '/wt',
+      data: 'BUF',
+    });
     expect(store.set).toHaveBeenCalledWith('/wt', 'BUF');
     expect(ack).toEqual({ ok: true });
   });
 
   it('WORKTREE_REMOVE best-effort removes the scrollback entry on success', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const wt = { list: vi.fn(), create: vi.fn(), remove: vi.fn(async () => undefined) };
     const store = { get: vi.fn(), set: vi.fn(), remove: vi.fn() };
-    registerIpc(ipcMain as never, {
+    const { handlers, fakeEvent } = registerIpcForTest({
       mainWindow: null,
       worktreeManager: wt as never,
       scrollbackStore: store as never,
     });
-    const ack = await handlers.get('worktree:remove')!({}, { worktreeId: '/wt' });
+    const ack = await handlers.get('worktree:remove')!(fakeEvent, { worktreeId: '/wt' });
     expect(ack).toEqual({ ok: true });
     expect(store.remove).toHaveBeenCalledWith('/wt');
   });
 
   it('WORKTREE_REMOVE does NOT remove scrollback when the worktree removal fails', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const wt = {
       list: vi.fn(),
       create: vi.fn(),
@@ -674,12 +631,12 @@ describe('registerIpc — scrollback (V2)', () => {
       }),
     };
     const store = { get: vi.fn(), set: vi.fn(), remove: vi.fn() };
-    registerIpc(ipcMain as never, {
+    const { handlers, fakeEvent } = registerIpcForTest({
       mainWindow: null,
       worktreeManager: wt as never,
       scrollbackStore: store as never,
     });
-    const ack = (await handlers.get('worktree:remove')!({}, { worktreeId: '/r' })) as {
+    const ack = (await handlers.get('worktree:remove')!(fakeEvent, { worktreeId: '/r' })) as {
       ok: boolean;
     };
     expect(ack.ok).toBe(false);
@@ -687,7 +644,6 @@ describe('registerIpc — scrollback (V2)', () => {
   });
 
   it('WORKTREE_REMOVE still returns ok:true if scrollback cleanup throws (best-effort)', async () => {
-    const { handlers, ipcMain } = makeIpcMain();
     const wt = { list: vi.fn(), create: vi.fn(), remove: vi.fn(async () => undefined) };
     const store = {
       get: vi.fn(),
@@ -696,12 +652,12 @@ describe('registerIpc — scrollback (V2)', () => {
         throw new Error('disk full');
       }),
     };
-    registerIpc(ipcMain as never, {
+    const { handlers, fakeEvent } = registerIpcForTest({
       mainWindow: null,
       worktreeManager: wt as never,
       scrollbackStore: store as never,
     });
-    const ack = await handlers.get('worktree:remove')!({}, { worktreeId: '/wt' });
+    const ack = await handlers.get('worktree:remove')!(fakeEvent, { worktreeId: '/wt' });
     expect(ack).toEqual({ ok: true }); // cleanup is best-effort; never demotes the remove
   });
 });

@@ -53,6 +53,7 @@ import { ServerManager, type ServerEmitter } from '../managers/server-manager';
 import { LogStore, type LogEmitter } from '../managers/log-store';
 import { NodeProcessRunner, type IProcLike } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
+import { requireCtxFrom, type CtxEventLike } from '../app/window-registry';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { ScrollbackStore } from '../managers/scrollback-store';
@@ -473,196 +474,182 @@ async function getConflictResolver(ctx: IpcContext): Promise<ConflictResolver> {
 }
 
 /**
- * Registers ALL main-process IPC handlers in one place. Plan 1 wires the real
- * WORKTREE_LIST/CREATE/REMOVE handlers, delegating to the WorktreeManager on ctx.
+ * Registers ALL main-process IPC handlers ONCE (channels are process-global). Each
+ * handler resolves ITS window's IpcContext from the event sender via requireCtx; the
+ * existing per-handler body is then UNCHANGED. APP_PING is repo-agnostic so it skips
+ * the lookup.
  */
-export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
+export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>): void {
+  /** Resolve the sender's per-window ctx; fail-loud if the window is gone. */
+  const requireCtx = (event: CtxEventLike): IpcContext => requireCtxFrom(contexts, event);
+
   ipcMain.handle(IPC.APP_PING, async (): Promise<AppInfo> => {
     const { app } = await import('electron');
     return buildAppInfo(app, process.versions, probeNodePty);
   });
 
-  ipcMain.handle(IPC.WORKTREE_LIST, async (): Promise<Worktree[]> => {
+  ipcMain.handle(IPC.WORKTREE_LIST, async (event): Promise<Worktree[]> => {
+    const ctx = requireCtx(event);
     const manager = await getWorktreeManager(ctx);
     return manager.list();
   });
 
   ipcMain.handle(
     IPC.WORKTREE_CREATE,
-    async (_event: unknown, req: CreateWorktreeRequest): Promise<Worktree> => {
+    async (event, req: CreateWorktreeRequest): Promise<Worktree> => {
+      const ctx = requireCtx(event);
       const manager = await getWorktreeManager(ctx);
       return manager.create(req);
     },
   );
 
-  ipcMain.handle(
-    IPC.WORKTREE_REMOVE,
-    async (_event: unknown, req: RemoveWorktreeRequest): Promise<Ack> => {
-      const manager = await getWorktreeManager(ctx);
+  ipcMain.handle(IPC.WORKTREE_REMOVE, async (event, req: RemoveWorktreeRequest): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    const manager = await getWorktreeManager(ctx);
+    try {
+      await manager.remove(req);
       try {
-        await manager.remove(req);
-        // Best-effort: drop the stale scrollback so removed worktrees do not accumulate
-        // buffers. Guarded (store may be absent in a partial test ctx) and try/catch'd so a
-        // cleanup failure NEVER demotes the successful removal Ack. Relies on the per-entry
-        // size cap as the backstop if this ever no-ops.
-        try {
-          ctx.scrollbackStore?.remove(req.worktreeId);
-        } catch {
-          // ignore — scrollback cleanup is non-essential; the size cap bounds growth anyway
-        }
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        ctx.scrollbackStore?.remove(req.worktreeId);
+      } catch {
+        // ignore — scrollback cleanup is non-essential; the size cap bounds growth anyway
       }
-    },
-  );
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 
   ipcMain.handle(
     IPC.SESSION_SPAWN,
-    async (_event: unknown, req: SpawnSessionRequest): Promise<AgentSession> => {
+    async (event, req: SpawnSessionRequest): Promise<AgentSession> => {
+      const ctx = requireCtx(event);
       return getSessionManager(ctx).spawn(req);
     },
   );
 
-  ipcMain.handle(
-    IPC.SESSION_KILL,
-    async (_event: unknown, req: { worktreeId: string }): Promise<Ack> => {
-      return getSessionManager(ctx).kill(req.worktreeId);
-    },
-  );
+  ipcMain.handle(IPC.SESSION_KILL, async (event, req: { worktreeId: string }): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    return getSessionManager(ctx).kill(req.worktreeId);
+  });
 
-  ipcMain.on(IPC.SESSION_INPUT, (_event: unknown, req: SessionInputRequest) => {
+  ipcMain.on(IPC.SESSION_INPUT, (event, req: SessionInputRequest) => {
+    // requireCtx + the Map lookup are SYNCHRONOUS, so write() still runs synchronously
+    // (the Plan-2 delegation tests assert sync write).
+    const ctx = requireCtx(event);
     getSessionManager(ctx).write(req);
   });
 
-  ipcMain.on(IPC.SESSION_RESIZE, (_event: unknown, req: SessionResizeRequest) => {
+  ipcMain.on(IPC.SESSION_RESIZE, (event, req: SessionResizeRequest) => {
+    const ctx = requireCtx(event);
     getSessionManager(ctx).resize(req);
   });
 
   ipcMain.handle(
     IPC.SERVER_START,
-    async (_event: unknown, req: StartServerRequest): Promise<ServerStatus> => {
+    async (event, req: StartServerRequest): Promise<ServerStatus> => {
+      const ctx = requireCtx(event);
       return getServerManager(ctx).start(req);
     },
   );
 
-  ipcMain.handle(
-    IPC.SERVER_STOP,
-    async (_event: unknown, req: StopServerRequest): Promise<ServerStatus> => {
-      return getServerManager(ctx).stop(req);
-    },
-  );
+  ipcMain.handle(IPC.SERVER_STOP, async (event, req: StopServerRequest): Promise<ServerStatus> => {
+    const ctx = requireCtx(event);
+    return getServerManager(ctx).stop(req);
+  });
 
   ipcMain.handle(
     IPC.SERVER_STATUS,
-    async (_event: unknown, req: { worktreeId: string }): Promise<ServerStatus> => {
+    async (event, req: { worktreeId: string }): Promise<ServerStatus> => {
+      const ctx = requireCtx(event);
       return getServerManager(ctx).status(req.worktreeId);
     },
   );
 
-  ipcMain.handle(IPC.SERVER_STATUS_ALL, async (): Promise<Record<string, ServerStatus>> => {
+  ipcMain.handle(IPC.SERVER_STATUS_ALL, async (event): Promise<Record<string, ServerStatus>> => {
+    const ctx = requireCtx(event);
     return getServerManager(ctx).statusAll();
   });
 
-  ipcMain.handle(
-    IPC.LOG_SNAPSHOT,
-    async (_event: unknown, req: LogSnapshotRequest): Promise<LogLine[]> => {
-      return getLogStore(ctx).snapshot(req.worktreeId);
-    },
-  );
+  ipcMain.handle(IPC.LOG_SNAPSHOT, async (event, req: LogSnapshotRequest): Promise<LogLine[]> => {
+    const ctx = requireCtx(event);
+    return getLogStore(ctx).snapshot(req.worktreeId);
+  });
 
-  ipcMain.handle(
-    IPC.MERGE_RUN,
-    async (_event: unknown, req: MergeRequest): Promise<MergeResult> => {
-      // Re-surface an in-progress merge instead of running run() from the top
-      // (which would trip the dirty-tree gate on the conflicted target tree).
-      const resolver = await getConflictResolver(ctx);
-      if (await resolver.inProgress()) {
-        const conflicted = (await resolver.list()).map((f) => f.path);
-        // There is exactly ONE global MERGE_HEAD. The paused merge may belong to a
-        // DIFFERENT worktree than the one just clicked, so attribute the conflict to
-        // its TRUE owner (the worktree whose feature branch is MERGE_HEAD) — never to
-        // req.worktreeId. Otherwise Continue would commit the owner's merge but run
-        // cleanup against the clicked worktree, wiping the wrong tree/branch.
-        const ownerId = (await resolver.inProgressWorktreeId()) ?? req.worktreeId;
-        return {
-          worktreeId: ownerId,
-          merged: false,
-          cleanedUp: false,
-          status: 'conflict',
-          conflicted,
-        };
+  ipcMain.handle(IPC.MERGE_RUN, async (event, req: MergeRequest): Promise<MergeResult> => {
+    const ctx = requireCtx(event);
+    const resolver = await getConflictResolver(ctx);
+    if (await resolver.inProgress()) {
+      const conflicted = (await resolver.list()).map((f) => f.path);
+      const ownerId = (await resolver.inProgressWorktreeId()) ?? req.worktreeId;
+      return {
+        worktreeId: ownerId,
+        merged: false,
+        cleanedUp: false,
+        status: 'conflict',
+        conflicted,
+      };
+    }
+    return (await getMergeRunner(ctx)).run(req);
+  });
+
+  ipcMain.handle(IPC.DIFF_LIST, async (event, req: DiffListRequest): Promise<ChangedFile[]> => {
+    const ctx = requireCtx(event);
+    return (await getDiffViewer(ctx)).listChangedFiles(req);
+  });
+
+  ipcMain.handle(IPC.DIFF_FILE, async (event, req: DiffFileRequest): Promise<FileDiff> => {
+    const ctx = requireCtx(event);
+    return (await getDiffViewer(ctx)).getFileDiff(req);
+  });
+
+  ipcMain.handle(IPC.GH_STATUS, async (event, req: GhStatusRequest): Promise<GhStatus> => {
+    const ctx = requireCtx(event);
+    try {
+      const reader = await getGhStatusReader(ctx);
+      return await reader.status(req);
+    } catch (error) {
+      return { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle(IPC.APP_OPEN_EXTERNAL, async (_event, req: OpenExternalRequest): Promise<Ack> => {
+    // APP_OPEN_EXTERNAL is repo-agnostic + github-pinned: body UNCHANGED, no ctx.
+    try {
+      const u = new URL(req.url);
+      if (
+        u.protocol !== 'https:' ||
+        (u.hostname !== 'github.com' && !u.hostname.endsWith('.github.com'))
+      ) {
+        return { ok: false, error: 'refused: only https github.com URLs may be opened' };
       }
-      return (await getMergeRunner(ctx)).run(req);
-    },
-  );
-
-  ipcMain.handle(
-    IPC.DIFF_LIST,
-    async (_event: unknown, req: DiffListRequest): Promise<ChangedFile[]> => {
-      return (await getDiffViewer(ctx)).listChangedFiles(req);
-    },
-  );
-
-  ipcMain.handle(
-    IPC.DIFF_FILE,
-    async (_event: unknown, req: DiffFileRequest): Promise<FileDiff> => {
-      return (await getDiffViewer(ctx)).getFileDiff(req);
-    },
-  );
-
-  ipcMain.handle(
-    IPC.GH_STATUS,
-    async (_event: unknown, req: GhStatusRequest): Promise<GhStatus> => {
-      // GH_STATUS NEVER throws raw across the boundary — any failure becomes {kind:'error'}.
-      try {
-        const reader = await getGhStatusReader(ctx);
-        return await reader.status(req);
-      } catch (error) {
-        return { kind: 'error', message: error instanceof Error ? error.message : String(error) };
-      }
-    },
-  );
-
-  ipcMain.handle(
-    IPC.APP_OPEN_EXTERNAL,
-    async (_event: unknown, req: OpenExternalRequest): Promise<Ack> => {
-      try {
-        // Pin this sink to the PR-URL contract: only https github.com URLs.
-        // A malformed URL throws here and lands in the {ok:false} branch.
-        const u = new URL(req.url);
-        if (
-          u.protocol !== 'https:' ||
-          (u.hostname !== 'github.com' && !u.hostname.endsWith('.github.com'))
-        ) {
-          return { ok: false, error: 'refused: only https github.com URLs may be opened' };
-        }
-        const { shell } = await import('electron');
-        await shell.openExternal(req.url);
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    },
-  );
+      const { shell } = await import('electron');
+      await shell.openExternal(req.url);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 
   ipcMain.handle(
     IPC.MERGE_CONFLICTS,
-    async (_event: unknown, _req: ConflictListRequest): Promise<ConflictedFile[]> => {
+    async (event, _req: ConflictListRequest): Promise<ConflictedFile[]> => {
+      const ctx = requireCtx(event);
       return (await getConflictResolver(ctx)).list();
     },
   );
 
   ipcMain.handle(
     IPC.MERGE_READ_CONFLICT,
-    async (_event: unknown, req: ConflictReadRequest): Promise<ConflictFileVersions> => {
+    async (event, req: ConflictReadRequest): Promise<ConflictFileVersions> => {
+      const ctx = requireCtx(event);
       return (await getConflictResolver(ctx)).read(req.path);
     },
   );
 
   ipcMain.handle(
     IPC.MERGE_RESOLVE,
-    async (_event: unknown, req: ConflictResolveRequest): Promise<MergeResult> => {
+    async (event, req: ConflictResolveRequest): Promise<MergeResult> => {
+      const ctx = requireCtx(event);
       const resolver = await getConflictResolver(ctx);
       await resolver.resolve({ path: req.path, choice: req.choice, content: req.content });
       const conflicted = (await resolver.list()).map((f) => f.path);
@@ -678,122 +665,108 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle(
     IPC.MERGE_CONTINUE,
-    async (_event: unknown, req: ConflictContinueRequest): Promise<MergeResult> => {
+    async (event, req: ConflictContinueRequest): Promise<MergeResult> => {
+      const ctx = requireCtx(event);
       return (await getConflictResolver(ctx)).continue(req);
     },
   );
 
   ipcMain.handle(
     IPC.MERGE_ABORT,
-    async (_event: unknown, req: ConflictAbortRequest): Promise<MergeResult> => {
+    async (event, req: ConflictAbortRequest): Promise<MergeResult> => {
+      const ctx = requireCtx(event);
       return (await getConflictResolver(ctx)).abort(req);
     },
   );
 
   ipcMain.handle(
     IPC.MERGE_IN_PROGRESS,
-    async (_event: unknown, _req: ConflictInProgressRequest): Promise<boolean> => {
+    async (event, _req: ConflictInProgressRequest): Promise<boolean> => {
+      const ctx = requireCtx(event);
       return (await getConflictResolver(ctx)).inProgress();
     },
   );
 
-  ipcMain.handle(IPC.MERGE_OWNER, async (): Promise<string | null> => {
-    // Which worktree the single in-flight MERGE_HEAD actually belongs to — the
-    // renderer attributes the Conflicts pane to THIS, never to whatever worktree
-    // happens to be selected.
+  ipcMain.handle(IPC.MERGE_OWNER, async (event): Promise<string | null> => {
+    const ctx = requireCtx(event);
     return (await getConflictResolver(ctx)).inProgressWorktreeId();
   });
 
   ipcMain.handle(
     IPC.FANOUT_START,
-    async (_event: unknown, req: FanoutStartRequest): Promise<FanoutStartResult> => {
+    async (event, req: FanoutStartRequest): Promise<FanoutStartResult> => {
+      const ctx = requireCtx(event);
       return (await getFanoutManager(ctx)).start(req);
     },
   );
 
-  ipcMain.handle(IPC.FANOUT_GET, async (): Promise<FanoutRun | null> => {
-    // Normalize undefined -> null so the invoke result is an explicit serializable value.
+  ipcMain.handle(IPC.FANOUT_GET, async (event): Promise<FanoutRun | null> => {
+    const ctx = requireCtx(event);
     return (await getFanoutManager(ctx)).get() ?? null;
   });
 
   ipcMain.handle(
     IPC.FANOUT_SELECT,
-    async (_event: unknown, req: FanoutSelectRequest): Promise<MergeResult> => {
+    async (event, req: FanoutSelectRequest): Promise<MergeResult> => {
+      const ctx = requireCtx(event);
       return (await getFanoutManager(ctx)).select(req);
     },
   );
 
-  ipcMain.handle(IPC.FANOUT_ABORT, async (): Promise<Ack> => {
+  ipcMain.handle(IPC.FANOUT_ABORT, async (event): Promise<Ack> => {
+    const ctx = requireCtx(event);
     return (await getFanoutManager(ctx)).abort();
   });
 
-  ipcMain.handle(IPC.SESSION_RECORDS, async (): Promise<string[]> => {
+  ipcMain.handle(IPC.SESSION_RECORDS, async (event): Promise<string[]> => {
+    const ctx = requireCtx(event);
     return getSessionStore(ctx)
       .all()
       .map((r) => r.worktreePath);
   });
 
-  ipcMain.handle(IPC.SETTINGS_GET, async (): Promise<AppSettings> => {
+  ipcMain.handle(IPC.SETTINGS_GET, async (event): Promise<AppSettings> => {
+    const ctx = requireCtx(event);
     return getSettingsStore(ctx).get();
   });
 
   ipcMain.handle(
     IPC.SETTINGS_SET,
-    async (_event: unknown, partial: Partial<AppSettings>): Promise<AppSettings> => {
+    async (event, partial: Partial<AppSettings>): Promise<AppSettings> => {
+      const ctx = requireCtx(event);
       const merged = getSettingsStore(ctx).set(partial);
-      // Live-apply: the managers bake their command/base in at CONSTRUCTION and are
-      // cached on ctx; clearing a cache makes it REBUILD lazily with the new settings.
-      // mergeRunner/diffViewer hold NO live OS process, so clearing them is always
-      // safe — an edited verifyCommand/baseBranch applies on the next merge/diff.
-      ctx.mergeRunner = undefined; // verifyCommand (+ base via renderer)
-      ctx.diffViewer = undefined; // base (rebuilt with current settings on next diff)
-      // The FanoutManager owns the ONE active run. Clearing it mid-run would orphan
-      // the live lane children + lose the run state, so clear ONLY when idle (get()
-      // === null) — then a base/agentCommand change applies on the next start. While
-      // a run is active, KEEP it (mirrors the conflictResolver keep-while-busy rule).
+      ctx.mergeRunner = undefined;
+      ctx.diffViewer = undefined;
       if (ctx.fanoutManager && ctx.fanoutManager.get() === null) {
         ctx.fanoutManager = undefined;
       }
-      // The ConflictResolver owns the in-progress merge. It recomputes truth from
-      // MERGE_HEAD/git.status() per call, so nulling it would only re-bind a fresh
-      // SimpleGit — harmless — BUT while a merge is in progress we keep the same
-      // instance to mirror the sessionManager 'keep-while-busy' discipline and to
-      // guarantee the resolution capability is never dropped mid-conflict.
       if (!(await ctx.conflictResolver?.inProgress())) {
-        ctx.conflictResolver = undefined; // idle: rebuilt on next conflict call
+        ctx.conflictResolver = undefined;
       }
-      // sessionManager/serverManager own LIVE children that the before-quit sweep
-      // (index.ts) and the SESSION_INPUT/RESIZE handlers find THROUGH ctx. Nulling
-      // them mid-run would orphan the running claude/server from the sweep AND detach
-      // it from the next keystroke (a fresh manager has no record of it). So when
-      // IDLE we clear immediately (next spawn/start rebuilds); when BUSY we KEEP the
-      // manager but mark it dirty, and its injected onIdle callback clears the cache
-      // once the last child exits — so the new agent/server command truly takes
-      // effect "once the live work ends", not only on a later idle SETTINGS_SET.
       if ((ctx.sessionManager?.liveWorktreeIds().length ?? 0) === 0) {
         ctx.sessionSettingsDirty = false;
-        ctx.sessionManager = undefined; // idle: agentCommand applies on next spawn
+        ctx.sessionManager = undefined;
       } else {
-        ctx.sessionSettingsDirty = true; // busy: onIdle clears it after the last exit
+        ctx.sessionSettingsDirty = true;
       }
       if ((ctx.serverManager?.liveServerWorktreeIds().length ?? 0) === 0) {
         ctx.serverSettingsDirty = false;
-        ctx.serverManager = undefined; // idle (no live server anywhere): applies on next start
+        ctx.serverManager = undefined;
       } else {
-        ctx.serverSettingsDirty = true; // busy: onIdle clears it after the LAST server stops
+        ctx.serverSettingsDirty = true;
       }
       return merged;
     },
   );
 
-  ipcMain.handle(IPC.REPO_GET, async (): Promise<string | null> => {
-    // Normalize undefined -> null so the invoke result is an explicit, serializable
-    // value matching the Promise<string | null> contract (mirrors SCROLLBACK_GET).
+  ipcMain.handle(IPC.REPO_GET, async (event): Promise<string | null> => {
+    const ctx = requireCtx(event);
     return ctx.repoRoot ?? null;
   });
 
-  ipcMain.handle(IPC.REPO_PICK, async (): Promise<RepoPickResult> => {
-    const { dialog, app } = await import('electron');
+  ipcMain.handle(IPC.REPO_PICK, async (event): Promise<RepoPickResult> => {
+    const ctx = requireCtx(event);
+    const { dialog } = await import('electron');
     const res = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       title: 'Select a git repository',
@@ -802,58 +775,38 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       return { ok: false, canceled: true };
     }
     const dir = res.filePaths[0];
-    // valid git work tree = a `.git` entry (dir for a primary repo, file for a
-    // linked worktree). Cheap existence check, no git spawn — same rule as
-    // resolveRepoRoot so the picked dir survives the next-startup resolve.
     if (!existsSync(join(dir, '.git'))) {
       return { ok: false, error: 'not a git repository' };
     }
-    getSettingsStore(ctx).set({ repoRoot: dir });
-    // UNIFORM restart: read the new repoRoot fresh at startup so every
-    // repoRoot-bound manager + the renderer rebuild cleanly (no runtime cache
-    // invalidation of worktree/diff/conflict/gh/merge managers).
-    //
-    // Route the quit through the SAME confirmed forced-quit path as APP_QUIT_DECISION,
-    // NOT a raw app.quit(). A raw quit re-fires app.on('before-quit') ->
-    // QuitController.onBeforeQuit, which preventDefault()s + pops a quit-warning when
-    // live worktree sessions exist (reachable once a change-repo affordance lands) —
-    // swallowing the relaunch and leaving repoRoot persisted but the app running on
-    // STALE in-memory managers (a half-state). Setting confirmedQuit + requestQuit()
-    // (wired in index.ts to quitController.decide(true)) makes the re-fired before-quit
-    // fall through cleanly: relaunch is honored, no veto, no unexpected popup.
-    app.relaunch();
-    ctx.confirmedQuit = true;
-    ctx.requestQuit?.();
+    // Multi-window: push to recentRepos (most-recent first, deduped) and ask main to
+    // open or FOCUS a window for this repo — NEVER app.relaunch() (it would nuke every
+    // other window). The same-repo-twice focus-guard lives in openRepo (index.ts).
+    const store = getSettingsStore(ctx);
+    const prev = store.get().recentRepos ?? [];
+    const recentRepos = [dir, ...prev.filter((r) => r !== dir)];
+    store.set({ recentRepos });
+    ctx.openRepo?.(dir);
     return { ok: true, repoRoot: dir };
   });
 
-  ipcMain.handle(
-    IPC.SCROLLBACK_GET,
-    async (_event: unknown, worktreeId: string): Promise<string | null> => {
-      // Normalize undefined -> null so the invoke result is an explicit, serializable value.
-      return getScrollbackStore(ctx).get(worktreeId) ?? null;
-    },
-  );
+  ipcMain.handle(IPC.SCROLLBACK_GET, async (event, worktreeId: string): Promise<string | null> => {
+    const ctx = requireCtx(event);
+    return getScrollbackStore(ctx).get(worktreeId) ?? null;
+  });
 
-  ipcMain.handle(
-    IPC.SCROLLBACK_SET,
-    async (_event: unknown, req: ScrollbackSetRequest): Promise<Ack> => {
-      getScrollbackStore(ctx).set(req.worktreeId, req.data);
-      return { ok: true };
-    },
-  );
+  ipcMain.handle(IPC.SCROLLBACK_SET, async (event, req: ScrollbackSetRequest): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    getScrollbackStore(ctx).set(req.worktreeId, req.data);
+    return { ok: true };
+  });
 
-  ipcMain.handle(
-    IPC.APP_QUIT_DECISION,
-    async (_event: unknown, req: { quit: boolean }): Promise<Ack> => {
-      if (!req.quit) return { ok: true }; // user cancelled — stay open.
-      ctx.confirmedQuit = true;
-      ctx.sessionManager?.killAll(); // PTY kill-sweep: no orphan claude survives.
-      // dispose() now kills EVERY worktree's server child (Map loop); servers are
-      // swept on quit but never quit-warned (D7) — trivially restarted, unlike turns.
-      ctx.serverManager?.dispose();
-      ctx.requestQuit?.(); // index.ts wires this to app.quit().
-      return { ok: true };
-    },
-  );
+  ipcMain.handle(IPC.APP_QUIT_DECISION, async (event, req: { quit: boolean }): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    if (!req.quit) return { ok: true };
+    ctx.confirmedQuit = true;
+    ctx.sessionManager?.killAll();
+    ctx.serverManager?.dispose();
+    ctx.requestQuit?.();
+    return { ok: true };
+  });
 }

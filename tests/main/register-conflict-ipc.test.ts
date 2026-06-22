@@ -1,18 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { registerIpc } from '../../src/main/ipc/register-ipc';
+import { registerIpcForTest } from '../helpers/register-ipc-for-test';
 import { createIpcContext } from '../../src/main/ipc/ipc-context';
 import { IPC } from '../../src/shared/ipc-channels';
 import type { ConflictResolver } from '../../src/main/git/conflict-resolver';
-
-/** Minimal ipcMain double that records handlers by channel. */
-function makeIpcMain() {
-  const handlers = new Map<string, (e: unknown, arg: unknown) => unknown>();
-  const ipcMain = {
-    handle: (ch: string, fn: (e: unknown, arg: unknown) => unknown) => handlers.set(ch, fn),
-    on: () => undefined,
-  } as unknown as Parameters<typeof registerIpc>[0];
-  return { ipcMain, handlers };
-}
 
 describe('conflict IPC wiring', () => {
   it('routes the conflict channels to the injected ConflictResolver', async () => {
@@ -35,13 +25,12 @@ describe('conflict IPC wiring', () => {
     ctx.conflictResolver = resolver;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const files = await handlers.get(IPC.MERGE_CONFLICTS)!(null, { worktreeId: 'w' });
+    const files = await handlers.get(IPC.MERGE_CONFLICTS)!(fakeEvent, { worktreeId: 'w' });
     expect(files).toEqual([{ path: 'a.txt', code: 'UU', hasOurs: true, hasTheirs: true }]);
 
-    await handlers.get(IPC.MERGE_RESOLVE)!(null, {
+    await handlers.get(IPC.MERGE_RESOLVE)!(fakeEvent, {
       worktreeId: 'w',
       path: 'a.txt',
       choice: 'ours',
@@ -53,21 +42,21 @@ describe('conflict IPC wiring', () => {
       content: undefined,
     });
 
-    const cont = await handlers.get(IPC.MERGE_CONTINUE)!(null, {
+    const cont = await handlers.get(IPC.MERGE_CONTINUE)!(fakeEvent, {
       worktreeId: 'w',
       targetBranch: 'main',
       cleanup: false,
     });
     expect(cont).toMatchObject({ merged: true, status: 'merged' });
 
-    const abort = await handlers.get(IPC.MERGE_ABORT)!(null, { worktreeId: 'w' });
+    const abort = await handlers.get(IPC.MERGE_ABORT)!(fakeEvent, { worktreeId: 'w' });
     expect(abort).toMatchObject({ status: 'failed' });
 
-    const merging = await handlers.get(IPC.MERGE_IN_PROGRESS)!(null, { worktreeId: 'w' });
+    const merging = await handlers.get(IPC.MERGE_IN_PROGRESS)!(fakeEvent, { worktreeId: 'w' });
     expect(merging).toBe(true);
     expect(resolver.inProgress).toHaveBeenCalled();
 
-    const owner = await handlers.get(IPC.MERGE_OWNER)!(null, undefined);
+    const owner = await handlers.get(IPC.MERGE_OWNER)!(fakeEvent, undefined);
     expect(owner).toBe('w');
     expect(resolver.inProgressWorktreeId).toHaveBeenCalled();
   });
@@ -88,10 +77,9 @@ describe('conflict IPC wiring', () => {
     ctx.conflictResolver = resolver;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const result = await handlers.get(IPC.MERGE_RUN)!(null, {
+    const result = await handlers.get(IPC.MERGE_RUN)!(fakeEvent, {
       worktreeId: 'B',
       targetBranch: 'main',
       runVerifyHook: true,
@@ -118,10 +106,9 @@ describe('conflict IPC wiring', () => {
     ctx.conflictResolver = resolver;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const result = await handlers.get(IPC.MERGE_RUN)!(null, {
+    const result = await handlers.get(IPC.MERGE_RUN)!(fakeEvent, {
       worktreeId: 'B',
       targetBranch: 'main',
       runVerifyHook: true,
@@ -136,10 +123,9 @@ describe('conflict IPC wiring', () => {
     ctx.conflictResolver = resolver;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    await handlers.get(IPC.SETTINGS_SET)!(null, { baseBranch: 'develop' });
+    await handlers.get(IPC.SETTINGS_SET)!(fakeEvent, { baseBranch: 'develop' });
     expect(ctx.conflictResolver).toBe(resolver); // NOT nulled while inProgress()
   });
 });

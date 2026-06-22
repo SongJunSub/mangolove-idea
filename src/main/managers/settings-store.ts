@@ -20,6 +20,15 @@ const KNOWN_KEYS: readonly (keyof AppSettings)[] = [
   'repoRoot',
 ];
 
+/** The string-array AppSettings keys (sanitized as arrays of non-empty strings). */
+const KNOWN_ARRAY_KEYS: readonly (keyof AppSettings)[] = ['recentRepos'];
+
+/** Projects an unknown to an array of non-empty strings ([] for any non-array input). */
+function sanitizeStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((v): v is string => typeof v === 'string' && v !== '');
+}
+
 /**
  * Persists the V2 item E AppSettings to a single JSON file whose path is injected
  * (tests use a temp file). Mirrors SessionStore EXACTLY: never throws on a
@@ -62,19 +71,29 @@ export class SettingsStore {
    * `partial` is left untouched (true partial-merge). Sanitized to the known fields.
    */
   set(partial: Partial<AppSettings>): AppSettings {
-    const merged: Record<string, string> = { ...this.load() };
+    const current = this.load();
+    const merged: Record<string, unknown> = { ...current };
     const source = partial as Record<string, unknown>;
     for (const key of KNOWN_KEYS) {
-      if (!(key in source)) continue; // not in this partial -> leave as-is
+      if (!(key in source)) continue;
       const value = source[key];
       if (typeof value === 'string' && value !== '') {
         merged[key] = value;
       } else {
-        delete merged[key]; // '' or non-string -> unset (revert to env/default)
+        delete merged[key];
       }
     }
-    this.write(merged);
-    return merged;
+    for (const key of KNOWN_ARRAY_KEYS) {
+      if (!(key in source)) continue;
+      const arr = sanitizeStringArray(source[key]);
+      if (arr.length > 0) {
+        merged[key] = arr;
+      } else {
+        delete merged[key]; // [] or non-array -> unset
+      }
+    }
+    this.write(merged as AppSettings);
+    return merged as AppSettings;
   }
 
   /**
@@ -88,12 +107,16 @@ export class SettingsStore {
   private sanitize(raw: unknown): AppSettings {
     if (raw === null || typeof raw !== 'object') return {};
     const source = raw as Record<string, unknown>;
-    const out: Record<string, string> = {};
+    const out: Record<string, unknown> = {};
     for (const key of KNOWN_KEYS) {
       const value = source[key];
       if (typeof value === 'string' && value !== '') out[key] = value;
     }
-    return out;
+    for (const key of KNOWN_ARRAY_KEYS) {
+      const arr = sanitizeStringArray(source[key]);
+      if (arr.length > 0) out[key] = arr;
+    }
+    return out as AppSettings;
   }
 
   private write(settings: AppSettings): void {

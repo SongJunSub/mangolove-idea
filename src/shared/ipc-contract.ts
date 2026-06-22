@@ -143,8 +143,9 @@ export interface MangoApi {
     /** The currently-selected repo root, or null when none is set. */
     get(): Promise<string | null>;
     /**
-     * Open a native folder picker; on a valid git repo, persist it and relaunch.
-     * Returns {canceled} or {error} when nothing was persisted.
+     * Open a native folder picker; on a valid git repo, push it to recentRepos and
+     * open (or focus) a window for it (no relaunch). Returns {canceled} or {error}
+     * when nothing was opened.
      */
     pick(): Promise<RepoPickResult>;
   };

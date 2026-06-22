@@ -2,19 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { registerIpc } from '../../src/main/ipc/register-ipc';
+import { registerIpcForTest } from '../helpers/register-ipc-for-test';
 import { createIpcContext } from '../../src/main/ipc/ipc-context';
 import { IPC } from '../../src/shared/ipc-channels';
 import type { GhStatusReader } from '../../src/main/git/gh-status-reader';
-
-function makeIpcMain() {
-  const handlers = new Map<string, (e: unknown, arg: unknown) => unknown>();
-  const ipcMain = {
-    handle: (ch: string, fn: (e: unknown, arg: unknown) => unknown) => handlers.set(ch, fn),
-    on: () => undefined,
-  } as unknown as Parameters<typeof registerIpc>[0];
-  return { ipcMain, handlers };
-}
 
 function baseCtx() {
   const ctx = createIpcContext();
@@ -30,10 +21,9 @@ describe('gh IPC wiring', () => {
     } as unknown as GhStatusReader;
     const ctx = baseCtx();
     ctx.ghStatusReader = reader;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const out = await handlers.get(IPC.GH_STATUS)!(null, { worktreeId: 'w' });
+    const out = await handlers.get(IPC.GH_STATUS)!(fakeEvent, { worktreeId: 'w' });
     expect(out).toEqual({ kind: 'no-pr' });
     expect(reader.status).toHaveBeenCalledWith({ worktreeId: 'w' });
   });
@@ -44,17 +34,15 @@ describe('gh IPC wiring', () => {
     } as unknown as GhStatusReader;
     const ctx = baseCtx();
     ctx.ghStatusReader = reader;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const out = await handlers.get(IPC.GH_STATUS)!(null, { worktreeId: 'w' });
+    const out = await handlers.get(IPC.GH_STATUS)!(fakeEvent, { worktreeId: 'w' });
     expect(out).toMatchObject({ kind: 'error', message: 'boom' });
   });
 
   it('APP_OPEN_EXTERNAL handler is registered (open action)', () => {
     const ctx = baseCtx();
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers } = registerIpcForTest(ctx);
     expect(handlers.has(IPC.APP_OPEN_EXTERNAL)).toBe(true);
   });
 });

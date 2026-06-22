@@ -437,15 +437,21 @@ export interface AppSettings {
    * resolveRepoRoot() falls back to cwd (dev) or null (Finder launch w/ bad cwd).
    */
   readonly repoRoot?: string;
+  /**
+   * Absolute paths of recently-opened repos (multi-window). The launcher reopens
+   * the most-recent on boot; REPO_PICK pushes the picked repo to the front. Empty
+   * array unsets the key. Seeded from the legacy single `repoRoot` on first read.
+   */
+  readonly recentRepos?: readonly string[];
 }
 
 // ── Repo root picker (V2 packaging) ──
 
 /**
- * Result of the REPO_PICK flow. On success the main process has ALREADY persisted
- * repoRoot and is about to relaunch — so the renderer rarely observes `ok:true`
- * (the window is replaced). The error/canceled shapes let the renderer keep the
- * empty-state up without a restart.
+ * Result of the REPO_PICK flow. On success the main process has pushed the repo to
+ * recentRepos and opened (or focused) a window for it — no relaunch — so the renderer
+ * observes `ok:true` normally (its empty-gate window may be reloaded to attach the
+ * repo). The error/canceled shapes let the renderer keep the empty-state up.
  */
 export type RepoPickResult =
   | { readonly ok: true; readonly repoRoot: string }
