@@ -10,6 +10,8 @@ import {
   aggregateActiveTurnWorktreeIds,
   sweepAll,
   teardownWindow,
+  findCtxByRepoRoot,
+  pickEmptyGateCtx,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
@@ -24,6 +26,33 @@ const contexts = new Map<number, IpcContext>();
 let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let scrollbackStore: ScrollbackStore;
+
+/**
+ * Opens a window for `repoRoot`, OR focuses the existing window if that repo is
+ * already open (SAME REPO IN TWO WINDOWS = FORBIDDEN — shared .git/MERGE_HEAD +
+ * scrollback/session races). If an empty-gate window (no repo) exists, ATTACH the
+ * repo to it (bind ctx.repoRoot + reload so its renderer re-reads REPO_GET) instead of
+ * spawning a duplicate window.
+ */
+function openOrFocusRepo(repoRoot: string): void {
+  const existing = findCtxByRepoRoot(contexts, repoRoot);
+  if (existing?.mainWindow && !existing.mainWindow.isDestroyed()) {
+    existing.mainWindow.focus();
+    return;
+  }
+  const gate = pickEmptyGateCtx(contexts);
+  if (gate?.mainWindow && !gate.mainWindow.isDestroyed()) {
+    // Attach: set this window's repoRoot, then reload it. The reload re-runs the
+    // renderer's mount-time REPO_GET, which now returns the new ctx.repoRoot, so the
+    // picker is replaced by the worktree UI. NO new REPO_OPENED channel. webContents.id
+    // is STABLE across reload (empirically confirmed on Electron 42.4.0), so the
+    // contexts key for this window is unaffected.
+    gate.repoRoot = repoRoot;
+    gate.mainWindow.webContents.reload();
+    return;
+  }
+  createWindow(repoRoot);
+}
 
 /**
  * Builds a BrowserWindow + a per-window IpcContext bound to `repoRoot`, sharing the
@@ -58,6 +87,7 @@ function createWindow(repoRoot: string | null): BrowserWindow {
   ctx.settingsStore = settingsStore;
   ctx.scrollbackStore = scrollbackStore;
   ctx.requestQuit = () => quitController.decide(true);
+  ctx.openRepo = (root) => openOrFocusRepo(root);
   // Register BEFORE loading content so a quit during load still sweeps this window.
   contexts.set(wcId, ctx);
 
@@ -123,17 +153,17 @@ app.whenReady().then(() => {
   // Channels are process-global: register the handlers ONCE over the registry.
   registerIpc(ipcMain, contexts);
 
-  // N=1 boot for THIS step: open the single resolved repo (Task 7 replaces this with
-  // the recentRepos launcher).
-  const repoRoot = resolveRepoRoot({
-    persisted: settingsStore.get().repoRoot,
-    cwd: process.cwd(),
-  });
-  createWindow(repoRoot);
+  // Multi-window boot: reopen the MOST-RECENT repo (recentRepos[0]) if valid; else
+  // fall back to the legacy single repoRoot / cwd resolve; else open the empty gate.
+  const recent = settingsStore.get().recentRepos ?? [];
+  const seed = recent[0] ?? settingsStore.get().repoRoot;
+  const bootRepo = resolveRepoRoot({ persisted: seed, cwd: process.cwd() });
+  createWindow(bootRepo);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      const root = resolveRepoRoot({ persisted: settingsStore.get().repoRoot, cwd: process.cwd() });
+      const last = settingsStore.get().recentRepos?.[0] ?? settingsStore.get().repoRoot;
+      const root = resolveRepoRoot({ persisted: last, cwd: process.cwd() });
       createWindow(root);
     }
   });

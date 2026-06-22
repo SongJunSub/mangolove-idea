@@ -80,3 +80,15 @@ export function findCtxByRepoRoot(
   }
   return undefined;
 }
+
+/**
+ * The first context with NO repoRoot (the empty-gate window showing the picker), or
+ * undefined when every window already owns a repo. The launcher attaches a picked
+ * repo to this window rather than spawning a second window for it.
+ */
+export function pickEmptyGateCtx(contexts: Map<number, IpcContext>): IpcContext | undefined {
+  for (const ctx of contexts.values()) {
+    if (ctx.repoRoot == null) return ctx;
+  }
+  return undefined;
+}
