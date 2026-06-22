@@ -25,15 +25,13 @@ describe('fanout IPC wiring', () => {
     };
     const manager = {
       start: vi.fn().mockResolvedValue({ id: 'r1', lanes: [lane] }),
-      get: vi
-        .fn()
-        .mockReturnValue({
-          id: 'r1',
-          prompt: 'p',
-          base: 'main',
-          skipPermissions: false,
-          lanes: [lane],
-        }),
+      get: vi.fn().mockReturnValue({
+        id: 'r1',
+        prompt: 'p',
+        base: 'main',
+        skipPermissions: false,
+        lanes: [lane],
+      }),
       select: vi
         .fn()
         .mockResolvedValue({ worktreeId: '/w/h', merged: true, cleanedUp: true, status: 'merged' }),
@@ -111,15 +109,13 @@ describe('fanout IPC wiring', () => {
 
   it('SETTINGS_SET keeps the fanoutManager while a run is active', async () => {
     const manager = {
-      get: vi
-        .fn()
-        .mockReturnValue({
-          id: 'r1',
-          prompt: 'p',
-          base: 'main',
-          skipPermissions: false,
-          lanes: [],
-        }),
+      get: vi.fn().mockReturnValue({
+        id: 'r1',
+        prompt: 'p',
+        base: 'main',
+        skipPermissions: false,
+        lanes: [],
+      }),
     } as unknown as FanoutManager;
     const ctx = createIpcContext();
     ctx.fanoutManager = manager;
