@@ -104,7 +104,13 @@ function createWindow(repoRoot: string | null): BrowserWindow {
     teardownWindow(contexts, wcId);
   });
 
-  win.on('ready-to-show', () => win.show());
+  // Show the window when its content is ready — UNLESS MANGO_HEADLESS=1 (automated
+  // GUI smokes / CI): then keep it hidden so it never appears on screen or steals
+  // focus. A hidden BrowserWindow still renders its DOM + handles IPC, so Playwright
+  // drives it identically; app.close() tears it down with no manual cleanup.
+  if (process.env.MANGO_HEADLESS !== '1') {
+    win.on('ready-to-show', () => win.show());
+  }
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
