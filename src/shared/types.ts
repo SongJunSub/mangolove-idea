@@ -74,10 +74,9 @@ export interface SessionRecord {
 export interface LogLine {
   /**
    * Worktree that produced this line (every line self-attributes; renderer demuxes).
-   * OPTIONAL during the V2 migration so un-partitioned producers + the untouched
-   * log-filter.test.ts literals keep compiling; Task 6 CLEANUP tightens to required.
+   * REQUIRED: every producer stamps it (LogStore.push) — the V2 migration shim is gone.
    */
-  readonly worktreeId?: string;
+  readonly worktreeId: string;
   /** Monotonic sequence number within THIS worktree's current server run. */
   readonly seq: number;
   readonly ts: number; // epoch ms
@@ -144,8 +143,8 @@ export interface StartServerRequest {
 }
 
 export interface StopServerRequest {
-  /** Stops whatever single server is running; id is advisory. */
-  readonly worktreeId?: string;
+  /** Stops the named worktree's server (REQUIRED — the migration shim is gone). */
+  readonly worktreeId: string;
 }
 
 /** Asks for one worktree's log ring buffer snapshot. */

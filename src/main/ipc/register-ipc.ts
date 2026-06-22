@@ -849,7 +849,9 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       if (!req.quit) return { ok: true }; // user cancelled — stay open.
       ctx.confirmedQuit = true;
       ctx.sessionManager?.killAll(); // PTY kill-sweep: no orphan claude survives.
-      ctx.serverManager?.dispose(); // keep Plan 3's server cleanup.
+      // dispose() now kills EVERY worktree's server child (Map loop); servers are
+      // swept on quit but never quit-warned (D7) — trivially restarted, unlike turns.
+      ctx.serverManager?.dispose();
       ctx.requestQuit?.(); // index.ts wires this to app.quit().
       return { ok: true };
     },
