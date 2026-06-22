@@ -766,7 +766,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
 
   ipcMain.handle(IPC.REPO_PICK, async (event): Promise<RepoPickResult> => {
     const ctx = requireCtx(event);
-    const { dialog, app } = await import('electron');
+    const { dialog } = await import('electron');
     const res = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       title: 'Select a git repository',
@@ -778,10 +778,14 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     if (!existsSync(join(dir, '.git'))) {
       return { ok: false, error: 'not a git repository' };
     }
-    getSettingsStore(ctx).set({ repoRoot: dir });
-    app.relaunch();
-    ctx.confirmedQuit = true;
-    ctx.requestQuit?.();
+    // Multi-window: push to recentRepos (most-recent first, deduped) and ask main to
+    // open or FOCUS a window for this repo — NEVER app.relaunch() (it would nuke every
+    // other window). The same-repo-twice focus-guard lives in openRepo (index.ts).
+    const store = getSettingsStore(ctx);
+    const prev = store.get().recentRepos ?? [];
+    const recentRepos = [dir, ...prev.filter((r) => r !== dir)];
+    store.set({ recentRepos });
+    ctx.openRepo?.(dir);
     return { ok: true, repoRoot: dir };
   });
 

@@ -73,61 +73,36 @@ describe('repo IPC wiring', () => {
     expect(ctx.settingsStore!.set).not.toHaveBeenCalled();
   });
 
-  it('REPO_PICK persists a valid repo then relaunches via the forced-quit path', async () => {
-    writeFileSync(join(dir, '.git'), 'gitdir: /somewhere\n'); // a linked-worktree .git FILE counts
-    mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [dir] });
-    const ctx = baseCtx();
-    // index.ts wires ctx.requestQuit to quitController.decide(true) (the confirmed
-    // forced-quit path). REPO_PICK MUST route through it — not a raw app.quit() the
-    // before-quit veto can swallow — so persist+relaunch never leaves a half-state.
-    const requestQuit = vi.fn(() => mocks.quit());
-    ctx.requestQuit = requestQuit;
-    const { handlers, fakeEvent } = registerIpcForTest(ctx);
-    const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
-    expect(out).toEqual({ ok: true, repoRoot: dir });
-    expect(ctx.settingsStore!.set).toHaveBeenCalledWith({ repoRoot: dir });
-    expect(mocks.relaunch).toHaveBeenCalledOnce();
-    // relaunch registered BEFORE the quit is requested (Electron relaunch contract).
-    expect(mocks.relaunch.mock.invocationCallOrder[0]).toBeLessThan(
-      requestQuit.mock.invocationCallOrder[0],
-    );
-    // confirmed-quit flag set so the re-fired before-quit falls through (no veto / popup).
-    expect(ctx.confirmedQuit).toBe(true);
-    expect(requestQuit).toHaveBeenCalledOnce();
-    expect(mocks.quit).toHaveBeenCalledOnce();
-  });
-
-  it('REPO_PICK survives a before-quit veto from live worktree sessions', async () => {
-    // Reachable once the renderer adds a change-repo affordance while sessions run.
-    // The QuitController vetoes a NON-confirmed quit when liveWorktreeIds > 0; REPO_PICK
-    // must use the confirmed forced-quit path so the relaunch is NOT swallowed.
-    const { QuitController } = await import('../../src/main/app/quit-controller');
-    const emitQuitWarning = vi.fn();
-    const controller = new QuitController({
-      liveWorktreeIds: () => ['wt-1'], // a live PTY exists -> non-confirmed quit is vetoed.
-      // The warning now keys on active turns; this session has one in flight so the
-      // non-confirmed quit is still vetoed (the REPO_PICK path must use forced quit).
-      activeTurnWorktreeIds: () => ['wt-1'],
-      emitQuitWarning,
-      sweep: vi.fn(),
-      quitNow: () => mocks.quit(),
-    });
-
+  it('REPO_PICK validates a repo, pushes it to recentRepos, and asks main to open it', async () => {
     writeFileSync(join(dir, '.git'), 'gitdir: /somewhere\n');
     mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [dir] });
     const ctx = baseCtx();
-    ctx.requestQuit = () => controller.decide(true); // exactly index.ts's wiring.
+    const openRepo = vi.fn();
+    ctx.openRepo = openRepo; // index.ts injects the real openOrFocusRepo
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
+    expect(out).toEqual({ ok: true, repoRoot: dir });
+    expect(openRepo).toHaveBeenCalledWith(dir);
+    expect(mocks.relaunch).not.toHaveBeenCalled(); // multi-window: NEVER relaunch
+  });
+
+  it('REPO_PICK does not call openRepo on cancel or a non-git dir', async () => {
+    const ctx = baseCtx();
+    const openRepo = vi.fn();
+    ctx.openRepo = openRepo;
     const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
-    // app.quit() (quitNow) re-fires before-quit; confirmed flag lets it through cleanly.
-    let vetoed = false;
-    controller.onBeforeQuit({ preventDefault: () => (vetoed = true) });
+    mocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+    expect(await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined)).toEqual({
+      ok: false,
+      canceled: true,
+    });
 
-    expect(out).toEqual({ ok: true, repoRoot: dir });
-    expect(mocks.relaunch).toHaveBeenCalledOnce();
-    expect(mocks.quit).toHaveBeenCalledOnce(); // quit actually fired despite live sessions.
-    expect(vetoed).toBe(false); // NOT vetoed, NO unexpected quit-warning popup.
-    expect(emitQuitWarning).not.toHaveBeenCalled();
+    mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [dir] }); // dir has no .git
+    expect(await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined)).toEqual({
+      ok: false,
+      error: 'not a git repository',
+    });
+    expect(openRepo).not.toHaveBeenCalled();
   });
 });

@@ -79,6 +79,12 @@ export interface IpcContext {
   fanoutManager?: FanoutManager;
   /** Injected by index.ts so the quit handler can actually quit (app.quit). */
   requestQuit?: () => void;
+  /**
+   * Injected by index.ts: open (or focus an existing window for) a repo by path.
+   * REPO_PICK delegates here instead of relaunching, so picking a repo opens/focuses
+   * a window in this process (multi-window). Optional so windowless tests omit it.
+   */
+  openRepo?: (repoRoot: string) => void;
 }
 
 export function createIpcContext(): IpcContext {
