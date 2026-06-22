@@ -10,11 +10,11 @@ const A = '/repo/.worktrees/a';
 const B = '/repo/.worktrees/b';
 
 function makeRunnerFactory(fakes: FakeProcHandle[]) {
-  const calls: { command: string; cwd: string }[] = [];
+  const calls: { command: string; cwd: string; env?: NodeJS.ProcessEnv }[] = [];
   let i = 0;
   const runner: ProcessRunner = {
     spawn: (command, opts) => {
-      calls.push({ command, cwd: opts.cwd });
+      calls.push({ command, cwd: opts.cwd, env: opts.env });
       const f = fakes[i++];
       if (!f) throw new Error('fake runner ran out of procs');
       return f as unknown as IProcLike;
@@ -32,6 +32,7 @@ function makeManager(opts: {
   resolvePath?: (id: string) => Promise<string | undefined>;
   commandOverride?: string;
   onIdle?: () => void;
+  findPort?: (base: number, exclude: ReadonlySet<number>) => Promise<number>;
 }) {
   const states: ServerStatus[] = [];
   const logLines: LogLine[] = [];
@@ -46,6 +47,15 @@ function makeManager(opts: {
     detect: opts.detect ?? (() => ({ kind: 'npm', command: 'npm run dev' })),
     resolvePath: opts.resolvePath ?? (async (id) => id),
     commandOverride: opts.commandOverride,
+    // Deterministic stand-in for findFreePort: lowest port >= base not in exclude, WITHOUT
+    // binding real sockets. Mirrors the production exclude semantics so tests stay hermetic.
+    findPort:
+      opts.findPort ??
+      (async (base, exclude) => {
+        let p = base;
+        while (exclude.has(p)) p += 1;
+        return p;
+      }),
     onIdle: opts.onIdle,
   });
   return { mgr, states, logLines, calls, logStore };
@@ -56,7 +66,8 @@ describe('ServerManager.start (per worktree)', () => {
     const fake = makeFakeRunner(111);
     const { mgr, states, calls } = makeManager({ fakes: [fake] });
     const status = await mgr.start({ worktreeId: A });
-    expect(calls).toEqual([{ command: 'npm run dev', cwd: A }]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ command: 'npm run dev', cwd: A });
     expect(status.process.state).toBe('running');
     expect(status.process.pid).toBe(111);
     expect(status.process.kind).toBe('npm');
@@ -69,6 +80,38 @@ describe('ServerManager.start (per worktree)', () => {
     const { mgr, calls } = makeManager({ fakes: [fake], commandOverride: 'node fake-server.js' });
     await mgr.start({ worktreeId: A });
     expect(calls[0].command).toBe('node fake-server.js');
+  });
+
+  it('injects a DISTINCT PORT env per concurrent worktree server (no fixed-port collision)', async () => {
+    const { mgr, calls } = makeManager({ fakes: [makeFakeRunner(), makeFakeRunner()] });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: B }); // B excludes A's port -> next free
+    expect(calls).toHaveLength(2);
+    expect(calls[0].env?.PORT).toBe('5173');
+    expect(calls[1].env?.PORT).toBe('5174');
+    // The injected env inherits the parent environment (spread of process.env), not just PORT.
+    expect(calls[0].env?.PATH).toBe(process.env.PATH);
+  });
+
+  it('reuses the freed port when the SAME worktree restarts (no needless drift)', async () => {
+    const { mgr, calls } = makeManager({ fakes: [makeFakeRunner(), makeFakeRunner()] });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: A }); // replace SAME worktree -> its old port is free again
+    expect(calls[0].env?.PORT).toBe('5173');
+    expect(calls[1].env?.PORT).toBe('5173');
+  });
+
+  it('crashes (no spawn) when no free port can be found', async () => {
+    const { mgr, calls, states } = makeManager({
+      fakes: [makeFakeRunner()],
+      findPort: async () => {
+        throw new Error('no free port');
+      },
+    });
+    const status = await mgr.start({ worktreeId: A });
+    expect(calls).toHaveLength(0); // never spawned without a port
+    expect(status.process.state).toBe('crashed');
+    expect(states.map((s) => s.process.state)).toEqual(['starting', 'crashed']);
   });
 
   it('pipes stdout/stderr into the LogStore stamped with the worktreeId', async () => {

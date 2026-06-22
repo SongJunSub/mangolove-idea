@@ -8,7 +8,11 @@ import type {
 } from '../../shared/types';
 import type { IProcLike, ProcessRunner } from '../proc/process-runner';
 import { detectRunner, type DetectedRunner } from '../util/detect-runner';
+import { findFreePort } from '../util/find-free-port';
 import type { LogStore } from './log-store';
+
+/** First port to try when assigning a distinct PORT per worktree server (Vite default). */
+const BASE_PORT = 5173;
 
 /** Where ServerManager publishes one worktree's server state (injected for tests). */
 export interface ServerEmitter {
@@ -27,6 +31,12 @@ export interface ServerManagerDeps {
   /** Global command override from the main-side env seam (MANGO_SERVER_CMD). */
   readonly commandOverride?: string;
   /**
+   * Resolves a free port to inject as PORT for the spawned server (distinct per live
+   * worktree). Default findFreePort; injectable so unit tests assign deterministic ports
+   * without binding real sockets.
+   */
+  readonly findPort?: (base: number, exclude: ReadonlySet<number>) => Promise<number>;
+  /**
    * Fired when the LAST live server child goes away (stop or natural exit), i.e.
    * the manager transitions from busy -> idle ACROSS ALL worktrees. register-ipc
    * uses this to perform a settings edit that was DEFERRED while busy: clearing
@@ -43,6 +53,8 @@ interface RunningServer {
   readonly kind: ServerKind;
   readonly command: string;
   readonly startedAt: number;
+  /** The PORT injected into this server's env (distinct per live worktree). */
+  readonly port: number;
   /** True once we requested stop (so a following exit reads as 'stopped'). */
   stopping: boolean;
 }
@@ -67,6 +79,7 @@ export class ServerManager {
   private readonly detect: (dir: string) => DetectedRunner;
   private readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
   private readonly commandOverride?: string;
+  private readonly findPort: (base: number, exclude: ReadonlySet<number>) => Promise<number>;
   private readonly onIdle?: () => void;
   /** Live children, keyed by worktreeId (true concurrency). */
   private readonly servers = new Map<string, RunningServer>();
@@ -80,6 +93,7 @@ export class ServerManager {
     this.detect = deps.detect ?? detectRunner;
     this.resolvePath = deps.resolvePath;
     this.commandOverride = deps.commandOverride;
+    this.findPort = deps.findPort ?? findFreePort;
     this.onIdle = deps.onIdle;
   }
 
@@ -108,13 +122,33 @@ export class ServerManager {
       command,
     });
 
-    const proc = this.runner.spawn(command, { cwd });
+    // Assign a DISTINCT port per live worktree server + inject it as PORT so servers
+    // that read PORT (Next/CRA/Express) don't collide on a fixed port; PORT-ignoring
+    // servers (Vite) auto-increment and ignore it harmlessly. `replace()` above already
+    // unmapped this worktree's prior server, so the exclude set is the OTHER live servers'
+    // ports. Detection still reads the ACTUAL printed port, so this is purely best-effort.
+    const exclude = new Set<number>();
+    for (const s of this.servers.values()) exclude.add(s.port);
+    let port: number;
+    try {
+      port = await this.findPort(BASE_PORT, exclude);
+    } catch {
+      // No free port (200 consecutive ports occupied — extreme). Fail like the other
+      // start() error paths rather than rejecting the IPC call with an unhandled error.
+      return this.crash(req.worktreeId, detected.kind, undefined, 'no free port for the server');
+    }
+
+    const proc = this.runner.spawn(command, {
+      cwd,
+      env: { ...process.env, PORT: String(port) },
+    });
     const server: RunningServer = {
       proc,
       worktreeId: req.worktreeId,
       kind: detected.kind,
       command,
       startedAt: Date.now(),
+      port,
       stopping: false,
     };
     this.servers.set(req.worktreeId, server);
