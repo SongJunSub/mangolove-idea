@@ -13,6 +13,7 @@ import type {
   ServerStatus,
   StartServerRequest,
   StopServerRequest,
+  LogSnapshotRequest,
   LogLine,
   MergeRequest,
   MergeResult,
@@ -556,9 +557,12 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     return getServerManager(ctx).status();
   });
 
-  ipcMain.handle(IPC.LOG_SNAPSHOT, async (): Promise<LogLine[]> => {
-    return getLogStore(ctx).snapshot();
-  });
+  ipcMain.handle(
+    IPC.LOG_SNAPSHOT,
+    async (_event: unknown, req: LogSnapshotRequest): Promise<LogLine[]> => {
+      return getLogStore(ctx).snapshot(req.worktreeId);
+    },
+  );
 
   ipcMain.handle(
     IPC.MERGE_RUN,

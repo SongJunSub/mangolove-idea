@@ -95,7 +95,7 @@ describe('ServerManager.start', () => {
     a.emitStdout('first\n');
     await mgr.start({ worktreeId: WT }); // replace -> reset
     b.emitStdout('second\n');
-    expect(logStore.snapshot().map((l) => [l.seq, l.text])).toEqual([[0, 'second']]);
+    expect(logStore.snapshot(WT).map((l) => [l.seq, l.text])).toEqual([[0, 'second']]);
   });
 
   it('crashes (no spawn) when the worktree id is unknown', async () => {

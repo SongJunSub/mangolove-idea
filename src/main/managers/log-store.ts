@@ -14,70 +14,89 @@ const DEFAULT_CAP = 5000;
  */
 const LEVEL_RE = /\b(ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\b/i;
 
+/** One worktree's independent ring + split state. */
+interface Partition {
+  buffer: LogLine[];
+  seq: number;
+  carry: Record<'stdout' | 'stderr', string>;
+}
+
 /**
- * In-memory bounded ring buffer of LogLine for ONE server run. Splits chunked
- * stdout/stderr into lines (carrying partials across chunks), best-effort parses
- * a level, assigns a monotonic per-run seq, drops oldest past the cap, and emits
- * every line via the injected LogEmitter. No file persistence in MVP — in-memory
- * only (keeps src/shared pure; a file sink is optional/deferred to a later plan).
+ * In-memory bounded ring buffer of LogLine, PARTITIONED per worktree (V2 parallel
+ * servers). One instance owns a Map<worktreeId, Partition> (implicit-create), so N
+ * worktrees each run a concurrent server with an independent buffer + monotonic seq
+ * + partial-line carry, capped at DEFAULT_CAP lines EACH. Splits chunked
+ * stdout/stderr into lines (carrying partials across chunks), best-effort parses a
+ * level, stamps every line with its worktreeId, and emits via the injected
+ * LogEmitter. No file persistence in MVP — in-memory only.
  */
 export class LogStore {
   private readonly emitter: LogEmitter;
   private readonly cap: number;
-  private worktreeId = '';
-  private buffer: LogLine[] = [];
-  private seq = 0;
-  private carry: Record<'stdout' | 'stderr', string> = { stdout: '', stderr: '' };
+  private readonly partitions = new Map<string, Partition>();
 
   constructor(emitter: LogEmitter, cap: number = DEFAULT_CAP) {
     this.emitter = emitter;
     this.cap = cap;
   }
 
-  /** Feeds a raw chunk for a worktree; emits a LogLine per COMPLETE line. */
+  /** Returns the worktree's partition, creating an empty one on first touch. */
+  private partition(worktreeId: string): Partition {
+    let p = this.partitions.get(worktreeId);
+    if (!p) {
+      p = { buffer: [], seq: 0, carry: { stdout: '', stderr: '' } };
+      this.partitions.set(worktreeId, p);
+    }
+    return p;
+  }
+
+  /** Feeds a raw chunk for one worktree; emits a LogLine per COMPLETE line. */
   append(worktreeId: string, stream: 'stdout' | 'stderr', chunk: string): void {
-    this.worktreeId = worktreeId;
-    const combined = this.carry[stream] + chunk;
+    const p = this.partition(worktreeId);
+    const combined = p.carry[stream] + chunk;
     const parts = combined.split('\n');
-    this.carry[stream] = parts.pop() ?? '';
+    p.carry[stream] = parts.pop() ?? '';
     for (const part of parts) {
-      this.push(stream, part.endsWith('\r') ? part.slice(0, -1) : part);
+      this.push(worktreeId, p, stream, part.endsWith('\r') ? part.slice(0, -1) : part);
     }
   }
 
-  /** Emits any buffered partials (call on process exit so the last line survives). */
-  flush(): void {
+  /** Emits one worktree's buffered partials (call on its process exit). */
+  flush(worktreeId: string): void {
+    const p = this.partition(worktreeId);
     for (const stream of ['stdout', 'stderr'] as const) {
-      const partial = this.carry[stream];
-      this.carry[stream] = '';
-      if (partial.length > 0) this.push(stream, partial);
+      const partial = p.carry[stream];
+      p.carry[stream] = '';
+      if (partial.length > 0) this.push(worktreeId, p, stream, partial);
     }
   }
 
-  /** Returns a shallow copy of the current ring (newest last). */
-  snapshot(): LogLine[] {
-    return [...this.buffer];
+  /** Shallow copy of one worktree's ring (newest last); [] if unseen. */
+  snapshot(worktreeId: string): LogLine[] {
+    return [...(this.partitions.get(worktreeId)?.buffer ?? [])];
   }
 
-  /** Clears the buffer, partials, and seq for a NEW run. */
+  /** Clears ONE worktree's buffer, partials, and seq for a NEW run. */
   reset(worktreeId: string): void {
-    this.worktreeId = worktreeId;
-    this.buffer = [];
-    this.seq = 0;
-    this.carry = { stdout: '', stderr: '' };
+    this.partitions.set(worktreeId, { buffer: [], seq: 0, carry: { stdout: '', stderr: '' } });
   }
 
-  private push(stream: 'stdout' | 'stderr', text: string): void {
+  /** Drops a worktree's partition entirely (e.g. on worktree removal). */
+  removeWorktree(worktreeId: string): void {
+    this.partitions.delete(worktreeId);
+  }
+
+  private push(worktreeId: string, p: Partition, stream: 'stdout' | 'stderr', text: string): void {
     const line: LogLine = {
-      worktreeId: this.worktreeId,
-      seq: this.seq++,
+      worktreeId,
+      seq: p.seq++,
       ts: Date.now(),
       stream,
       level: this.parseLevel(stream, text),
       text,
     };
-    this.buffer.push(line);
-    if (this.buffer.length > this.cap) this.buffer.shift();
+    p.buffer.push(line);
+    if (p.buffer.length > this.cap) p.buffer.shift();
     this.emitter.emitLine(line);
   }
 

@@ -333,8 +333,8 @@ describe('registerIpc — server + logs', () => {
     const { handlers, ipcMain } = makeIpcMain();
     const ls = fakeLogStore();
     registerIpc(ipcMain as never, { mainWindow: null, logStore: ls as never });
-    const out = await handlers.get('log:snapshot')!({});
-    expect(ls.snapshot).toHaveBeenCalledOnce();
+    const out = await handlers.get('log:snapshot')!({}, { worktreeId: '/wt' });
+    expect(ls.snapshot).toHaveBeenCalledWith('/wt');
     expect(out).toEqual([{ seq: 0, ts: 1, stream: 'stdout', level: 'info', text: 'x' }]);
   });
 });

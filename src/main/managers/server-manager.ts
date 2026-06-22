@@ -142,7 +142,7 @@ export class ServerManager {
       startedAt: server.startedAt,
     });
     server.proc.kill();
-    this.logStore.flush();
+    this.logStore.flush(server.worktreeId);
     const status = this.emitState({
       worktreeId: server.worktreeId,
       kind: server.kind,
@@ -191,7 +191,7 @@ export class ServerManager {
     // (this.current already advanced) is swallowed — Plan 2's identity lesson.
     if (this.current !== server) return;
     this.current = null;
-    this.logStore.flush();
+    this.logStore.flush(server.worktreeId);
     // Clean stop = we asked it to stop (kill) OR it exited 0; anything else is a crash.
     const stoppedCleanly = server.stopping || code === 0;
     this.emitState({
@@ -212,7 +212,7 @@ export class ServerManager {
     message: string,
   ): ServerStatus {
     this.logStore.append(worktreeId, 'stderr', `[mango] ${message}\n`);
-    this.logStore.flush();
+    this.logStore.flush(worktreeId);
     return this.emitState({ worktreeId, kind, state: 'crashed', pid, exitCode: null });
   }
 
