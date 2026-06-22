@@ -24,3 +24,20 @@ describe('open-or-focus routing helpers', () => {
     expect(pickEmptyGateCtx(new Map([[2, filled]]))).toBeUndefined();
   });
 });
+
+describe('same-repo-twice focus-guard', () => {
+  it('opening an already-open repo resolves to the existing window (focus, not duplicate)', () => {
+    const a: IpcContext = { mainWindow: null, repoRoot: '/proj-a' };
+    const b: IpcContext = { mainWindow: null, repoRoot: '/proj-b' };
+    const contexts = new Map<number, IpcContext>([
+      [1, a],
+      [2, b],
+    ]);
+    // Re-picking /proj-a finds A: the launcher focuses A instead of opening a 3rd window.
+    expect(findCtxByRepoRoot(contexts, '/proj-a')).toBe(a);
+    // A brand-new repo finds nothing -> launcher opens a new window for it.
+    expect(findCtxByRepoRoot(contexts, '/proj-c')).toBeUndefined();
+    // And there is no empty gate to attach to (both windows own a repo).
+    expect(pickEmptyGateCtx(contexts)).toBeUndefined();
+  });
+});
