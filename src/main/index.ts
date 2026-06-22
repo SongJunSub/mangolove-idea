@@ -12,6 +12,7 @@ import {
   teardownWindow,
   findCtxByRepoRoot,
   pickEmptyGateCtx,
+  canonicalRepoRoot,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
@@ -35,7 +36,11 @@ let scrollbackStore: ScrollbackStore;
  * spawning a duplicate window.
  */
 function openOrFocusRepo(repoRoot: string): void {
-  const existing = findCtxByRepoRoot(contexts, repoRoot);
+  // Canonicalize FIRST so the focus-guard compares against the same form createWindow
+  // stores on ctx.repoRoot — else /tmp/x vs /private/tmp/x (or a trailing slash) would
+  // dodge the dedup and open a duplicate window racing the shared .git/MERGE_HEAD.
+  const root = canonicalRepoRoot(repoRoot);
+  const existing = findCtxByRepoRoot(contexts, root);
   if (existing?.mainWindow && !existing.mainWindow.isDestroyed()) {
     existing.mainWindow.focus();
     return;
@@ -47,11 +52,11 @@ function openOrFocusRepo(repoRoot: string): void {
     // picker is replaced by the worktree UI. NO new REPO_OPENED channel. webContents.id
     // is STABLE across reload (empirically confirmed on Electron 42.4.0), so the
     // contexts key for this window is unaffected.
-    gate.repoRoot = repoRoot;
+    gate.repoRoot = root;
     gate.mainWindow.webContents.reload();
     return;
   }
-  createWindow(repoRoot);
+  createWindow(root);
 }
 
 /**
@@ -82,7 +87,9 @@ function createWindow(repoRoot: string | null): BrowserWindow {
 
   const ctx = createIpcContext();
   ctx.mainWindow = win;
-  ctx.repoRoot = repoRoot;
+  // Store the CANONICAL repo path (realpath) so the same-repo focus-guard dedupes
+  // reliably; null = the empty-gate window (renderer shows the picker).
+  ctx.repoRoot = repoRoot == null ? null : canonicalRepoRoot(repoRoot);
   ctx.sessionStore = sessionStore;
   ctx.settingsStore = settingsStore;
   ctx.scrollbackStore = scrollbackStore;

@@ -1,4 +1,21 @@
+import { realpathSync } from 'node:fs';
 import type { IpcContext } from '../ipc/ipc-context';
+
+/**
+ * Canonicalizes a repo path (realpath: resolves symlinks like /tmp -> /private/tmp,
+ * strips trailing slashes, normalizes case on case-insensitive volumes) so the
+ * same-repo focus-guard (findCtxByRepoRoot) dedupes RELIABLY — without this, the same
+ * repo reached via two path forms opens two windows that then race the one shared
+ * .git/MERGE_HEAD + scrollback/session stores. Mirrors WorktreeManager's realpathSync.
+ * A non-existent path falls back to itself (an unopenable repo fails later, loudly).
+ */
+export function canonicalRepoRoot(repoRoot: string): string {
+  try {
+    return realpathSync(repoRoot);
+  } catch {
+    return repoRoot;
+  }
+}
 
 /** The minimal event slice requireCtxFrom needs — a sender carrying an id. */
 export interface CtxEventLike {

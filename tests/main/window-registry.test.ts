@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   requireCtxFrom,
   aggregateLiveWorktreeIds,
@@ -6,6 +9,7 @@ import {
   sweepAll,
   findCtxByRepoRoot,
   teardownWindow,
+  canonicalRepoRoot,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
@@ -124,5 +128,44 @@ describe('teardownWindow', () => {
   it('teardownWindow on an unknown id is a guarded no-op', () => {
     const contexts = new Map<number, IpcContext>();
     expect(() => teardownWindow(contexts, 42)).not.toThrow();
+  });
+
+  // Regression: the same-repo focus-guard was bypassable when the repo was reached via
+  // a non-canonical path (e.g. /tmp -> /private/tmp symlink), opening a duplicate window
+  // racing the shared .git/MERGE_HEAD. canonicalRepoRoot must collapse path forms so
+  // findCtxByRepoRoot dedupes reliably.
+  describe('canonicalRepoRoot (same-repo focus-guard robustness)', () => {
+    const made: string[] = [];
+    afterEach(() => {
+      for (const p of made.splice(0)) rmSync(p, { recursive: true, force: true });
+    });
+
+    it('resolves a symlinked path to the same canonical form as the real dir', () => {
+      const base = mkdtempSync(join(realpathSync(tmpdir()), 'mw-canon-'));
+      made.push(base);
+      const real = join(base, 'real-repo');
+      mkdirSync(real);
+      const link = join(base, 'link-repo');
+      symlinkSync(real, link);
+
+      expect(canonicalRepoRoot(link)).toBe(real);
+      // The whole point: a ctx stored under the real path is FOUND when the lookup
+      // key arrives via the symlink, once both are canonicalized.
+      const ctx = ctxWith({ repoRoot: canonicalRepoRoot(real) });
+      const contexts = new Map<number, IpcContext>([[1, ctx]]);
+      expect(findCtxByRepoRoot(contexts, canonicalRepoRoot(link))).toBe(ctx);
+    });
+
+    it('strips a trailing slash so two path forms of one repo dedupe', () => {
+      const base = mkdtempSync(join(realpathSync(tmpdir()), 'mw-canon-'));
+      made.push(base);
+      const repo = join(base, 'repo');
+      mkdirSync(repo);
+      expect(canonicalRepoRoot(`${repo}/`)).toBe(repo);
+    });
+
+    it('falls back to the raw path when it does not exist (fails loudly later, not here)', () => {
+      expect(canonicalRepoRoot('/no/such/repo/xyz')).toBe('/no/such/repo/xyz');
+    });
   });
 });
