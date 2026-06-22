@@ -32,7 +32,7 @@ export interface IpcContext {
   sessionManager?: SessionManager;
   /** Lazily constructed in register-ipc; injectable in tests (Plan 3). */
   serverManager?: ServerManager;
-  /** The LogStore backing the running server's logs (Plan 3). */
+  /** The single LogStore (Map<worktreeId, partition>) backing every worktree's server logs. */
   logStore?: LogStore;
   /** Lazily constructed in register-ipc; injectable in tests (Plan 4). */
   mergeRunner?: MergeRunner;

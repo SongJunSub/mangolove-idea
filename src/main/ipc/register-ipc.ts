@@ -560,6 +560,10 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     },
   );
 
+  ipcMain.handle(IPC.SERVER_STATUS_ALL, async (): Promise<Record<string, ServerStatus>> => {
+    return getServerManager(ctx).statusAll();
+  });
+
   ipcMain.handle(
     IPC.LOG_SNAPSHOT,
     async (_event: unknown, req: LogSnapshotRequest): Promise<LogLine[]> => {
