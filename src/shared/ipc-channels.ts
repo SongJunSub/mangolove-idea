@@ -18,15 +18,16 @@ export const IPC = {
   SESSION_STATUS: 'session:status', // main -> renderer, event (AgentSession changed)
   SESSION_RECORDS: 'session:records', // invoke (recorded worktree paths for rehydrate)
 
-  // server (ONE at a time)
-  SERVER_START: 'server:start', // invoke
-  SERVER_STOP: 'server:stop', // invoke
-  SERVER_STATUS: 'server:status', // invoke (snapshot)
-  SERVER_STATE: 'server:state', // main -> renderer, event (ServerStatus changed)
+  // server (ONE per worktree, concurrent)
+  SERVER_START: 'server:start', // invoke (worktreeId)
+  SERVER_STOP: 'server:stop', // invoke (worktreeId)
+  SERVER_STATUS: 'server:status', // invoke (worktreeId -> ServerStatus)
+  SERVER_STATUS_ALL: 'server:status-all', // invoke (-> Record<worktreeId, ServerStatus>) mount rehydrate
+  SERVER_STATE: 'server:state', // main -> renderer, event (one worktree's ServerStatus changed)
 
   // logs
-  LOG_LINE: 'log:line', // main -> renderer, event (one LogLine)
-  LOG_SNAPSHOT: 'log:snapshot', // invoke (full ring buffer for current run)
+  LOG_LINE: 'log:line', // main -> renderer, event (one LogLine, carries worktreeId)
+  LOG_SNAPSHOT: 'log:snapshot', // invoke (worktreeId -> that worktree's ring buffer)
 
   // merge + cleanup (MVP item 5) + conflict resolution (V2)
   MERGE_RUN: 'merge:run', // invoke

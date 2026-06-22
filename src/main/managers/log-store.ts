@@ -24,6 +24,7 @@ const LEVEL_RE = /\b(ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\b/i;
 export class LogStore {
   private readonly emitter: LogEmitter;
   private readonly cap: number;
+  private worktreeId = '';
   private buffer: LogLine[] = [];
   private seq = 0;
   private carry: Record<'stdout' | 'stderr', string> = { stdout: '', stderr: '' };
@@ -33,8 +34,9 @@ export class LogStore {
     this.cap = cap;
   }
 
-  /** Feeds a raw chunk; emits a LogLine for every COMPLETE line in it. */
-  append(stream: 'stdout' | 'stderr', chunk: string): void {
+  /** Feeds a raw chunk for a worktree; emits a LogLine per COMPLETE line. */
+  append(worktreeId: string, stream: 'stdout' | 'stderr', chunk: string): void {
+    this.worktreeId = worktreeId;
     const combined = this.carry[stream] + chunk;
     const parts = combined.split('\n');
     this.carry[stream] = parts.pop() ?? '';
@@ -58,7 +60,8 @@ export class LogStore {
   }
 
   /** Clears the buffer, partials, and seq for a NEW run. */
-  reset(): void {
+  reset(worktreeId: string): void {
+    this.worktreeId = worktreeId;
     this.buffer = [];
     this.seq = 0;
     this.carry = { stdout: '', stderr: '' };
@@ -66,6 +69,7 @@ export class LogStore {
 
   private push(stream: 'stdout' | 'stderr', text: string): void {
     const line: LogLine = {
+      worktreeId: this.worktreeId,
       seq: this.seq++,
       ts: Date.now(),
       stream,

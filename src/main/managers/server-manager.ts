@@ -80,7 +80,7 @@ export class ServerManager {
   /** Starts (replacing any running server) the detected/overridden command. */
   async start(req: StartServerRequest): Promise<ServerStatus> {
     this.replaceCurrent(); // stop any existing server first (one at a time)
-    this.logStore.reset();
+    this.logStore.reset(req.worktreeId);
 
     const cwd = await this.resolvePath(req.worktreeId);
     if (!cwd) {
@@ -113,8 +113,8 @@ export class ServerManager {
     };
     this.current = server;
 
-    proc.onStdout((chunk) => this.logStore.append('stdout', chunk));
-    proc.onStderr((chunk) => this.logStore.append('stderr', chunk));
+    proc.onStdout((chunk) => this.logStore.append(req.worktreeId, 'stdout', chunk));
+    proc.onStderr((chunk) => this.logStore.append(req.worktreeId, 'stderr', chunk));
     proc.onExit((e) => this.handleExit(server, e.code, e.signal));
 
     return this.emitState({
@@ -211,7 +211,7 @@ export class ServerManager {
     pid: number | undefined,
     message: string,
   ): ServerStatus {
-    this.logStore.append('stderr', `[mango] ${message}\n`);
+    this.logStore.append(worktreeId, 'stderr', `[mango] ${message}\n`);
     this.logStore.flush();
     return this.emitState({ worktreeId, kind, state: 'crashed', pid, exitCode: null });
   }

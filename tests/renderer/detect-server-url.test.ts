@@ -4,7 +4,7 @@ import type { LogLine } from '../../src/shared/types';
 
 /** Builds a LogLine with sane defaults; only `text` matters for detection. */
 function line(seq: number, text: string): LogLine {
-  return { seq, ts: 0, stream: 'stdout', level: 'info', text };
+  return { worktreeId: '/wt', seq, ts: 0, stream: 'stdout', level: 'info', text };
 }
 
 describe('detectServerUrl', () => {

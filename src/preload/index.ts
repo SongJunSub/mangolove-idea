@@ -36,11 +36,12 @@ const api: MangoApi = {
   server: {
     start: (req) => ipcRenderer.invoke(IPC.SERVER_START, req),
     stop: (req) => ipcRenderer.invoke(IPC.SERVER_STOP, req),
-    status: () => ipcRenderer.invoke(IPC.SERVER_STATUS),
+    status: (worktreeId) => ipcRenderer.invoke(IPC.SERVER_STATUS, { worktreeId }),
+    statusAll: () => ipcRenderer.invoke(IPC.SERVER_STATUS_ALL),
     onState: (cb) => subscribe(IPC.SERVER_STATE, cb),
   },
   logs: {
-    snapshot: () => ipcRenderer.invoke(IPC.LOG_SNAPSHOT),
+    snapshot: (worktreeId) => ipcRenderer.invoke(IPC.LOG_SNAPSHOT, { worktreeId }),
     onLine: (cb) => subscribe(IPC.LOG_LINE, cb),
   },
   merge: {

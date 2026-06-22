@@ -75,11 +75,19 @@ export interface MangoApi {
   server: {
     start(req: StartServerRequest): Promise<ServerStatus>;
     stop(req: StopServerRequest): Promise<ServerStatus>;
-    status(): Promise<ServerStatus>;
+    /**
+     * Snapshot for ONE worktree's server (absent => stopped). worktreeId is OPTIONAL
+     * during the V2 migration so the renderer's old no-arg status() compiles; Task 5a
+     * passes it; main reads it once it relies on it (Task 4).
+     */
+    status(worktreeId?: string): Promise<ServerStatus>;
+    /** All known worktree server snapshots, keyed by worktreeId (mount rehydrate). */
+    statusAll(): Promise<Record<string, ServerStatus>>;
     onState(cb: (s: ServerStatus) => void): Unsubscribe;
   };
   logs: {
-    snapshot(): Promise<LogLine[]>;
+    /** The ring buffer for ONE worktree's server run (worktreeId optional until Task 5a). */
+    snapshot(worktreeId?: string): Promise<LogLine[]>;
     onLine(cb: (line: LogLine) => void): Unsubscribe;
   };
   merge: {
