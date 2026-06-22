@@ -7,8 +7,10 @@ export interface UseRepo {
   /** True until the initial REPO_GET resolves. */
   readonly loading: boolean;
   /**
-   * Open the native folder picker. On a valid git repo, main persists it and
-   * relaunches the app (so this promise rarely resolves observably on success).
+   * Open the native folder picker. On a valid git repo, main pushes it to
+   * recentRepos and opens (or focuses) a window for it; if THIS window is the empty
+   * gate, main attaches the repo and reloads it (so REPO_GET re-resolves to the new
+   * root). No app relaunch.
    */
   pick(): Promise<void>;
 }
@@ -34,8 +36,9 @@ export function useRepo(): UseRepo {
   }, []);
 
   const pick = useCallback(async (): Promise<void> => {
-    // On success main relaunches the app, so we do not update local state here;
-    // the fresh process re-reads REPO_GET. On cancel/error the empty-state stays.
+    // Main opens/focuses a window for the picked repo (multi-window). If this is the
+    // empty-gate window, main reloads it so the mount-time REPO_GET re-resolves to the
+    // new root and the worktree UI replaces the picker. On cancel/error nothing changes.
     await window.mango.repo.pick();
   }, []);
 
