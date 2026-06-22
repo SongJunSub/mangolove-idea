@@ -45,7 +45,7 @@
 | 기능 | 규모 | 의존성 | 가치 / 메모 |
 |------|:--:|------|------|
 | ~~**설정 UI**~~ ✅ **완료** | M | — | agent / verify / server 명령 + base 브랜치를 기어(⚙) 모달에서 편집·영속화. `SettingsStore`(temp+rename, sanitize, corrupt-safe) + 우선순위 **settings > env > default**(`resolveCommands`) → env seam(`MANGO_AGENT_CMD` · `MANGO_VERIFY_CMD` · `MANGO_SERVER_CMD`) 스모크 유지. live-apply: stateless `mergeRunner`/`diffViewer`는 항상 캐시 클리어, 라이브 자식을 가진 `sessionManager`/`serverManager`는 idle일 때만(고아 방지). 계획: docs/plans/2026-06-18-v2-settings.md |
-| **멀티레포 / 멀티윈도우** | L | — | 지금은 단일 레포(`process.cwd()`). 여러 레포를 열기 |
+| ~~**멀티레포 / 멀티윈도우**~~ ✅ **완료** | L | — | 레포당 1 OS `BrowserWindow`(멀티윈도우). 모듈-싱글톤 `ctx` → `Map<number, IpcContext>`(webContents.id 키). `registerIpc(ipcMain, contexts)` 1회 등록 + `requireCtx(event)`로 sender별 ctx 해소(주입형 id-추출, 테스트는 `registerIpcForTest`). 8개 repoRoot-바운드 매니저 · 렌더러 · preload · wire 계약 VERBATIM 재사용(`repoId` 미도입). 글로벌 스토어 3종(Settings/Session/Scrollback) 1회 생성·전 ctx 주입, `repoRoot`는 per-window + persisted `recentRepos`. `win.on('closed')` per-window sweep + 1개 집계 `QuitController`(라이브/액티브턴 합집합, `sweepAll`). REPO_PICK relaunch 제거 → `openOrFocusRepo`(동일 레포 = 기존 창 포커스). 계획: docs/plans/2026-06-22-v2-multi-window.md |
 | ~~**패키징·배포 (electron-builder)**~~ ✅ **완료** | M | — | electron-builder@26.15.3로 mac arm64 dmg 패키징. node-pty `build/Release/*`(pty.node + spawn-helper) asarUnpack, `npmRebuild:false`(ABI-146는 electron-rebuild postinstall 산출), ad-hoc 서명(`mac.identity:null`). Finder 런치 PATH 픽스(packaged darwin: `$SHELL -ilc`로 로그인 셸 PATH 머지 → claude/gh/git/npm 스폰) + repo-root 피커(`resolveRepoRoot`: persisted SettingsStore.repoRoot → cwd → null, REPO_GET/PICK IPC, dialog→검증→persist→relaunch). 계획: docs/plans/2026-06-19-v2-packaging.md |
 
 ---
