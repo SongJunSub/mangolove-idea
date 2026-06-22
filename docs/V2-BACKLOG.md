@@ -38,7 +38,7 @@
 
 | 기능 | 규모 | 의존성 | 가치 / 메모 |
 |------|:--:|------|------|
-| **병렬 서버 (포트/DB 격리)** | L | Plan 3 | MVP가 "서버 한 번에 하나"로 의도적으로 피한 가장 어려운 부분. 포트/DB/미들웨어 격리 |
+| ~~**병렬 서버 (per-worktree 동시 서버)**~~ ✅ **완료(MVP)** | L | Plan 3 | 워크트리마다 자기 dev 서버를 동시 실행. ServerManager를 SessionManager 모델로 수렴(Map<worktreeId, RunningServer>, scoped replace + identity guard, killAll/dispose 전부 순회, LAST-live onIdle), LogStore를 per-worktree 파티션(Map, 5000줄 ring 각), LogLine.worktreeId 키스톤으로 snapshot/onLine/detect/렌더 리스트 demux. 포트/DB 격리는 미적용 — dev 서버 auto-increment(Vite 5173→5174)에 의존, per-worktree 로그 감지가 실제 포트 픽업(D4 한계: auto-increment 안 하는 러너는 사용자 지정 PORT 필요). 계획: docs/plans/2026-06-22-v2-parallel-servers.md |
 
 ## E. 앱 기반 (v1을 만들며 드러난 정비 후보)
 
@@ -55,7 +55,7 @@
 1. **Monaco diff** (M, 독립, 의존성 준비됨) — v2 첫 타자로 가장 자연스러움
 2. **xterm 스크롤백 재생** (S) 또는 **설정 UI** (M) — 작고 체감 큼
 3. **PR/CI 패널** / **머지 충돌 UI** — MVP 워크플로 직결
-4. **턴 감지 → b-full** · ~~**멀티모델 팬아웃**~~(완료) · **병렬 서버** — 무겁고 재설계 필요, 명확한 수요 후
+4. **턴 감지 → b-full** · ~~**멀티모델 팬아웃**~~(완료) · ~~**병렬 서버**~~(완료) — 무겁고 재설계 필요, 명확한 수요 후
 
 ## 보류 트리거 (언제 무거운 것을 꺼내나)
 
