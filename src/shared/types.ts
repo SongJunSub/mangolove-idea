@@ -437,6 +437,12 @@ export interface AppSettings {
    * resolveRepoRoot() falls back to cwd (dev) or null (Finder launch w/ bad cwd).
    */
   readonly repoRoot?: string;
+  /**
+   * Absolute paths of recently-opened repos (multi-window). The launcher reopens
+   * the most-recent on boot; REPO_PICK pushes the picked repo to the front. Empty
+   * array unsets the key. Seeded from the legacy single `repoRoot` on first read.
+   */
+  readonly recentRepos?: readonly string[];
 }
 
 // ── Repo root picker (V2 packaging) ──

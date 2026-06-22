@@ -102,3 +102,44 @@ describe('SettingsStore', () => {
     expect(getDefaultSettingsPath(() => '/ud')).toBe(join('/ud', 'settings.json'));
   });
 });
+
+describe('SettingsStore — recentRepos (multi-window)', () => {
+  let dir: string;
+  let file: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'mango-settings-'));
+    file = join(dir, 'settings.json');
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('round-trips a recentRepos string array', () => {
+    const store = new SettingsStore(file);
+    const merged = store.set({ recentRepos: ['/a', '/b'] });
+    expect(merged.recentRepos).toEqual(['/a', '/b']);
+    expect(new SettingsStore(file).get().recentRepos).toEqual(['/a', '/b']);
+  });
+
+  it('sanitizes a corrupt recentRepos: drops non-strings and empty strings', () => {
+    writeFileSync(file, JSON.stringify({ recentRepos: ['/ok', '', 3, null, '/two'] }));
+    expect(new SettingsStore(file).get().recentRepos).toEqual(['/ok', '/two']);
+  });
+
+  it('treats a non-array recentRepos as absent', () => {
+    writeFileSync(file, JSON.stringify({ recentRepos: 'nope' }));
+    expect(new SettingsStore(file).get().recentRepos).toBeUndefined();
+  });
+
+  it('set({recentRepos: []}) clears the list (unset)', () => {
+    const store = new SettingsStore(file);
+    store.set({ recentRepos: ['/a'] });
+    const merged = store.set({ recentRepos: [] });
+    expect(merged.recentRepos).toBeUndefined();
+  });
+
+  it('leaves recentRepos untouched when the partial omits it (true partial-merge)', () => {
+    const store = new SettingsStore(file);
+    store.set({ recentRepos: ['/keep'] });
+    store.set({ agentCommand: 'claude' });
+    expect(new SettingsStore(file).get().recentRepos).toEqual(['/keep']);
+  });
+});
