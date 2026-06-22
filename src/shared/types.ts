@@ -441,3 +441,66 @@ export type RepoPickResult =
   | { readonly ok: true; readonly repoRoot: string }
   | { readonly ok: false; readonly canceled: true }
   | { readonly ok: false; readonly error: string };
+
+// ── Multimodel fan-out (V2) ──
+
+/** Per-lane lifecycle for a headless claude -p run in a fan-out worktree. */
+export type LaneStatus = 'queued' | 'running' | 'done' | 'failed';
+
+/** One lane of a fan-out: a worktree + a headless claude run on one model tier. */
+export interface FanoutLane {
+  /** Stable id within the run (we use the model slug). */
+  readonly laneId: string;
+  /** The --model tier token, e.g. 'opus' | 'sonnet' | 'haiku'. */
+  readonly model: string;
+  /** The worktree this lane runs in (= Worktree.id = absolute path); reused for DIFF_*. */
+  readonly worktreeId: string;
+  /** The lane's branch, `fanout/<id>/<modelSlug>`. */
+  readonly branch: string;
+  readonly status: LaneStatus;
+  /** Exit code of the claude -p run (present once done/failed). */
+  readonly exitCode?: number | null;
+  /** Last slice of the lane's stdout (capped) for a quick preview. */
+  readonly stdoutTail?: string;
+  /** Failure reason (present when status === 'failed'). */
+  readonly error?: string;
+}
+
+/**
+ * The ONE active fan-out run (MVP: a single run at a time). Held on
+ * ctx.fanoutManager; a second start() while a run is active is rejected.
+ */
+export interface FanoutRun {
+  /** Short run id (slug-safe); drives the worktree/branch naming. */
+  readonly id: string;
+  readonly prompt: string;
+  /** Base branch every lane worktree forks from + merges back into. */
+  readonly base: string;
+  /** When true, lanes add --dangerously-skip-permissions (bash-heavy tasks). */
+  readonly skipPermissions: boolean;
+  readonly lanes: readonly FanoutLane[];
+}
+
+export interface FanoutStartRequest {
+  readonly prompt: string;
+  /** 1..4 model tiers; >4 or <1 is rejected by the manager. */
+  readonly models: readonly string[];
+  /** Default false; true => --dangerously-skip-permissions on every lane. */
+  readonly skipPermissions: boolean;
+}
+
+export interface FanoutStartResult {
+  readonly id: string;
+  readonly lanes: readonly FanoutLane[];
+}
+
+export interface FanoutSelectRequest {
+  /** The winning lane to merge into base (the rest are discarded). */
+  readonly laneId: string;
+}
+
+/** main -> renderer per-lane status push (mirrors MergeProgressEvent). */
+export interface FanoutLaneStatusEvent {
+  readonly id: string;
+  readonly lane: FanoutLane;
+}

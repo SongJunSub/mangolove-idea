@@ -74,6 +74,13 @@ const api: MangoApi = {
     get: () => ipcRenderer.invoke(IPC.REPO_GET),
     pick: () => ipcRenderer.invoke(IPC.REPO_PICK),
   },
+  fanout: {
+    start: (req) => ipcRenderer.invoke(IPC.FANOUT_START, req),
+    get: () => ipcRenderer.invoke(IPC.FANOUT_GET),
+    select: (req) => ipcRenderer.invoke(IPC.FANOUT_SELECT, req),
+    abort: () => ipcRenderer.invoke(IPC.FANOUT_ABORT),
+    onStatus: (cb) => subscribe(IPC.FANOUT_STATUS, cb),
+  },
 };
 
 contextBridge.exposeInMainWorld('mango', api);

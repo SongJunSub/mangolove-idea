@@ -10,6 +10,7 @@ import type { ScrollbackStore } from '../managers/scrollback-store';
 import type { DiffViewer } from '../git/diff-viewer';
 import type { ConflictResolver } from '../git/conflict-resolver';
 import type { GhStatusReader } from '../git/gh-status-reader';
+import type { FanoutManager } from '../git/fanout-manager';
 
 /**
  * Holds main-process singletons + the main window ref for event emitters.
@@ -69,6 +70,13 @@ export interface IpcContext {
    * on SETTINGS_SET while inProgress() (it recomputes truth from MERGE_HEAD per call).
    */
   conflictResolver?: ConflictResolver;
+  /**
+   * Lazily constructed in register-ipc; injectable in tests (V2 multimodel fan-out).
+   * Owns the ONE active fan-out run. Cleared on SETTINGS_SET only when IDLE (get()
+   * === null) so a base/agentCommand change applies on the next start — never nulled
+   * while a run is active (mirrors the conflictResolver keep-while-busy discipline).
+   */
+  fanoutManager?: FanoutManager;
   /** Injected by index.ts so the quit handler can actually quit (app.quit). */
   requestQuit?: () => void;
 }

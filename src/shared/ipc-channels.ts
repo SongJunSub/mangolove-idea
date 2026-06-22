@@ -62,6 +62,13 @@ export const IPC = {
   // repo root (V2 packaging) — pick/persist the git repo MangoLove operates on
   REPO_GET: 'repo:get', // invoke (-> string | null = ctx.repoRoot)
   REPO_PICK: 'repo:pick', // invoke (-> RepoPickResult; persists + relaunches on success)
+
+  // multimodel fan-out (V2) — one prompt to N claude --model lanes in parallel worktrees
+  FANOUT_START: 'fanout:start', // invoke ({prompt, models, skipPermissions} -> {id, lanes})
+  FANOUT_GET: 'fanout:get', // invoke (-> FanoutRun | null = current run)
+  FANOUT_SELECT: 'fanout:select', // invoke ({laneId} -> MergeResult; merge winner + clean rest)
+  FANOUT_ABORT: 'fanout:abort', // invoke (-> Ack; kill running lanes + remove all worktrees)
+  FANOUT_STATUS: 'fanout:status', // main -> renderer, event (FanoutLaneStatusEvent)
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

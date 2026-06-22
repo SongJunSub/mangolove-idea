@@ -17,6 +17,12 @@ export default defineConfig({
           environment: 'node',
           include: ['tests/main/**/*.test.ts'],
           pool: 'forks',
+          // Git-heavy manager tests spin up real temp repos and run
+          // worktree/merge/commit subprocesses; under the parallel forks pool
+          // these can exceed the 5s default on a loaded machine. Give them
+          // headroom so the suite is deterministic (no logic change).
+          testTimeout: 30000,
+          hookTimeout: 30000,
         },
       },
       {

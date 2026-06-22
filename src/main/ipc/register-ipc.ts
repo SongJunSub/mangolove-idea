@@ -34,8 +34,14 @@ import type {
   OpenExternalRequest,
   ScrollbackSetRequest,
   RepoPickResult,
+  FanoutStartRequest,
+  FanoutStartResult,
+  FanoutRun,
+  FanoutSelectRequest,
 } from '../../shared/types';
 import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
+import { FanoutManager, type FanoutEmitter } from '../git/fanout-manager';
+import { runLane } from '../git/fanout-run';
 import { DiffViewer } from '../git/diff-viewer';
 import { GhStatusReader } from '../git/gh-status-reader';
 import { ConflictResolver } from '../git/conflict-resolver';
@@ -44,7 +50,7 @@ import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
 import { ServerManager, type ServerEmitter } from '../managers/server-manager';
 import { LogStore, type LogEmitter } from '../managers/log-store';
-import { NodeProcessRunner } from '../proc/process-runner';
+import { NodeProcessRunner, type IProcLike } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
@@ -314,6 +320,69 @@ async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
     verifyCommand: resolveCommands(getSettingsStore(ctx).get()).verifyCommand,
   });
   return ctx.mergeRunner;
+}
+
+/** Forwards FanoutManager lane-status events to the renderer over FANOUT_STATUS (guarded). */
+function buildFanoutEmitter(ctx: IpcContext): FanoutEmitter {
+  return {
+    emitLaneStatus: (e) => {
+      const win = ctx.mainWindow;
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.FANOUT_STATUS, e);
+    },
+  };
+}
+
+/**
+ * Resolves the FanoutManager: prefer ctx (tests inject); else build a real one.
+ * MUST be async (main is ESM): reuses the cached WorktreeManager + MergeRunner and
+ * injects a laneRunner that wraps runLane with the resolved agentCommand. resolveBase
+ * reads settings.baseBranch (?? 'main') at start time so a base change applies live.
+ */
+async function getFanoutManager(ctx: IpcContext): Promise<FanoutManager> {
+  if (ctx.fanoutManager) return ctx.fanoutManager;
+  const repoRoot = requireRepoRoot(ctx); // obtain the non-null repo root EXACTLY as getMergeRunner does
+  const worktrees = await getWorktreeManager(ctx);
+  const merge = await getMergeRunner(ctx);
+  const runner = new NodeProcessRunner();
+  const { simpleGit } = await import('simple-git');
+  const agentCommand = resolveCommands(getSettingsStore(ctx).get()).agentCommand;
+  ctx.fanoutManager = new FanoutManager({
+    worktrees,
+    merge,
+    resolveBase: async () => getSettingsStore(ctx).get().baseBranch ?? 'main',
+    agentCommand,
+    laneRunner: ({ agentCommand: cmd, prompt, model, cwd, skipPermissions, onDone }) => {
+      // Wrap runLane in the LaneProc seam. Capture the child via onSpawn so kill()
+      // actually SIGTERMs a still-running headless claude on abort() (not a no-op).
+      let child: IProcLike | undefined;
+      let killed = false;
+      void runLane({
+        runner,
+        agentCommand: cmd,
+        prompt,
+        model,
+        cwd,
+        skipPermissions,
+        onSpawn: (p) => {
+          child = p;
+          if (killed) p.kill();
+        },
+      }).then((r) => {
+        if (!killed) onDone(r);
+      });
+      return {
+        kill: () => {
+          killed = true;
+          child?.kill();
+        },
+      };
+    },
+    emitter: buildFanoutEmitter(ctx),
+    genId: () => Date.now().toString(36),
+    gitFactory: (cwd: string) => simpleGit(cwd),
+    repoRoot,
+  });
+  return ctx.fanoutManager;
 }
 
 /**
@@ -624,6 +693,29 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     return (await getConflictResolver(ctx)).inProgressWorktreeId();
   });
 
+  ipcMain.handle(
+    IPC.FANOUT_START,
+    async (_event: unknown, req: FanoutStartRequest): Promise<FanoutStartResult> => {
+      return (await getFanoutManager(ctx)).start(req);
+    },
+  );
+
+  ipcMain.handle(IPC.FANOUT_GET, async (): Promise<FanoutRun | null> => {
+    // Normalize undefined -> null so the invoke result is an explicit serializable value.
+    return (await getFanoutManager(ctx)).get() ?? null;
+  });
+
+  ipcMain.handle(
+    IPC.FANOUT_SELECT,
+    async (_event: unknown, req: FanoutSelectRequest): Promise<MergeResult> => {
+      return (await getFanoutManager(ctx)).select(req);
+    },
+  );
+
+  ipcMain.handle(IPC.FANOUT_ABORT, async (): Promise<Ack> => {
+    return (await getFanoutManager(ctx)).abort();
+  });
+
   ipcMain.handle(IPC.SESSION_RECORDS, async (): Promise<string[]> => {
     return getSessionStore(ctx)
       .all()
@@ -644,6 +736,13 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       // safe — an edited verifyCommand/baseBranch applies on the next merge/diff.
       ctx.mergeRunner = undefined; // verifyCommand (+ base via renderer)
       ctx.diffViewer = undefined; // base (rebuilt with current settings on next diff)
+      // The FanoutManager owns the ONE active run. Clearing it mid-run would orphan
+      // the live lane children + lose the run state, so clear ONLY when idle (get()
+      // === null) — then a base/agentCommand change applies on the next start. While
+      // a run is active, KEEP it (mirrors the conflictResolver keep-while-busy rule).
+      if (ctx.fanoutManager && ctx.fanoutManager.get() === null) {
+        ctx.fanoutManager = undefined;
+      }
       // The ConflictResolver owns the in-progress merge. It recomputes truth from
       // MERGE_HEAD/git.status() per call, so nulling it would only re-bind a fresh
       // SimpleGit — harmless — BUT while a merge is in progress we keep the same

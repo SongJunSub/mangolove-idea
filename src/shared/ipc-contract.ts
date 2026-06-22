@@ -37,6 +37,11 @@ import type {
   OpenExternalRequest,
   ScrollbackSetRequest,
   RepoPickResult,
+  FanoutRun,
+  FanoutStartRequest,
+  FanoutStartResult,
+  FanoutSelectRequest,
+  FanoutLaneStatusEvent,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -134,6 +139,18 @@ export interface MangoApi {
      * Returns {canceled} or {error} when nothing was persisted.
      */
     pick(): Promise<RepoPickResult>;
+  };
+  fanout: {
+    /** Start ONE fan-out: N worktrees + N headless claude -p lanes. Rejects if a run is active or models out of [1,4]. */
+    start(req: FanoutStartRequest): Promise<FanoutStartResult>;
+    /** The current run state, or null when none is active. */
+    get(): Promise<FanoutRun | null>;
+    /** Merge the winning lane into base + discard the rest. User-initiated only. */
+    select(req: FanoutSelectRequest): Promise<MergeResult>;
+    /** Kill running lanes + remove every lane worktree. */
+    abort(): Promise<Ack>;
+    /** Live per-lane status stream (queued -> running -> done|failed). */
+    onStatus(cb: (e: FanoutLaneStatusEvent) => void): Unsubscribe;
   };
 }
 

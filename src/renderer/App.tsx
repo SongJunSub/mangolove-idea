@@ -34,6 +34,11 @@ const DiffView = lazy(() =>
 const ConflictView = lazy(() =>
   import('./components/diff/conflict-view').then((m) => ({ default: m.ConflictView })),
 );
+// Lazy so the fan-out panel (which pulls the shared monaco diff chunk per-lane) is
+// only fetched when the user opens it; keeps the initial renderer chunk smaller.
+const FanoutView = lazy(() =>
+  import('./components/fanout/fanout-view').then((m) => ({ default: m.FanoutView })),
+);
 
 export function App(): React.JSX.Element {
   const repo = useRepo();
@@ -56,6 +61,7 @@ export function App(): React.JSX.Element {
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [fanoutOpen, setFanoutOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   const [paneMode, setPaneMode] = useState<'terminal' | 'diff' | 'conflict' | 'browser'>(
     'terminal',
@@ -196,6 +202,15 @@ export function App(): React.JSX.Element {
         <Toolbar onCreate={create} />
         <button
           type="button"
+          data-testid="fanout-open"
+          aria-pressed={fanoutOpen}
+          title="Multimodel fan-out"
+          onClick={() => setFanoutOpen((v) => !v)}
+        >
+          ⑃ Fan-out
+        </button>
+        <button
+          type="button"
           data-testid="settings-open"
           aria-label="settings"
           title="Settings"
@@ -205,6 +220,11 @@ export function App(): React.JSX.Element {
           ⚙
         </button>
       </div>
+      {fanoutOpen && (
+        <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading fan-out…</p>}>
+          <FanoutView base={baseBranch} onMerged={() => void refresh()} />
+        </Suspense>
+      )}
       <ServerControls
         selectedId={selectedId}
         status={serverStatus}

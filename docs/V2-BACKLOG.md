@@ -31,7 +31,7 @@
 |------|:--:|------|------|
 | ~~**실제 턴 감지 (`hasActiveTurn`)**~~ ✅ **완료** | M | Plan 2 | 종료 경고를 "라이브 세션"이 아닌 **"실행 중인 턴"** 기준으로 정밀화. 접근: **출력 활동 휴리스틱**(claude TUI 문자열 파싱 X — 버전 취약) — PTY가 최근 `ACTIVE_TURN_MS`(1500ms) 내 출력했으면 턴 진행 중. `SessionManager.lastOutputAt`(주입 clock 스탬프) + `hasActiveTurn`/`activeTurnWorktreeIds`. 경고 트리거만 `liveWorktreeIds`→`activeTurnWorktreeIds`로 교체(idle 라이브 세션은 `--continue`로 무손실). kill-sweep는 그대로 `killAll()`(idle 포함 전부). 신규 IPC/매니저 0. **b-full의 전제**. 계획: docs/plans/2026-06-19-v2-turn-detection.md |
 | **세션 영속화 b-full** | L | Plan 2, 턴 감지 | 앱을 꺼도 `claude` 프로세스 생존 + 재attach (tmux/abduco 래퍼, 데몬 X). ⚠️ **트리거: "실행 중이던 턴 끊김 절대 불가"가 하드 요구일 때만.** 리서치 결론상 그 전엔 b-lite로 충분 |
-| **멀티모델 팬아웃** | L | Plan 2 | 한 작업을 여러 모델/에이전트에 병렬로 던지고 비교. 가장 큰 기능 — 별도 설계 권장 |
+| ~~**멀티모델 팬아웃**~~ ✅ **완료** | L | Plan 2 | 한 프롬프트를 N개 `claude --model` 레인(opus/sonnet/haiku, 최대 4)에 병렬로 던진다. 각 레인 = 베이스에서 분기한 새 워크트리(`WorktreeManager` 재사용) + 헤드리스 `claude -p "<prompt>" --permission-mode acceptEdits --model <tier>`(run-to-completion `child_process`, gh-status-reader 미러; PTY 아님). 레인별 diff는 기존 `DIFF_*`/`DiffView` 재사용, 승자 머지는 `MergeRunner`(safe-abort/conflict 그대로). `FanoutManager`(주입형, 단일 활성 런, 동시성 4 캡) + `runLane`/`slugModel`/`buildLaneArgs` 순수 헬퍼(페이크 러너 TDD) + `FANOUT_START/GET/SELECT/ABORT`+`FANOUT_STATUS` 4-layer IPC + `useFanout`/`FanoutView`(프롬프트+모델 피커+레인 카드+레인별 DiffView+select/abort). `skipPermissions`(기본 off, `--dangerously-skip-permissions`) 경고 토글. 계획: docs/plans/2026-06-22-v2-multimodel-fanout.md |
 | **크로스머신 세션 이동** | L | b-full | 다른 머신에서 세션 이어가기. 로컬 도구 범위를 가장 벗어남 |
 
 ## D. 인프라
@@ -55,7 +55,7 @@
 1. **Monaco diff** (M, 독립, 의존성 준비됨) — v2 첫 타자로 가장 자연스러움
 2. **xterm 스크롤백 재생** (S) 또는 **설정 UI** (M) — 작고 체감 큼
 3. **PR/CI 패널** / **머지 충돌 UI** — MVP 워크플로 직결
-4. **턴 감지 → b-full** · **멀티모델 팬아웃** · **병렬 서버** — 무겁고 재설계 필요, 명확한 수요 후
+4. **턴 감지 → b-full** · ~~**멀티모델 팬아웃**~~(완료) · **병렬 서버** — 무겁고 재설계 필요, 명확한 수요 후
 
 ## 보류 트리거 (언제 무거운 것을 꺼내나)
 
