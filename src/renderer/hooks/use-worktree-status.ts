@@ -4,13 +4,13 @@ import { aggregateStatus, type WorktreeRowStatus } from '../state/app-store';
 
 /**
  * Live unified per-worktree status. Owns ONLY the agent-status map (SESSION_STATUS)
- * and derives the row map via the pure aggregateStatus reducer. The single
- * ServerStatus is passed in from `useServer` (the sole SERVER_STATE subscriber) so
- * we don't open a second redundant server subscription. The sidebar reads this map.
+ * and derives the row map via the pure aggregateStatus reducer. The per-worktree
+ * server map is passed in from useServer (the sole SERVER_STATE subscriber) so we
+ * don't open a second redundant server subscription. The sidebar reads this map.
  */
 export function useWorktreeStatus(
   worktrees: readonly Worktree[],
-  server: ServerStatus | null,
+  servers: ReadonlyMap<string, ServerStatus>,
 ): ReadonlyMap<string, WorktreeRowStatus> {
   const [agentStatuses, setAgentStatuses] = useState<ReadonlyMap<string, AgentStatus>>(new Map());
 
@@ -28,7 +28,7 @@ export function useWorktreeStatus(
   }, []);
 
   return useMemo(
-    () => aggregateStatus(worktrees, agentStatuses, server),
-    [worktrees, agentStatuses, server],
+    () => aggregateStatus(worktrees, agentStatuses, servers),
+    [worktrees, agentStatuses, servers],
   );
 }

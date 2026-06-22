@@ -2,12 +2,13 @@ import type { ServerStatus } from '../../../shared/types';
 
 export interface ServerControlsProps {
   readonly selectedId: string | null;
+  /** The SELECTED worktree's server snapshot (or null when it has never run). */
   readonly status: ServerStatus | null;
   onStart(worktreeId: string): void;
-  onStop(): void;
+  onStop(worktreeId: string): void;
 }
 
-/** Run/Stop for the selected worktree's single local server (MVP item 3). */
+/** Run/Stop for the SELECTED worktree's server (each worktree runs its own, V2). */
 export function ServerControls({
   selectedId,
   status,
@@ -28,7 +29,11 @@ export function ServerControls({
       >
         Run
       </button>
-      <button type="button" disabled={!isRunning && !isBusy} onClick={() => onStop()}>
+      <button
+        type="button"
+        disabled={!selectedId || (!isRunning && !isBusy)}
+        onClick={() => selectedId && onStop(selectedId)}
+      >
         Stop
       </button>
       <span style={{ fontSize: 11, color: '#888' }}>server: {state}</span>

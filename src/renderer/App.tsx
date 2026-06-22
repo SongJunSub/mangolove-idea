@@ -46,10 +46,11 @@ export function App(): React.JSX.Element {
   const [pingError, setPingError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { worktrees, loading, error, create, remove, refresh } = useWorktrees();
-  const { status: serverStatus, start: startServer, stop: stopServer } = useServer();
-  const logLines = useLogs();
+  const { servers, start: startServer, stop: stopServer } = useServer();
+  const selectedServer = selectedId ? (servers.get(selectedId) ?? null) : null;
+  const logLines = useLogs(selectedId);
   const detectedServerUrl = detectServerUrl(logLines);
-  const statuses = useWorktreeStatus(worktrees, serverStatus);
+  const statuses = useWorktreeStatus(worktrees, servers);
   const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
   const {
     status: ghStatus,
@@ -227,9 +228,9 @@ export function App(): React.JSX.Element {
       )}
       <ServerControls
         selectedId={selectedId}
-        status={serverStatus}
+        status={selectedServer}
         onStart={(id) => void startServer(id)}
-        onStop={() => void stopServer()}
+        onStop={(id) => void stopServer(id)}
       />
       <MergeControls
         selected={selectedWorktree}

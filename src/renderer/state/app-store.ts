@@ -4,30 +4,30 @@ import type { AgentStatus, ServerState, ServerStatus, Worktree } from '../../sha
 export interface WorktreeRowStatus {
   readonly agent: AgentStatus;
   readonly server: ServerState;
-  /** True iff this worktree owns the single running server (Plan 3 invariant). */
+  /** True iff THIS worktree has a non-stopped (live/transitioning/crashed) server. */
   readonly ownsServer: boolean;
 }
 
 /**
  * Pure fold: combines the worktree list with the live agent-status map
- * (SESSION_STATUS) and the single ServerStatus (SERVER_STATE) into one
- * Map<worktreeId, WorktreeRowStatus>. Only the server's owning worktree shows a
- * non-stopped server state; everyone else is 'stopped'. No React, no IO — unit
- * tested directly; the useWorktreeStatus hook is the only live caller.
+ * (SESSION_STATUS) and the per-worktree server-status map (SERVER_STATE deltas +
+ * SERVER_STATUS_ALL seed) into one Map<worktreeId, WorktreeRowStatus>. Each worktree
+ * shows ITS OWN server state concurrently (V2 parallel servers); a worktree with no
+ * record — or a 'stopped' record — is stopped/not-owning (D8). No React, no IO —
+ * unit tested directly; useWorktreeStatus is the only live caller.
  */
 export function aggregateStatus(
   worktrees: readonly Worktree[],
   agentStatuses: ReadonlyMap<string, AgentStatus>,
-  server: ServerStatus | null,
+  servers: ReadonlyMap<string, ServerStatus>,
 ): ReadonlyMap<string, WorktreeRowStatus> {
-  const serverOwner = server?.process.worktreeId ?? null;
-  const serverState = server?.process.state ?? 'stopped';
   const out = new Map<string, WorktreeRowStatus>();
   for (const wt of worktrees) {
-    const ownsServer = serverOwner !== null && wt.id === serverOwner;
+    const serverState = servers.get(wt.id)?.process.state ?? 'stopped';
+    const ownsServer = serverState !== 'stopped';
     out.set(wt.id, {
       agent: agentStatuses.get(wt.id) ?? 'idle',
-      server: ownsServer ? serverState : 'stopped',
+      server: serverState,
       ownsServer,
     });
   }
