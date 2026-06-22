@@ -1,18 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { registerIpc } from '../../src/main/ipc/register-ipc';
+import { registerIpcForTest } from '../helpers/register-ipc-for-test';
 import { createIpcContext } from '../../src/main/ipc/ipc-context';
 import { IPC } from '../../src/shared/ipc-channels';
 import type { FanoutManager } from '../../src/main/git/fanout-manager';
-
-/** Minimal ipcMain double that records handlers by channel (copied from conflict test). */
-function makeIpcMain() {
-  const handlers = new Map<string, (e: unknown, arg: unknown) => unknown>();
-  const ipcMain = {
-    handle: (ch: string, fn: (e: unknown, arg: unknown) => unknown) => handlers.set(ch, fn),
-    on: () => undefined,
-  } as unknown as Parameters<typeof registerIpc>[0];
-  return { ipcMain, handlers };
-}
 
 describe('fanout IPC wiring', () => {
   it('routes the fanout channels to the injected FanoutManager', async () => {
@@ -42,10 +32,9 @@ describe('fanout IPC wiring', () => {
     ctx.fanoutManager = manager;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const started = await handlers.get(IPC.FANOUT_START)!(null, {
+    const started = await handlers.get(IPC.FANOUT_START)!(fakeEvent, {
       prompt: 'p',
       models: ['haiku'],
       skipPermissions: false,
@@ -57,14 +46,14 @@ describe('fanout IPC wiring', () => {
       skipPermissions: false,
     });
 
-    const got = await handlers.get(IPC.FANOUT_GET)!(null, undefined);
+    const got = await handlers.get(IPC.FANOUT_GET)!(fakeEvent, undefined);
     expect(got).toMatchObject({ id: 'r1', lanes: [lane] });
 
-    const sel = await handlers.get(IPC.FANOUT_SELECT)!(null, { laneId: 'haiku' });
+    const sel = await handlers.get(IPC.FANOUT_SELECT)!(fakeEvent, { laneId: 'haiku' });
     expect(sel).toMatchObject({ merged: true, status: 'merged' });
     expect(manager.select).toHaveBeenCalledWith({ laneId: 'haiku' });
 
-    const ab = await handlers.get(IPC.FANOUT_ABORT)!(null, undefined);
+    const ab = await handlers.get(IPC.FANOUT_ABORT)!(fakeEvent, undefined);
     expect(ab).toMatchObject({ ok: true });
     expect(manager.abort).toHaveBeenCalled();
   });
@@ -80,11 +69,10 @@ describe('fanout IPC wiring', () => {
     ctx.fanoutManager = manager;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
     await expect(
-      handlers.get(IPC.FANOUT_START)!(null, {
+      handlers.get(IPC.FANOUT_START)!(fakeEvent, {
         prompt: 'p',
         models: ['opus'],
         skipPermissions: false,
@@ -100,10 +88,9 @@ describe('fanout IPC wiring', () => {
     ctx.fanoutManager = manager;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    await handlers.get(IPC.SETTINGS_SET)!(null, { baseBranch: 'develop' });
+    await handlers.get(IPC.SETTINGS_SET)!(fakeEvent, { baseBranch: 'develop' });
     expect(ctx.fanoutManager).toBeUndefined();
   });
 
@@ -121,10 +108,9 @@ describe('fanout IPC wiring', () => {
     ctx.fanoutManager = manager;
     ctx.sessionStore = { all: () => [] } as never;
     ctx.settingsStore = { get: () => ({}), set: (p: unknown) => p } as never;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    await handlers.get(IPC.SETTINGS_SET)!(null, { baseBranch: 'develop' });
+    await handlers.get(IPC.SETTINGS_SET)!(fakeEvent, { baseBranch: 'develop' });
     expect(ctx.fanoutManager).toBe(manager); // NOT nulled while a run is active
   });
 });

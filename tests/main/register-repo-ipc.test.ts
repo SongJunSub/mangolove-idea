@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc-channels';
+import { registerIpcForTest } from '../helpers/register-ipc-for-test';
 
 // Hoisted mock state the fake electron module reads. vi.mock is hoisted, so the
 // referenced object must be created with vi.hoisted.
@@ -19,17 +20,7 @@ vi.mock('electron', () => ({
 }));
 
 // Import AFTER vi.mock so register-ipc's dynamic import('electron') hits the mock.
-const { registerIpc } = await import('../../src/main/ipc/register-ipc');
 const { createIpcContext } = await import('../../src/main/ipc/ipc-context');
-
-function makeIpcMain() {
-  const handlers = new Map<string, (e: unknown, arg: unknown) => unknown>();
-  const ipcMain = {
-    handle: (ch: string, fn: (e: unknown, arg: unknown) => unknown) => handlers.set(ch, fn),
-    on: () => undefined,
-  } as unknown as Parameters<typeof registerIpc>[0];
-  return { ipcMain, handlers };
-}
 
 function baseCtx() {
   const ctx = createIpcContext();
@@ -50,25 +41,22 @@ describe('repo IPC wiring', () => {
   it('REPO_GET returns ctx.repoRoot', async () => {
     const ctx = baseCtx();
     ctx.repoRoot = '/Users/me/proj';
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
-    const out = await handlers.get(IPC.REPO_GET)!(null, undefined);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const out = await handlers.get(IPC.REPO_GET)!(fakeEvent, undefined);
     expect(out).toBe('/Users/me/proj');
   });
 
   it('REPO_GET returns null when no repo is selected', async () => {
     const ctx = baseCtx(); // repoRoot defaults to null
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
-    expect(await handlers.get(IPC.REPO_GET)!(null, undefined)).toBeNull();
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    expect(await handlers.get(IPC.REPO_GET)!(fakeEvent, undefined)).toBeNull();
   });
 
   it('REPO_PICK returns {canceled:true} when the user cancels the dialog', async () => {
     mocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
     const ctx = baseCtx();
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
-    const out = await handlers.get(IPC.REPO_PICK)!(null, undefined);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
     expect(out).toEqual({ ok: false, canceled: true });
     expect(mocks.relaunch).not.toHaveBeenCalled();
     expect(ctx.settingsStore!.set).not.toHaveBeenCalled();
@@ -78,9 +66,8 @@ describe('repo IPC wiring', () => {
     // dir has NO .git entry -> not a git work tree.
     mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [dir] });
     const ctx = baseCtx();
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
-    const out = await handlers.get(IPC.REPO_PICK)!(null, undefined);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
     expect(out).toEqual({ ok: false, error: 'not a git repository' });
     expect(mocks.relaunch).not.toHaveBeenCalled();
     expect(ctx.settingsStore!.set).not.toHaveBeenCalled();
@@ -95,9 +82,8 @@ describe('repo IPC wiring', () => {
     // before-quit veto can swallow — so persist+relaunch never leaves a half-state.
     const requestQuit = vi.fn(() => mocks.quit());
     ctx.requestQuit = requestQuit;
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
-    const out = await handlers.get(IPC.REPO_PICK)!(null, undefined);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
     expect(out).toEqual({ ok: true, repoRoot: dir });
     expect(ctx.settingsStore!.set).toHaveBeenCalledWith({ repoRoot: dir });
     expect(mocks.relaunch).toHaveBeenCalledOnce();
@@ -131,10 +117,9 @@ describe('repo IPC wiring', () => {
     mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [dir] });
     const ctx = baseCtx();
     ctx.requestQuit = () => controller.decide(true); // exactly index.ts's wiring.
-    const { ipcMain, handlers } = makeIpcMain();
-    registerIpc(ipcMain, ctx);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
 
-    const out = await handlers.get(IPC.REPO_PICK)!(null, undefined);
+    const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
     // app.quit() (quitNow) re-fires before-quit; confirmed flag lets it through cleanly.
     let vetoed = false;
     controller.onBeforeQuit({ preventDefault: () => (vetoed = true) });
