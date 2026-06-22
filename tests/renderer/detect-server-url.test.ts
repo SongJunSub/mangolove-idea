@@ -4,7 +4,7 @@ import type { LogLine } from '../../src/shared/types';
 
 /** Builds a LogLine with sane defaults; only `text` matters for detection. */
 function line(seq: number, text: string): LogLine {
-  return { seq, ts: 0, stream: 'stdout', level: 'info', text };
+  return { worktreeId: '/wt', seq, ts: 0, stream: 'stdout', level: 'info', text };
 }
 
 describe('detectServerUrl', () => {
@@ -69,5 +69,20 @@ describe('detectServerUrl', () => {
     // A line that prints both — we take the last match scanning the joined text.
     const lines = [line(0, 'from http://localhost:3000/ to http://localhost:3001/')];
     expect(detectServerUrl(lines)).toBe('http://localhost:3001/');
+  });
+
+  it('detects the URL of the slice it is fed (per-worktree demux upstream)', () => {
+    // useLogs(worktreeId) feeds detectServerUrl ONLY the selected worktree's lines,
+    // so a different worktree's URL in another partition can never bleed in here.
+    const aLine = (seq: number, text: string): LogLine => ({
+      worktreeId: '/a',
+      seq,
+      ts: 0,
+      stream: 'stdout',
+      level: 'info',
+      text,
+    });
+    const aOnly = [aLine(0, 'VITE ready'), aLine(1, '  ➜  Local:   http://localhost:5174/')];
+    expect(detectServerUrl(aOnly)).toBe('http://localhost:5174/');
   });
 });

@@ -60,7 +60,10 @@ const quitController = new QuitController({
   emitQuitWarning,
   sweep: () => {
     ctx.sessionManager?.killAll(); // orphan-claude prevention (binding invariant §7).
-    ctx.serverManager?.dispose(); // Plan 3 server cleanup.
+    // Servers are swept (dispose kills EVERY worktree child, no orphans) but
+    // intentionally NOT quit-warned (D7): a dev server is trivially restarted,
+    // unlike an in-flight agent turn. Only the agent-turn warning above gates quit.
+    ctx.serverManager?.dispose();
   },
   quitNow: () => app.quit(),
 });

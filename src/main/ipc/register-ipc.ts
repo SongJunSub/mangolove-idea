@@ -13,6 +13,7 @@ import type {
   ServerStatus,
   StartServerRequest,
   StopServerRequest,
+  LogSnapshotRequest,
   LogLine,
   MergeRequest,
   MergeResult,
@@ -552,13 +553,23 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     },
   );
 
-  ipcMain.handle(IPC.SERVER_STATUS, async (): Promise<ServerStatus> => {
-    return getServerManager(ctx).status();
+  ipcMain.handle(
+    IPC.SERVER_STATUS,
+    async (_event: unknown, req: { worktreeId: string }): Promise<ServerStatus> => {
+      return getServerManager(ctx).status(req.worktreeId);
+    },
+  );
+
+  ipcMain.handle(IPC.SERVER_STATUS_ALL, async (): Promise<Record<string, ServerStatus>> => {
+    return getServerManager(ctx).statusAll();
   });
 
-  ipcMain.handle(IPC.LOG_SNAPSHOT, async (): Promise<LogLine[]> => {
-    return getLogStore(ctx).snapshot();
-  });
+  ipcMain.handle(
+    IPC.LOG_SNAPSHOT,
+    async (_event: unknown, req: LogSnapshotRequest): Promise<LogLine[]> => {
+      return getLogStore(ctx).snapshot(req.worktreeId);
+    },
+  );
 
   ipcMain.handle(
     IPC.MERGE_RUN,
@@ -765,11 +776,11 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       } else {
         ctx.sessionSettingsDirty = true; // busy: onIdle clears it after the last exit
       }
-      if (!(ctx.serverManager?.hasLiveServer() ?? false)) {
+      if ((ctx.serverManager?.liveServerWorktreeIds().length ?? 0) === 0) {
         ctx.serverSettingsDirty = false;
-        ctx.serverManager = undefined; // idle: serverCommand applies on next start
+        ctx.serverManager = undefined; // idle (no live server anywhere): applies on next start
       } else {
-        ctx.serverSettingsDirty = true; // busy: onIdle clears it after the server stops
+        ctx.serverSettingsDirty = true; // busy: onIdle clears it after the LAST server stops
       }
       return merged;
     },
@@ -838,7 +849,9 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       if (!req.quit) return { ok: true }; // user cancelled — stay open.
       ctx.confirmedQuit = true;
       ctx.sessionManager?.killAll(); // PTY kill-sweep: no orphan claude survives.
-      ctx.serverManager?.dispose(); // keep Plan 3's server cleanup.
+      // dispose() now kills EVERY worktree's server child (Map loop); servers are
+      // swept on quit but never quit-warned (D7) — trivially restarted, unlike turns.
+      ctx.serverManager?.dispose();
       ctx.requestQuit?.(); // index.ts wires this to app.quit().
       return { ok: true };
     },

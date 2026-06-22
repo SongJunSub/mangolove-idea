@@ -71,7 +71,10 @@ export function LogPanel({ lines }: LogPanelProps): React.JSX.Element {
           <div style={{ color: '#666' }}>no log lines</div>
         ) : (
           visible.map((l) => (
-            <div key={l.seq} style={{ whiteSpace: 'pre-wrap', color: LEVEL_COLOR[l.level] }}>
+            <div
+              key={`${l.worktreeId}:${l.seq}`}
+              style={{ whiteSpace: 'pre-wrap', color: LEVEL_COLOR[l.level] }}
+            >
               {l.text}
             </div>
           ))

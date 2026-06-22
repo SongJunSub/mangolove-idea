@@ -42,7 +42,7 @@ export type ServerState = 'stopped' | 'starting' | 'running' | 'stopping' | 'cra
 
 /** The single running (or last) local server process. */
 export interface ServerProcess {
-  /** Worktree that owns the currently selected server (null when stopped/none). */
+  /** Worktree that owns THIS server snapshot (always set for an emitted state). */
   readonly worktreeId: string | null;
   readonly kind: ServerKind;
   readonly state: ServerState;
@@ -72,7 +72,12 @@ export interface SessionRecord {
 
 /** One line of server log (LogStore ring buffer + file). */
 export interface LogLine {
-  /** Monotonic sequence number within the current server run. */
+  /**
+   * Worktree that produced this line (every line self-attributes; renderer demuxes).
+   * REQUIRED: every producer stamps it (LogStore.push) — the V2 migration shim is gone.
+   */
+  readonly worktreeId: string;
+  /** Monotonic sequence number within THIS worktree's current server run. */
   readonly seq: number;
   readonly ts: number; // epoch ms
   readonly stream: 'stdout' | 'stderr';
@@ -138,8 +143,13 @@ export interface StartServerRequest {
 }
 
 export interface StopServerRequest {
-  /** Stops whatever single server is running; id is advisory. */
-  readonly worktreeId?: string;
+  /** Stops the named worktree's server (REQUIRED — the migration shim is gone). */
+  readonly worktreeId: string;
+}
+
+/** Asks for one worktree's log ring buffer snapshot. */
+export interface LogSnapshotRequest {
+  readonly worktreeId: string;
 }
 
 export interface MergeRequest {

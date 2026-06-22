@@ -3,11 +3,18 @@ import { filterLogs, LEVEL_RANK } from '../../src/renderer/lib/log-filter';
 import type { LogLine } from '../../src/shared/types';
 
 const lines: LogLine[] = [
-  { seq: 0, ts: 0, stream: 'stdout', level: 'debug', text: 'starting up' },
-  { seq: 1, ts: 0, stream: 'stdout', level: 'info', text: 'listening on 8080' },
-  { seq: 2, ts: 0, stream: 'stderr', level: 'warn', text: 'deprecated API' },
-  { seq: 3, ts: 0, stream: 'stderr', level: 'error', text: 'NullPointerException' },
-  { seq: 4, ts: 0, stream: 'stdout', level: 'raw', text: 'BANNER' },
+  { worktreeId: '/wt', seq: 0, ts: 0, stream: 'stdout', level: 'debug', text: 'starting up' },
+  { worktreeId: '/wt', seq: 1, ts: 0, stream: 'stdout', level: 'info', text: 'listening on 8080' },
+  { worktreeId: '/wt', seq: 2, ts: 0, stream: 'stderr', level: 'warn', text: 'deprecated API' },
+  {
+    worktreeId: '/wt',
+    seq: 3,
+    ts: 0,
+    stream: 'stderr',
+    level: 'error',
+    text: 'NullPointerException',
+  },
+  { worktreeId: '/wt', seq: 4, ts: 0, stream: 'stdout', level: 'raw', text: 'BANNER' },
 ];
 
 describe('filterLogs', () => {
