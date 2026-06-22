@@ -5,6 +5,7 @@ import {
   aggregateActiveTurnWorktreeIds,
   sweepAll,
   findCtxByRepoRoot,
+  teardownWindow,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
@@ -95,5 +96,33 @@ describe('window-registry', () => {
     ]);
     expect(findCtxByRepoRoot(contexts, '/two')).toBe(b);
     expect(findCtxByRepoRoot(contexts, '/missing')).toBeUndefined();
+  });
+});
+
+describe('teardownWindow', () => {
+  it('sweeps ONLY the closed window managers and deletes ONLY its id', () => {
+    const calls: string[] = [];
+    const a = {
+      mainWindow: null,
+      sessionManager: { killAll: () => calls.push('killA') } as never,
+      serverManager: { dispose: () => calls.push('dispA') } as never,
+    };
+    const b = {
+      mainWindow: null,
+      sessionManager: { killAll: () => calls.push('killB') } as never,
+    };
+    const contexts = new Map([
+      [1, a],
+      [2, b],
+    ]);
+    teardownWindow(contexts, 1);
+    expect(calls.sort()).toEqual(['dispA', 'killA']); // B untouched
+    expect(contexts.has(1)).toBe(false);
+    expect(contexts.has(2)).toBe(true);
+  });
+
+  it('teardownWindow on an unknown id is a guarded no-op', () => {
+    const contexts = new Map<number, IpcContext>();
+    expect(() => teardownWindow(contexts, 42)).not.toThrow();
   });
 });

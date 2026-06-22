@@ -57,6 +57,19 @@ export function sweepAll(contexts: Map<number, IpcContext>): void {
   }
 }
 
+/**
+ * Sweeps the named window's managers (killAll + dispose — no orphan claude/server)
+ * and removes its ctx from the registry. Guarded no-op for an unknown id. The
+ * win.on('closed') handler in index.ts delegates here.
+ */
+export function teardownWindow(contexts: Map<number, IpcContext>, id: number): void {
+  const ctx = contexts.get(id);
+  if (!ctx) return;
+  ctx.sessionManager?.killAll();
+  ctx.serverManager?.dispose();
+  contexts.delete(id);
+}
+
 /** First ctx whose repoRoot equals the given path (same-repo focus-guard), or undefined. */
 export function findCtxByRepoRoot(
   contexts: Map<number, IpcContext>,

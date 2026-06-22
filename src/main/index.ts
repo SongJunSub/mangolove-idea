@@ -9,6 +9,7 @@ import {
   aggregateLiveWorktreeIds,
   aggregateActiveTurnWorktreeIds,
   sweepAll,
+  teardownWindow,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
@@ -63,9 +64,7 @@ function createWindow(repoRoot: string | null): BrowserWindow {
   win.on('closed', () => {
     // Sweep ONLY this window's processes (no orphan claude/server), then drop the ctx.
     // Use the CAPTURED wcId — reading win.webContents.id here would throw post-destroy.
-    ctx.sessionManager?.killAll();
-    ctx.serverManager?.dispose();
-    contexts.delete(wcId);
+    teardownWindow(contexts, wcId);
   });
 
   win.on('ready-to-show', () => win.show());
