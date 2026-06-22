@@ -6,7 +6,8 @@ import { makeFakeRunner, type FakeProcHandle } from '../helpers/fake-runner';
 import type { ServerStatus, LogLine } from '../../src/shared/types';
 import type { DetectedRunner } from '../../src/main/util/detect-runner';
 
-const WT = '/repo/.worktrees/feat';
+const A = '/repo/.worktrees/a';
+const B = '/repo/.worktrees/b';
 
 function makeRunnerFactory(fakes: FakeProcHandle[]) {
   const calls: { command: string; cwd: string }[] = [];
@@ -18,8 +19,6 @@ function makeRunnerFactory(fakes: FakeProcHandle[]) {
       if (!f) throw new Error('fake runner ran out of procs');
       return f as unknown as IProcLike;
     },
-    // ServerManager only uses the shell-line spawn; stub the argv variant so the
-    // literal still satisfies ProcessRunner (used by gh, never reached here).
     spawnArgs: () => {
       throw new Error('spawnArgs not used by ServerManager');
     },
@@ -52,50 +51,47 @@ function makeManager(opts: {
   return { mgr, states, logLines, calls, logStore };
 }
 
-describe('ServerManager.start', () => {
+describe('ServerManager.start (per worktree)', () => {
   it('detects + spawns in the worktree cwd and reaches running', async () => {
     const fake = makeFakeRunner(111);
     const { mgr, states, calls } = makeManager({ fakes: [fake] });
-    const status = await mgr.start({ worktreeId: WT });
-    expect(calls).toEqual([{ command: 'npm run dev', cwd: WT }]);
+    const status = await mgr.start({ worktreeId: A });
+    expect(calls).toEqual([{ command: 'npm run dev', cwd: A }]);
     expect(status.process.state).toBe('running');
     expect(status.process.pid).toBe(111);
     expect(status.process.kind).toBe('npm');
-    expect(status.process.worktreeId).toBe(WT);
+    expect(status.process.worktreeId).toBe(A);
     expect(states.map((s) => s.process.state)).toEqual(['starting', 'running']);
   });
 
-  it('uses the env command override (deps, operator-controlled) over detection', async () => {
-    // Hardening: the override comes ONLY from the main-side env seam (deps), never
-    // from a renderer-supplied request field — so the renderer cannot inject a
-    // command into the shell:true spawn.
+  it('uses the env command override (deps) over detection', async () => {
     const fake = makeFakeRunner();
     const { mgr, calls } = makeManager({ fakes: [fake], commandOverride: 'node fake-server.js' });
-    await mgr.start({ worktreeId: WT });
+    await mgr.start({ worktreeId: A });
     expect(calls[0].command).toBe('node fake-server.js');
   });
 
-  it('pipes stdout/stderr into the LogStore', async () => {
+  it('pipes stdout/stderr into the LogStore stamped with the worktreeId', async () => {
     const fake = makeFakeRunner();
     const { mgr, logLines } = makeManager({ fakes: [fake] });
-    await mgr.start({ worktreeId: WT });
+    await mgr.start({ worktreeId: A });
     fake.emitStdout('INFO up\n');
     fake.emitStderr('ERROR boom\n');
-    expect(logLines.map((l) => [l.stream, l.level, l.text])).toEqual([
-      ['stdout', 'info', 'INFO up'],
-      ['stderr', 'error', 'ERROR boom'],
+    expect(logLines.map((l) => [l.worktreeId, l.stream, l.level, l.text])).toEqual([
+      [A, 'stdout', 'info', 'INFO up'],
+      [A, 'stderr', 'error', 'ERROR boom'],
     ]);
   });
 
-  it('resets the LogStore seq on each start', async () => {
-    const a = makeFakeRunner(1);
-    const b = makeFakeRunner(2);
-    const { mgr, logStore } = makeManager({ fakes: [a, b] });
-    await mgr.start({ worktreeId: WT });
-    a.emitStdout('first\n');
-    await mgr.start({ worktreeId: WT }); // replace -> reset
-    b.emitStdout('second\n');
-    expect(logStore.snapshot(WT).map((l) => [l.seq, l.text])).toEqual([[0, 'second']]);
+  it('resets ONLY that worktree LogStore seq on restart of the same worktree', async () => {
+    const a1 = makeFakeRunner(1);
+    const a2 = makeFakeRunner(2);
+    const { mgr, logStore } = makeManager({ fakes: [a1, a2] });
+    await mgr.start({ worktreeId: A });
+    a1.emitStdout('first\n');
+    await mgr.start({ worktreeId: A }); // replace SAME worktree -> reset(A)
+    a2.emitStdout('second\n');
+    expect(logStore.snapshot(A).map((l) => [l.seq, l.text])).toEqual([[0, 'second']]);
   });
 
   it('crashes (no spawn) when the worktree id is unknown', async () => {
@@ -113,40 +109,56 @@ describe('ServerManager.start', () => {
       fakes: [makeFakeRunner()],
       detect: () => ({ kind: 'unknown', command: undefined }),
     });
-    const status = await mgr.start({ worktreeId: WT });
+    const status = await mgr.start({ worktreeId: A });
     expect(calls).toHaveLength(0);
     expect(status.process.state).toBe('crashed');
   });
+});
 
-  it('replaces a running server when start is called again (kills the old child)', async () => {
-    const first = makeFakeRunner(1);
-    const second = makeFakeRunner(2);
-    const { mgr, calls } = makeManager({ fakes: [first, second] });
-    await mgr.start({ worktreeId: WT });
-    const status = await mgr.start({ worktreeId: '/repo/.worktrees/other' });
-    expect(first.killed()).toBe(true);
-    expect(calls).toHaveLength(2);
-    expect(status.process.pid).toBe(2);
-    expect(status.process.worktreeId).toBe('/repo/.worktrees/other');
+describe('ServerManager TRUE CONCURRENCY', () => {
+  it('runs two worktrees at once — starting B does NOT kill A', async () => {
+    const a = makeFakeRunner(1);
+    const b = makeFakeRunner(2);
+    const { mgr } = makeManager({ fakes: [a, b] });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: B });
+    expect(a.killed()).toBe(false);
+    expect(b.killed()).toBe(false);
+    expect(mgr.status(A).process.state).toBe('running');
+    expect(mgr.status(B).process.state).toBe('running');
+    expect(mgr.liveServerWorktreeIds().sort()).toEqual([A, B].sort());
   });
 
-  it('does NOT emit a crashed state for a server replaced by start (stale exit)', async () => {
-    const first = makeFakeRunner(1);
-    const second = makeFakeRunner(2);
-    const { mgr, states } = makeManager({ fakes: [first, second] });
-    await mgr.start({ worktreeId: WT });
-    await mgr.start({ worktreeId: WT }); // replace; first's kill fires a stale exit
-    // last state must be the NEW run's running, never a stale crashed.
+  it('restarting the SAME worktree kills only that worktree old child', async () => {
+    const a1 = makeFakeRunner(1);
+    const a2 = makeFakeRunner(2);
+    const { mgr, states } = makeManager({ fakes: [a1, a2] });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: A }); // replace SAME worktree
+    expect(a1.killed()).toBe(true);
+    // last state for A is the NEW run's running, never a stale crashed.
     expect(states.at(-1)?.process.state).toBe('running');
     expect(states.some((s) => s.process.state === 'crashed')).toBe(false);
   });
+
+  it('statusAll returns every worktree snapshot keyed by worktreeId', async () => {
+    const a = makeFakeRunner(1);
+    const b = makeFakeRunner(2);
+    const { mgr } = makeManager({ fakes: [a, b] });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: B });
+    const all = mgr.statusAll();
+    expect(all[A].process.state).toBe('running');
+    expect(all[B].process.state).toBe('running');
+    expect(all[A].process.worktreeId).toBe(A);
+  });
 });
 
-describe('ServerManager exit + stop', () => {
+describe('ServerManager exit + stop (per worktree)', () => {
   it('marks crashed on a non-zero natural exit', async () => {
     const fake = makeFakeRunner();
     const { mgr, states } = makeManager({ fakes: [fake] });
-    await mgr.start({ worktreeId: WT });
+    await mgr.start({ worktreeId: A });
     fake.emitExit(1, null);
     expect(states.at(-1)?.process.state).toBe('crashed');
     expect(states.at(-1)?.process.exitCode).toBe(1);
@@ -155,82 +167,82 @@ describe('ServerManager exit + stop', () => {
   it('marks stopped on a clean (code 0) natural exit', async () => {
     const fake = makeFakeRunner();
     const { mgr, states } = makeManager({ fakes: [fake] });
-    await mgr.start({ worktreeId: WT });
+    await mgr.start({ worktreeId: A });
     fake.emitExit(0, null);
     expect(states.at(-1)?.process.state).toBe('stopped');
   });
 
-  it('stop() kills the child and ends at stopped', async () => {
-    const fake = makeFakeRunner();
-    const { mgr, states } = makeManager({ fakes: [fake] });
-    await mgr.start({ worktreeId: WT });
-    const status = await mgr.stop({});
-    expect(fake.killed()).toBe(true);
+  it('stop(req) kills only that worktree child and ends at stopped', async () => {
+    const a = makeFakeRunner();
+    const b = makeFakeRunner();
+    const { mgr } = makeManager({ fakes: [a, b] });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: B });
+    const status = await mgr.stop({ worktreeId: A });
+    expect(a.killed()).toBe(true);
+    expect(b.killed()).toBe(false);
     expect(status.process.state).toBe('stopped');
-    expect(states.at(-1)?.process.state).toBe('stopped');
+    expect(mgr.status(B).process.state).toBe('running');
   });
 
-  it('stop() with no running server returns a stopped snapshot (idempotent)', async () => {
+  it('stop() with no running server for that worktree returns a stopped snapshot', async () => {
     const { mgr } = makeManager({ fakes: [] });
-    const status = await mgr.stop({});
+    const status = await mgr.stop({ worktreeId: A });
     expect(status.process.state).toBe('stopped');
-    expect(status.process.worktreeId).toBeNull();
+    expect(status.process.worktreeId).toBe(A);
   });
 
-  it('status() reflects the current server', async () => {
+  it('status(worktreeId) reflects that worktree current server', async () => {
     const fake = makeFakeRunner(7);
     const { mgr } = makeManager({ fakes: [fake] });
-    expect(mgr.status().process.state).toBe('stopped');
-    await mgr.start({ worktreeId: WT });
-    expect(mgr.status().process.state).toBe('running');
-    expect(mgr.status().process.pid).toBe(7);
+    expect(mgr.status(A).process.state).toBe('stopped');
+    await mgr.start({ worktreeId: A });
+    expect(mgr.status(A).process.state).toBe('running');
+    expect(mgr.status(A).process.pid).toBe(7);
   });
 
-  it('dispose() kills any running child (before-quit sweep)', async () => {
-    const fake = makeFakeRunner();
-    const { mgr } = makeManager({ fakes: [fake] });
-    await mgr.start({ worktreeId: WT });
+  it('dispose() kills ALL running children (before-quit sweep)', async () => {
+    const a = makeFakeRunner();
+    const b = makeFakeRunner();
+    const { mgr } = makeManager({ fakes: [a, b] });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: B });
     mgr.dispose();
-    expect(fake.killed()).toBe(true);
+    expect(a.killed()).toBe(true);
+    expect(b.killed()).toBe(true);
   });
 });
 
-describe('ServerManager onIdle (deferred live-apply hook, V2 E)', () => {
-  it('fires onIdle when stop() ends the running server', async () => {
-    const fake = makeFakeRunner();
+describe('ServerManager onIdle (fires only on the LAST live server)', () => {
+  it('does NOT fire onIdle while another worktree server is still live', async () => {
+    const a = makeFakeRunner();
+    const b = makeFakeRunner();
     const onIdle = vi.fn();
-    const { mgr } = makeManager({ fakes: [fake], onIdle });
-    await mgr.start({ worktreeId: WT });
+    const { mgr } = makeManager({ fakes: [a, b], onIdle });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: B });
+    await mgr.stop({ worktreeId: A }); // B still live
     expect(onIdle).not.toHaveBeenCalled();
-    await mgr.stop({});
+  });
+
+  it('fires onIdle exactly once when the LAST live server stops', async () => {
+    const a = makeFakeRunner();
+    const b = makeFakeRunner();
+    const onIdle = vi.fn();
+    const { mgr } = makeManager({ fakes: [a, b], onIdle });
+    await mgr.start({ worktreeId: A });
+    await mgr.start({ worktreeId: B });
+    await mgr.stop({ worktreeId: A });
+    await mgr.stop({ worktreeId: B }); // last one
     expect(onIdle).toHaveBeenCalledOnce();
   });
 
-  it('fires onIdle when the server exits naturally', async () => {
+  it('fires onIdle when the LAST server exits naturally (clean or crash)', async () => {
     const fake = makeFakeRunner();
     const onIdle = vi.fn();
     const { mgr } = makeManager({ fakes: [fake], onIdle });
-    await mgr.start({ worktreeId: WT });
-    fake.emitExit(0, null);
-    expect(onIdle).toHaveBeenCalledOnce();
-  });
-
-  it('fires onIdle on a crash exit too (idle either way)', async () => {
-    const fake = makeFakeRunner();
-    const onIdle = vi.fn();
-    const { mgr } = makeManager({ fakes: [fake], onIdle });
-    await mgr.start({ worktreeId: WT });
+    await mgr.start({ worktreeId: A });
     fake.emitExit(1, null);
     expect(onIdle).toHaveBeenCalledOnce();
-  });
-
-  it('does NOT fire onIdle from the replace path (still busy with the new server)', async () => {
-    const first = makeFakeRunner(1);
-    const second = makeFakeRunner(2);
-    const onIdle = vi.fn();
-    const { mgr } = makeManager({ fakes: [first, second], onIdle });
-    await mgr.start({ worktreeId: WT });
-    await mgr.start({ worktreeId: '/repo/.worktrees/other' }); // replace -> still busy
-    expect(onIdle).not.toHaveBeenCalled();
   });
 });

@@ -320,12 +320,12 @@ describe('registerIpc — server + logs', () => {
     expect(out).toMatchObject({ process: { state: 'stopped' } });
   });
 
-  it('SERVER_STATUS delegates to serverManager.status', async () => {
+  it('SERVER_STATUS delegates to serverManager.status with the requested worktreeId', async () => {
     const { handlers, ipcMain } = makeIpcMain();
     const sm = fakeServer();
     registerIpc(ipcMain as never, { mainWindow: null, serverManager: sm as never });
-    const out = await handlers.get('server:status')!({});
-    expect(sm.status).toHaveBeenCalledOnce();
+    const out = await handlers.get('server:status')!({}, { worktreeId: '/wt' });
+    expect(sm.status).toHaveBeenCalledWith('/wt');
     expect(out).toMatchObject({ process: { state: 'running' } });
   });
 
@@ -467,7 +467,7 @@ describe('registerIpc — settings (V2 E)', () => {
       mainWindow: null,
       settingsStore: store as never,
       sessionManager: { liveWorktreeIds: () => [] } as never, // idle
-      serverManager: { hasLiveServer: () => false } as never, // idle
+      serverManager: { liveServerWorktreeIds: () => [] } as never, // idle
       mergeRunner: { tag: 'merge' } as never,
       diffViewer: { tag: 'diff' } as never,
     };
@@ -483,7 +483,7 @@ describe('registerIpc — settings (V2 E)', () => {
     const { handlers, ipcMain } = makeIpcMain();
     const store = { get: vi.fn(), set: vi.fn(() => ({})) };
     const liveSession = { liveWorktreeIds: () => ['w1'] }; // busy
-    const liveServer = { hasLiveServer: () => true }; // busy
+    const liveServer = { liveServerWorktreeIds: () => ['w1'] }; // busy
     const ctx = {
       mainWindow: null,
       settingsStore: store as never,
@@ -507,7 +507,7 @@ describe('registerIpc — settings (V2 E)', () => {
       mainWindow: null,
       settingsStore: store as never,
       sessionManager: { liveWorktreeIds: () => ['w1'] } as never, // busy
-      serverManager: { hasLiveServer: () => true } as never, // busy
+      serverManager: { liveServerWorktreeIds: () => ['w1'] } as never, // busy
     };
     registerIpc(ipcMain as never, ctx as never);
     await handlers.get('settings:set')!({}, { agentCommand: 'x' });
@@ -522,7 +522,7 @@ describe('registerIpc — settings (V2 E)', () => {
       mainWindow: null,
       settingsStore: store as never,
       sessionManager: { liveWorktreeIds: () => [] } as never, // idle
-      serverManager: { hasLiveServer: () => false } as never, // idle
+      serverManager: { liveServerWorktreeIds: () => [] } as never, // idle
     };
     registerIpc(ipcMain as never, ctx as never);
     await handlers.get('settings:set')!({}, { agentCommand: 'x' });

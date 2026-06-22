@@ -553,9 +553,12 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     },
   );
 
-  ipcMain.handle(IPC.SERVER_STATUS, async (): Promise<ServerStatus> => {
-    return getServerManager(ctx).status();
-  });
+  ipcMain.handle(
+    IPC.SERVER_STATUS,
+    async (_event: unknown, req: { worktreeId: string }): Promise<ServerStatus> => {
+      return getServerManager(ctx).status(req.worktreeId);
+    },
+  );
 
   ipcMain.handle(
     IPC.LOG_SNAPSHOT,
@@ -769,11 +772,11 @@ export function registerIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       } else {
         ctx.sessionSettingsDirty = true; // busy: onIdle clears it after the last exit
       }
-      if (!(ctx.serverManager?.hasLiveServer() ?? false)) {
+      if ((ctx.serverManager?.liveServerWorktreeIds().length ?? 0) === 0) {
         ctx.serverSettingsDirty = false;
-        ctx.serverManager = undefined; // idle: serverCommand applies on next start
+        ctx.serverManager = undefined; // idle (no live server anywhere): applies on next start
       } else {
-        ctx.serverSettingsDirty = true; // busy: onIdle clears it after the server stops
+        ctx.serverSettingsDirty = true; // busy: onIdle clears it after the LAST server stops
       }
       return merged;
     },
