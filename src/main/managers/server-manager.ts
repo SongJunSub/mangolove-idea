@@ -135,15 +135,10 @@ export class ServerManager {
 
   /** Stops one worktree's server (idempotent). */
   async stop(req: StopServerRequest): Promise<ServerStatus> {
-    // StopServerRequest.worktreeId is the TRANSIENT optional shim (Task 1, tightened
-    // to required in Task 6). When absent there is no per-worktree target, so report a
-    // stopped snapshot (mirrors the old singular fallback) rather than guessing.
-    const worktreeId = req.worktreeId;
-    if (worktreeId === undefined) return { process: STOPPED_IDLE };
-    const server = this.servers.get(worktreeId);
-    if (!server) return this.status(worktreeId);
+    const server = this.servers.get(req.worktreeId);
+    if (!server) return this.status(req.worktreeId);
     server.stopping = true;
-    this.servers.delete(worktreeId);
+    this.servers.delete(req.worktreeId);
     this.emitState({
       worktreeId: server.worktreeId,
       kind: server.kind,
@@ -270,9 +265,3 @@ export class ServerManager {
 function stoppedFor(worktreeId: string): ServerProcess {
   return { worktreeId, kind: 'unknown', state: 'stopped' };
 }
-
-/**
- * Stopped snapshot returned by stop() when the request carries no worktreeId (the
- * transient optional shim — Task 1). worktreeId:null marks "no per-worktree target".
- */
-const STOPPED_IDLE: ServerProcess = { worktreeId: null, kind: 'unknown', state: 'stopped' };
