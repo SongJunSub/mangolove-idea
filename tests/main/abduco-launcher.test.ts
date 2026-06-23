@@ -102,6 +102,28 @@ describe('AbducoLauncher.endDetached', () => {
   });
 });
 
+describe('AbducoLauncher.endDetachedByName', () => {
+  it('kills the master for an EXACT mango name supplied directly (reap path)', async () => {
+    const { l, killed } = makeLauncher({
+      ps: [
+        { pid: 7001, cmd: `/opt/homebrew/bin/abduco -A ${NAME} claude` },
+        { pid: 7002, cmd: '/opt/homebrew/bin/abduco -A mango-ffffffffffffffff claude' },
+      ],
+    });
+    await l.endDetachedByName(NAME);
+    expect(killed.map((k) => k.pid)).toEqual([7001]);
+  });
+
+  it('rejects a non-mango name (defense in depth — never escapes the namespace)', async () => {
+    const { l, killed } = makeLauncher({
+      ps: [{ pid: 1, cmd: '/opt/homebrew/bin/abduco -A user-session vim' }],
+    });
+    await l.endDetachedByName('user-session');
+    await l.endDetachedByName('');
+    expect(killed).toEqual([]);
+  });
+});
+
 describe('AbducoLauncher.endAllDetached (global kill-switch)', () => {
   it('kills EVERY mango abduco master, sparing non-mango abduco and unrelated procs', async () => {
     const { l, killed } = makeLauncher({

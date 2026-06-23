@@ -19,6 +19,9 @@ import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
 import { ScrollbackStore, getDefaultScrollbackPath } from './managers/scrollback-store';
 import { resolveAbducoPath } from './pty/abduco-path';
+import { AbducoLauncher } from './pty/abduco-launcher';
+import { createAbducoExec } from './pty/abduco-exec';
+import { reapOrphanDetachedSessions } from './pty/abduco-reap';
 import type { QuitWarningEvent } from '../shared/types';
 import { resolveRepoRoot } from './util/resolve-repo-root';
 
@@ -151,6 +154,32 @@ const quitController = new QuitController({
   quitNow: () => app.quit(),
 });
 
+/**
+ * Best-effort boot reap of ORPHANED detached b-full sessions (crash-leftovers). Runs
+ * only when abduco is available (regardless of the lite/full SETTING — a prior full
+ * run may have crashed while the user is now on lite). RECORD-DRIVEN inside
+ * reapOrphanDetachedSessions: it can only ever end sessions THIS userData persisted,
+ * so a session owned by another install / an isolated GUI smoke is never touched.
+ * Fire-and-forget: never awaited, never throws — boot UI must not wait on it.
+ */
+function reapOrphansAtBoot(): void {
+  if (!abducoPath) return;
+  // A reap-only launcher: only listLiveDetached + endDetachedByName are exercised, so
+  // `command` is unused here (it feeds resolveLaunch, which reap never calls).
+  const launcher = new AbducoLauncher({
+    abducoPath,
+    command: settingsStore.get().agentCommand ?? process.env.MANGO_AGENT_CMD ?? 'claude',
+    ...createAbducoExec(abducoPath),
+  });
+  void reapOrphanDetachedSessions({
+    listLiveDetached: () => launcher.listLiveDetached(),
+    loadRecords: () => sessionStore.all(),
+    endDetachedByName: (name) => launcher.endDetachedByName(name),
+    exists: existsSync,
+    now: Date.now,
+  });
+}
+
 app.whenReady().then(() => {
   if (app.isPackaged && process.platform === 'darwin') {
     try {
@@ -191,6 +220,10 @@ app.whenReady().then(() => {
   const seed = recent[0] ?? settingsStore.get().repoRoot;
   const bootRepo = resolveRepoRoot({ persisted: seed, cwd: process.cwd() });
   createWindow(bootRepo);
+
+  // Reap crash-orphaned detached sessions AFTER the boot window is requested, so the
+  // UI never waits on the abduco/ps probes. Best-effort; safe to ignore the result.
+  reapOrphansAtBoot();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
