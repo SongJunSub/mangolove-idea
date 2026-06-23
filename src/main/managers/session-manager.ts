@@ -138,8 +138,13 @@ export class SessionManager {
     // exists. DirectLauncher exposes no isLiveDetached, so the b-lite path keeps
     // exactly its fresh|continue behavior.
     let mode: LaunchMode = continueSession ? 'continue' : 'fresh';
-    if (this.launcher.isLiveDetached && (await this.launcher.isLiveDetached(worktreeId))) {
-      mode = 'attach';
+    if (this.launcher.isLiveDetached) {
+      try {
+        if (await this.launcher.isLiveDetached(worktreeId)) mode = 'attach';
+      } catch {
+        // The abduco liveness probe failed (binary hiccup / timeout) — fall back to
+        // continue/fresh rather than failing the whole spawn and breaking the terminal.
+      }
     }
     const { file, args: ptyArgs } = this.launcher.resolveLaunch({ worktreeId, cwd, mode });
     const pty = this.factory.spawn(file, ptyArgs, { cwd, cols, rows });
@@ -223,11 +228,14 @@ export class SessionManager {
    * b-full: ends a worktree's DETACHED background session — closes the front-end
    * PTY AND kills the surviving abduco master so nothing keeps running in the
    * background. No-op beyond the front-end kill for b-lite (DirectLauncher has no
-   * endDetached). Best-effort; the master kill is awaited so callers can sequence.
+   * endDetached). Returns the front-end kill Ack (ok:false when there was no live
+   * front-end session, mirroring kill()); the master kill is awaited so callers can
+   * sequence (e.g. before quit).
    */
-  async endDetached(worktreeId: string): Promise<void> {
-    this.kill(worktreeId);
+  async endDetached(worktreeId: string): Promise<Ack> {
+    const ack = this.kill(worktreeId);
     if (this.launcher.endDetached) await this.launcher.endDetached(worktreeId);
+    return ack;
   }
 
   /**

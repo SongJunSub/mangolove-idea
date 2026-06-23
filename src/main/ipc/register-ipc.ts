@@ -560,6 +560,12 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       } catch {
         // ignore — scrollback cleanup is non-essential; the size cap bounds growth anyway
       }
+      // Reap any surviving b-full background session for the removed worktree — its
+      // abduco master would otherwise be an orphan (we know the path here, so we can
+      // end it deterministically). Only when a manager already exists (no agent ever
+      // ran => nothing to reap, and we must not build one just to scan). No-op for
+      // b-lite (endDetached has no master to kill). Best-effort.
+      void ctx.sessionManager?.endDetached(req.worktreeId).catch(() => undefined);
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -576,7 +582,10 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
 
   ipcMain.handle(IPC.SESSION_KILL, async (event, req: { worktreeId: string }): Promise<Ack> => {
     const ctx = requireCtx(event);
-    return getSessionManager(ctx).kill(req.worktreeId);
+    // In b-full, "kill" must actually END the session — close the front-end PTY AND
+    // kill the surviving abduco master (endDetached), so the agent does not keep
+    // running invisibly. For b-lite this is exactly the front-end kill (no master).
+    return getSessionManager(ctx).endDetached(req.worktreeId);
   });
 
   ipcMain.on(IPC.SESSION_INPUT, (event, req: SessionInputRequest) => {

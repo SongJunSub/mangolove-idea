@@ -10,6 +10,8 @@ function makeLauncher(
   over: {
     listed?: string[];
     ps?: { pid: number; cmd: string }[];
+    /** Overrides the recycle-guard re-read; default echoes the captured ps cmdline. */
+    cmdOfPid?: (pid: number) => Promise<string>;
   } = {},
 ) {
   const listed = over.listed ?? [];
@@ -21,6 +23,8 @@ function makeLauncher(
     // abduco's listing is a tab/space table; emit one line per session.
     runList: async () => listed.map((n) => `+ Tue\t 2026-06-23 11:00:00\t${n}`).join('\n'),
     psList: async () => ps,
+    // Default recycle-guard: the pid still maps to the same cmdline it was captured with.
+    cmdOfPid: over.cmdOfPid ?? (async (pid) => ps.find((p) => p.pid === pid)?.cmd ?? ''),
     killPid: (pid, signal) => void killed.push({ pid, signal }),
   });
   return { l, killed };
@@ -111,5 +115,25 @@ describe('AbducoLauncher.endAllDetached (global kill-switch)', () => {
     await l.endAllDetached();
     expect(killed.map((k) => k.pid).sort()).toEqual([1, 2]);
     expect(killed.every((k) => k.signal === 'SIGTERM')).toBe(true);
+  });
+
+  it('recycle guard: does NOT kill a pid that was recycled onto a non-abduco process', async () => {
+    const { l, killed } = makeLauncher({
+      ps: [{ pid: 5001, cmd: `/opt/homebrew/bin/abduco -A ${NAME} claude` }],
+      // Between ps-capture and kill, pid 5001 was reused by an unrelated process.
+      cmdOfPid: async () => '/usr/bin/some-unrelated-tool --flag',
+    });
+    await l.endDetached(WT);
+    expect(killed).toEqual([]);
+  });
+
+  it('recycle guard: still kills when the pid is verified as the same abduco session', async () => {
+    const cmd = `/opt/homebrew/bin/abduco -A ${NAME} claude`;
+    const { l, killed } = makeLauncher({
+      ps: [{ pid: 5001, cmd }],
+      cmdOfPid: async () => cmd,
+    });
+    await l.endDetached(WT);
+    expect(killed.map((k) => k.pid)).toEqual([5001]);
   });
 });

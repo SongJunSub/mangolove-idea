@@ -17,8 +17,20 @@ export interface AbducoLauncherDeps {
   readonly runList: () => Promise<string>;
   /** Returns the running processes (pid + cmdline) — default `ps -axo pid=,command=`. */
   readonly psList: () => Promise<ProcInfo[]>;
+  /**
+   * Returns the CURRENT cmdline of one pid (or '' if it is gone) — default
+   * `ps -p <pid> -o command=`. Used to RE-VERIFY a kill target immediately before
+   * signalling, closing the ps-capture→kill TOCTOU window where the OS could have
+   * recycled the pid onto an unrelated process.
+   */
+  readonly cmdOfPid: (pid: number) => Promise<string>;
   /** Sends a signal to an EXACT pid (default process.kill). */
   readonly killPid: (pid: number, signal: NodeJS.Signals) => void;
+}
+
+/** Extracts every `mango-<16hex>` session token from a command line (exact tokens). */
+function mangoTokens(cmd: string): string[] {
+  return [...cmd.matchAll(/mango-[a-f0-9]{16}/g)].map((m) => m[0]);
 }
 
 /**
@@ -76,25 +88,35 @@ export class AbducoLauncher implements AgentLauncher {
 
   async endDetached(worktreeId: string): Promise<void> {
     const name = sessionNameFor(worktreeId);
-    await this.killMatching((cmd) => cmd.includes(name));
+    // EXACT token match (not substring): the cmdline must carry THIS 16-hex session
+    // token, so a name can never match another session that merely contains it.
+    await this.killMatching((cmd) => mangoTokens(cmd).includes(name));
   }
 
   async endAllDetached(): Promise<void> {
     // Global kill-switch: end EVERY one of OUR sessions. Scoped to the `mango-`
     // namespace so a user's other abduco sessions are never touched.
-    await this.killMatching((cmd) => /mango-[a-f0-9]{16}/.test(cmd));
+    await this.killMatching((cmd) => mangoTokens(cmd).length > 0);
   }
 
   /**
-   * Kills the EXACT pids of abduco processes whose cmdline satisfies `match` —
-   * the master (and any client) for a session. Killing the master ends the
-   * session and SIGHUPs the wrapped agent. Always an exact-pid kill verified to
-   * be an abduco process; never a broad process-pattern kill.
+   * Kills the abduco master (and any client) for the sessions whose cmdline
+   * satisfies `match`. Killing the master ends the session and SIGHUPs the wrapped
+   * agent. Two safety layers against killing the wrong process:
+   *  1. the candidate cmdline must contain `abduco` AND satisfy `match` (an exact
+   *     `mango-<hash>` token — never a broad pattern);
+   *  2. immediately before signalling, the pid's CURRENT cmdline is re-read and must
+   *     STILL be an abduco process carrying a mango token — closing the
+   *     ps-capture→kill TOCTOU window where the OS could recycle the pid onto an
+   *     unrelated process (the "never kill a process you didn't start" guard).
    */
   private async killMatching(match: (cmd: string) => boolean): Promise<void> {
     const procs = await this.deps.psList();
     for (const p of procs) {
-      if (p.cmd.includes('abduco') && match(p.cmd)) {
+      if (!p.cmd.includes('abduco') || !match(p.cmd)) continue;
+      // Re-verify the pid right before killing (recycle guard).
+      const current = await this.deps.cmdOfPid(p.pid);
+      if (current.includes('abduco') && mangoTokens(current).length > 0) {
         this.deps.killPid(p.pid, this.detachSignal);
       }
     }

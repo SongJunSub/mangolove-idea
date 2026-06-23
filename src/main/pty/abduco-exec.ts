@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import type { AbducoLauncherDeps, ProcInfo } from './abduco-launcher';
 
 /** The child_process-backed slice of AbducoLauncherDeps (the testable rest is injected). */
-type AbducoExec = Pick<AbducoLauncherDeps, 'runList' | 'psList' | 'killPid'>;
+type AbducoExec = Pick<AbducoLauncherDeps, 'runList' | 'psList' | 'cmdOfPid' | 'killPid'>;
 
 /**
  * Parses `ps -axo pid=,command=` output into {pid, cmd}. Each line is a numeric
@@ -38,6 +38,17 @@ export function createAbducoExec(abducoPath: string): AbducoExec {
           ['-axo', 'pid=,command='],
           { timeout: 4000, maxBuffer: 8 * 1024 * 1024 },
           (_err, stdout) => resolvePromise(parsePsList(stdout ?? '')),
+        );
+      }),
+    cmdOfPid: (pid) =>
+      new Promise((resolvePromise) => {
+        // Current cmdline of ONE pid; empty string when the pid is gone. Used as the
+        // recycle guard immediately before killPid (re-verify it is still abduco).
+        execFile(
+          '/bin/ps',
+          ['-p', String(pid), '-o', 'command='],
+          { timeout: 4000 },
+          (_err, stdout) => resolvePromise((stdout ?? '').trim()),
         );
       }),
     killPid: (pid, signal) => {

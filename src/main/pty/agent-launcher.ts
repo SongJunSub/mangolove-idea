@@ -54,10 +54,12 @@ export interface AgentLauncher {
   /** Global kill-switch: end EVERY one of our detached sessions (stop-all). */
   endAllDetached?(): Promise<void>;
   /**
-   * Signal SessionManager must send to DETACH (not kill) the front-end PTY when
-   * this launcher owns a surviving master — explicit SIGTERM rather than node-pty's
-   * default SIGHUP (and SessionManager must avoid node-pty `destroy()`, which forces
-   * SIGHUP). Absent on DirectLauncher (a kill there is a real kill, not a detach).
+   * Signal used to KILL a surviving detached master in endDetached/endAllDetached
+   * (explicit SIGTERM via process.kill on the exact master pid). NOTE: detaching the
+   * FRONT-END PTY does NOT use this — SessionManager's `pty.kill()` sends node-pty's
+   * default SIGHUP, which the Phase 0 spike verified leaves the abduco master + agent
+   * alive (detach) on macOS arm64; SessionManager never calls node-pty `destroy()`.
+   * Absent on DirectLauncher (which owns no master to kill).
    */
   readonly detachSignal?: NodeJS.Signals;
 }
