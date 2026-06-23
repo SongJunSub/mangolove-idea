@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
 export default defineConfig({
@@ -26,10 +27,14 @@ export default defineConfig({
         },
       },
       {
+        // React plugin gives the jsdom project the automatic-JSX transform so RTL
+        // component tests (.test.tsx) compile; pure-logic .test.ts tests are unaffected.
+        plugins: [react()],
         test: {
           name: 'jsdom',
           environment: 'jsdom',
-          include: ['tests/renderer/**/*.test.ts'],
+          include: ['tests/renderer/**/*.test.{ts,tsx}'],
+          setupFiles: ['./tests/renderer/setup-rtl.ts'],
         },
       },
     ],
