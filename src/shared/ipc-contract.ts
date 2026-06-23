@@ -33,6 +33,7 @@ import type {
   DiffFileRequest,
   AppSettings,
   SessionPersistenceInfo,
+  CrossMachineSessionPointer,
   GhStatus,
   GhStatusRequest,
   OpenExternalRequest,
@@ -76,6 +77,10 @@ export interface MangoApi {
     onOutput(cb: (e: SessionOutputEvent) => void): Unsubscribe;
     onExit(cb: (e: SessionExitEvent) => void): Unsubscribe;
     onStatus(cb: (s: AgentSession) => void): Unsubscribe;
+  };
+  crossMachine: {
+    /** All machines' published session pointers; [] when opted out or on a sync error. */
+    fetch(): Promise<CrossMachineSessionPointer[]>;
   };
   server: {
     start(req: StartServerRequest): Promise<ServerStatus>;

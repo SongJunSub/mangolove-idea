@@ -23,6 +23,7 @@ import type {
   DiffFileRequest,
   AppSettings,
   SessionPersistenceInfo,
+  CrossMachineSessionPointer,
   ConflictedFile,
   ConflictFileVersions,
   ConflictListRequest,
@@ -839,6 +840,18 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   ipcMain.handle(IPC.SESSION_PERSISTENCE_INFO, async (event): Promise<SessionPersistenceInfo> => {
     const ctx = requireCtx(event);
     return resolveEffectivePersistence(getSettingsStore(ctx).get(), ctx.abducoPath);
+  });
+
+  ipcMain.handle(IPC.CROSS_MACHINE_FETCH, async (event): Promise<CrossMachineSessionPointer[]> => {
+    const ctx = requireCtx(event);
+    // Opt-in gate: no network when off. Best-effort: a sync/network error surfaces as
+    // an empty list (the panel shows "no sessions"), never a thrown IPC error.
+    if (getSettingsStore(ctx).get().crossMachineSessions !== 'on') return [];
+    try {
+      return await new SessionRefSync(createRefSyncGit(requireRepoRoot(ctx))).fetchAll();
+    } catch {
+      return [];
+    }
   });
 
   ipcMain.handle(IPC.SETTINGS_GET, async (event): Promise<AppSettings> => {

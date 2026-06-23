@@ -232,6 +232,26 @@ describe('registerIpc — session', () => {
     expect(publisher.notifyChanged).toHaveBeenCalledTimes(2); // once per lifecycle change
   });
 
+  it('CROSS_MACHINE_FETCH returns [] when opted out (gate, no git/network attempt)', async () => {
+    const settingsStore = { get: () => ({}), set: () => ({}) }; // crossMachineSessions unset => off
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      repoRoot: null, // no repo: proves the gate returns BEFORE requireRepoRoot/git
+      settingsStore: settingsStore as never,
+    });
+    expect(await handlers.get('cross-machine:fetch')!(fakeEvent)).toEqual([]);
+  });
+
+  it('CROSS_MACHINE_FETCH is best-effort: returns [] instead of throwing when on but unfetchable', async () => {
+    const settingsStore = { get: () => ({ crossMachineSessions: 'on' }), set: () => ({}) };
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      repoRoot: null, // requireRepoRoot throws inside the handler -> caught -> []
+      settingsStore: settingsStore as never,
+    });
+    expect(await handlers.get('cross-machine:fetch')!(fakeEvent)).toEqual([]);
+  });
+
   it('SESSION_INPUT is an ipcMain.on handler that delegates to write', () => {
     const sm = fakeSession();
     const { onHandlers, fakeEvent } = registerIpcForTest({
