@@ -24,6 +24,7 @@
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
     "src/preload/index.d.ts",
-    "tests/renderer/**/*.ts"
+    "tests/renderer/**/*.ts",
+    "tests/renderer/**/*.tsx"
   ]
 }
