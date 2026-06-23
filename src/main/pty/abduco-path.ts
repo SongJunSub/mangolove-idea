@@ -26,7 +26,9 @@ const DEV_ABDUCO_PATHS: readonly string[] = [
  * (index.ts), which is an attacker-influenced surface; a `$PATH`-resolved
  * `abduco` could run an arbitrary binary. So:
  *   - non-darwin            -> null (abduco is POSIX; the app ships --mac only).
- *   - packaged (the .app)   -> ONLY the bundled, code-signed resources/bin/abduco.
+ *   - packaged (the .app)   -> ONLY the abduco bundled at resources/bin/abduco (shipped
+ *                              via electron-builder extraResources; adhoc-signed —
+ *                              the app itself is currently built unsigned, identity:null).
  *   - dev (not packaged)    -> the first existing known Homebrew/system absolute path.
  * Returns null when abduco can't be found; the caller then falls back to b-lite
  * (DirectLauncher) and surfaces the unavailability in the Settings UI.
