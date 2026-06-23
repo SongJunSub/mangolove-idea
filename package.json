@@ -67,6 +67,16 @@
       "out/renderer/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/bin/abduco",
+        "to": "bin/abduco"
+      },
+      {
+        "from": "resources/THIRD-PARTY-LICENSES",
+        "to": "THIRD-PARTY-LICENSES"
+      }
+    ],
     "asar": true,
     "asarUnpack": [
       "**/node_modules/node-pty/build/Release/*"

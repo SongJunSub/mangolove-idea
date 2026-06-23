@@ -87,7 +87,18 @@ export class AbducoLauncher implements AgentLauncher {
   }
 
   async endDetached(worktreeId: string): Promise<void> {
-    const name = sessionNameFor(worktreeId);
+    await this.endDetachedByName(sessionNameFor(worktreeId));
+  }
+
+  /**
+   * Ends the detached session with this EXACT mango name. Boot-reap calls this
+   * directly for sessions it discovered via listLiveDetached (where it holds the
+   * session NAME, not a worktreeId — an orphan whose worktree mapping was lost).
+   * Non-mango names are rejected (defense in depth): this method can NEVER be
+   * coerced into killing a session outside our `mango-` namespace.
+   */
+  async endDetachedByName(name: string): Promise<void> {
+    if (!isMangoSession(name)) return;
     // EXACT token match (not substring): the cmdline must carry THIS 16-hex session
     // token, so a name can never match another session that merely contains it.
     await this.killMatching((cmd) => mangoTokens(cmd).includes(name));
