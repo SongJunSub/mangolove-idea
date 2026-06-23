@@ -17,6 +17,8 @@ export const IPC = {
   SESSION_EXIT: 'session:exit', // main -> renderer, event
   SESSION_STATUS: 'session:status', // main -> renderer, event (AgentSession changed)
   SESSION_RECORDS: 'session:records', // invoke (recorded worktree paths for rehydrate)
+  SESSION_STOP_ALL_BACKGROUND: 'session:stop-all-background', // invoke (-> Ack; b-full kill-switch)
+  SESSION_PERSISTENCE_INFO: 'session:persistence-info', // invoke (-> SessionPersistenceInfo; loud fallback)
 
   // server (ONE per worktree, concurrent)
   SERVER_START: 'server:start', // invoke (worktreeId)

@@ -184,6 +184,7 @@ describe('registerIpc — session', () => {
         continued: false,
       })),
       kill: vi.fn(() => ({ ok: true })),
+      endDetached: vi.fn(async () => ({ ok: true })),
       write: vi.fn(),
       resize: vi.fn(),
       killAll: vi.fn(),
@@ -202,14 +203,14 @@ describe('registerIpc — session', () => {
     expect(session).toMatchObject({ worktreeId: '/wt', status: 'running', pid: 7 });
   });
 
-  it('SESSION_KILL delegates to sessionManager.kill and returns the Ack', async () => {
+  it('SESSION_KILL delegates to sessionManager.endDetached (ends front-end + b-full master)', async () => {
     const sm = fakeSession();
     const { handlers, fakeEvent } = registerIpcForTest({
       mainWindow: null,
       sessionManager: sm as never,
     });
     const ack = await handlers.get('session:kill')!(fakeEvent, { worktreeId: '/wt' });
-    expect(sm.kill).toHaveBeenCalledWith('/wt');
+    expect(sm.endDetached).toHaveBeenCalledWith('/wt');
     expect(ack).toEqual({ ok: true });
   });
 

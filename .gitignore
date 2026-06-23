@@ -21,6 +21,7 @@ logs/
 
 # MangoLove 세션 진행 상태 (개인 추적, 커밋하지 않음)
 .progress.md
+.claude/progress/
 
 # Editor / OS
 .idea/

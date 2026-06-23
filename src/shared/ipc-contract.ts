@@ -32,6 +32,7 @@ import type {
   DiffListRequest,
   DiffFileRequest,
   AppSettings,
+  SessionPersistenceInfo,
   GhStatus,
   GhStatusRequest,
   OpenExternalRequest,
@@ -68,6 +69,10 @@ export interface MangoApi {
     kill(worktreeId: string): Promise<Ack>;
     /** Recorded worktree paths that had an agent (=> spawn with --continue). */
     records(): Promise<string[]>;
+    /** b-full kill-switch: end EVERY detached background agent session (stop-all). */
+    stopAllBackground(): Promise<Ack>;
+    /** Effective session-persistence mode for the Settings UI (loud fallback). */
+    persistenceInfo(): Promise<SessionPersistenceInfo>;
     onOutput(cb: (e: SessionOutputEvent) => void): Unsubscribe;
     onExit(cb: (e: SessionExitEvent) => void): Unsubscribe;
     onStatus(cb: (s: AgentSession) => void): Unsubscribe;

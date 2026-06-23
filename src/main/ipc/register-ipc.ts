@@ -22,6 +22,7 @@ import type {
   DiffListRequest,
   DiffFileRequest,
   AppSettings,
+  SessionPersistenceInfo,
   ConflictedFile,
   ConflictFileVersions,
   ConflictListRequest,
@@ -47,6 +48,9 @@ import { DiffViewer } from '../git/diff-viewer';
 import { GhStatusReader } from '../git/gh-status-reader';
 import { ConflictResolver } from '../git/conflict-resolver';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
+import { AbducoLauncher } from '../pty/abduco-launcher';
+import { createAbducoExec } from '../pty/abduco-exec';
+import type { AgentLauncher } from '../pty/agent-launcher';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
 import { ServerManager, type ServerEmitter } from '../managers/server-manager';
@@ -126,6 +130,43 @@ export function resolveCommands(settings: AppSettings): ResolvedCommands {
 }
 
 /**
+ * Chooses the AgentLauncher for a SessionManager. Returns undefined — so
+ * SessionManager defaults to a DirectLauncher built from agentCommand (the exact
+ * b-lite behavior) — UNLESS sessionPersistence === 'full' AND an abduco binary was
+ * resolved at boot (ctx.abducoPath). When 'full' is set but abducoPath is null
+ * (abduco missing / non-darwin / not bundled), b-full degrades to b-lite here; the
+ * Settings UI surfaces that effective mode so the downgrade is never silent.
+ */
+export function buildLauncher(
+  settings: AppSettings,
+  agentCommand: string,
+  abducoPath: string | null | undefined,
+): AgentLauncher | undefined {
+  if (settings.sessionPersistence !== 'full' || !abducoPath) return undefined;
+  return new AbducoLauncher({
+    abducoPath,
+    command: agentCommand,
+    ...createAbducoExec(abducoPath),
+  });
+}
+
+/**
+ * Computes the EFFECTIVE session-persistence state (b-full loud fallback). 'full'
+ * is only in effect when the user asked for it AND abduco was resolved at boot;
+ * otherwise it falls back to 'lite'. The Settings UI surfaces a requested!==effective
+ * mismatch so the downgrade is never silent. Pure + exported for unit tests.
+ */
+export function resolveEffectivePersistence(
+  settings: AppSettings,
+  abducoPath: string | null | undefined,
+): SessionPersistenceInfo {
+  const requested = settings.sessionPersistence === 'full' ? 'full' : 'lite';
+  const abducoAvailable = Boolean(abducoPath);
+  const effective = requested === 'full' && abducoAvailable ? 'full' : 'lite';
+  return { requested, effective, abducoAvailable };
+}
+
+/**
  * Resolves the WorktreeManager: prefer the one already on ctx (tests inject a
  * fake); otherwise lazily build a real one from ctx.repoRoot and cache it.
  */
@@ -163,10 +204,16 @@ function buildSessionEmitter(ctx: IpcContext): SessionEmitter {
  */
 function getSessionManager(ctx: IpcContext): SessionManager {
   if (ctx.sessionManager) return ctx.sessionManager;
+  const settings = getSettingsStore(ctx).get();
+  const agentCommand = resolveCommands(settings).agentCommand;
   ctx.sessionManager = new SessionManager({
     factory: new NodePtyFactory(),
     emitter: buildSessionEmitter(ctx),
-    command: resolveCommands(getSettingsStore(ctx).get()).agentCommand,
+    command: agentCommand,
+    // b-full: an AbducoLauncher when sessionPersistence==='full' AND abduco is
+    // available; undefined otherwise => SessionManager builds a DirectLauncher
+    // (b-lite) from `command`, leaving the existing behavior byte-for-byte intact.
+    launcher: buildLauncher(settings, agentCommand, ctx.abducoPath),
     resolvePath: async (worktreeId) => {
       const manager = await getWorktreeManager(ctx);
       const trees = await manager.list();
@@ -513,6 +560,12 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       } catch {
         // ignore — scrollback cleanup is non-essential; the size cap bounds growth anyway
       }
+      // Reap any surviving b-full background session for the removed worktree — its
+      // abduco master would otherwise be an orphan (we know the path here, so we can
+      // end it deterministically). Only when a manager already exists (no agent ever
+      // ran => nothing to reap, and we must not build one just to scan). No-op for
+      // b-lite (endDetached has no master to kill). Best-effort.
+      void ctx.sessionManager?.endDetached(req.worktreeId).catch(() => undefined);
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -529,7 +582,10 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
 
   ipcMain.handle(IPC.SESSION_KILL, async (event, req: { worktreeId: string }): Promise<Ack> => {
     const ctx = requireCtx(event);
-    return getSessionManager(ctx).kill(req.worktreeId);
+    // In b-full, "kill" must actually END the session — close the front-end PTY AND
+    // kill the surviving abduco master (endDetached), so the agent does not keep
+    // running invisibly. For b-lite this is exactly the front-end kill (no master).
+    return getSessionManager(ctx).endDetached(req.worktreeId);
   });
 
   ipcMain.on(IPC.SESSION_INPUT, (event, req: SessionInputRequest) => {
@@ -723,6 +779,18 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     return getSessionStore(ctx)
       .all()
       .map((r) => r.worktreePath);
+  });
+
+  ipcMain.handle(IPC.SESSION_STOP_ALL_BACKGROUND, async (event): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    // b-full kill-switch: end EVERY surviving detached agent (no-op under b-lite).
+    await getSessionManager(ctx).endAllDetached();
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.SESSION_PERSISTENCE_INFO, async (event): Promise<SessionPersistenceInfo> => {
+    const ctx = requireCtx(event);
+    return resolveEffectivePersistence(getSettingsStore(ctx).get(), ctx.abducoPath);
   });
 
   ipcMain.handle(IPC.SETTINGS_GET, async (event): Promise<AppSettings> => {

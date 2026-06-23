@@ -443,6 +443,30 @@ export interface AppSettings {
    * array unsets the key. Seeded from the legacy single `repoRoot` on first read.
    */
   readonly recentRepos?: readonly string[];
+  /**
+   * Session persistence mode (V2 b-full). Unset / 'lite' (default): claude runs as
+   * a child PTY; reopen offers `claude --continue` so the CONVERSATION is restored,
+   * but an in-flight TURN is lost on quit/crash. 'full': claude runs inside an
+   * `abduco` detached session so an in-flight turn SURVIVES quit/crash and is
+   * re-attached on reopen. 'full' degrades to 'lite' when abduco is unavailable
+   * (surfaced in the Settings UI — never a silent downgrade). Any value other than
+   * the exact string 'full' is treated as 'lite'.
+   */
+  readonly sessionPersistence?: 'lite' | 'full';
+}
+
+/**
+ * Effective session-persistence state for the Settings UI (b-full LOUD fallback).
+ * Surfaces when 'full' was requested but is NOT actually in effect because abduco
+ * is unavailable — so the downgrade to b-lite is never silent.
+ */
+export interface SessionPersistenceInfo {
+  /** What the user asked for (settings.sessionPersistence, defaulting to 'lite'). */
+  readonly requested: 'lite' | 'full';
+  /** What is ACTUALLY in effect — 'full' only when 'full' was asked AND abduco is available. */
+  readonly effective: 'lite' | 'full';
+  /** True iff an abduco binary was resolved at boot (b-full is possible at all). */
+  readonly abducoAvailable: boolean;
 }
 
 // ── Repo root picker (V2 packaging) ──
