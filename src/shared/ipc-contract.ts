@@ -81,6 +81,8 @@ export interface MangoApi {
   crossMachine: {
     /** All machines' published session pointers; [] when opted out or on a sync error. */
     fetch(): Promise<CrossMachineSessionPointer[]>;
+    /** Checks out `branch` into a local worktree (for a fresh session) and returns it. */
+    startHere(branch: string): Promise<Worktree>;
   };
   server: {
     start(req: StartServerRequest): Promise<ServerStatus>;

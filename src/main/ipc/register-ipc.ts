@@ -854,6 +854,17 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     }
   });
 
+  ipcMain.handle(
+    IPC.CROSS_MACHINE_START_HERE,
+    async (event, req: { branch: string }): Promise<Worktree> => {
+      const ctx = requireCtx(event);
+      // Checks out the (existing, remote) branch into a local worktree so the renderer
+      // can spawn a FRESH session on it. NOT best-effort — it is an explicit user action,
+      // so a failure (unsafe branch name, checkout conflict) surfaces to the UI.
+      return (await getWorktreeManager(ctx)).ensureForBranch(req.branch);
+    },
+  );
+
   ipcMain.handle(IPC.SETTINGS_GET, async (event): Promise<AppSettings> => {
     const ctx = requireCtx(event);
     return getSettingsStore(ctx).get();

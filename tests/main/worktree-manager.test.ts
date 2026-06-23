@@ -6,6 +6,7 @@ import {
   parseWorktreePorcelain,
   sanitizeBranchToDir,
   classifyGitError,
+  assertSafeBranchName,
 } from '../../src/main/managers/worktree-manager';
 import { makeTempGitRepo, type TempGitRepo } from '../helpers/temp-git-repo';
 
@@ -18,6 +19,20 @@ describe('sanitizeBranchToDir', () => {
   it('keeps dots, underscores and dashes; trims leading/trailing dashes', () => {
     expect(sanitizeBranchToDir('release_1.2-rc')).toBe('release_1.2-rc');
     expect(sanitizeBranchToDir('/leading/trailing/')).toBe('leading-trailing');
+  });
+});
+
+describe('assertSafeBranchName', () => {
+  it('accepts normal branch names including slashes', () => {
+    expect(() => assertSafeBranchName('main')).not.toThrow();
+    expect(() => assertSafeBranchName('feature/cross-machine')).not.toThrow();
+    expect(() => assertSafeBranchName('release_1.2')).not.toThrow();
+  });
+
+  it('rejects option-injection (leading -), whitespace, empty, and git-illegal metas', () => {
+    for (const bad of ['', '-x', '--force', 'a b', 'a\tb', 'a~b', 'a^b', 'a:b', 'a?b', 'a*b']) {
+      expect(() => assertSafeBranchName(bad)).toThrow(/unsafe branch name/);
+    }
   });
 });
 
@@ -162,6 +177,26 @@ describe('WorktreeManager (real temp git repo)', () => {
     });
     expect(created.path).toBe(join(realpathSync(repo.dir), 'custom', 'hf'));
     expect(created.branch).toBe('hotfix');
+  });
+
+  it('ensureForBranch checks out an existing branch into a worktree (start here)', async () => {
+    // An existing local branch (mirrors a branch another machine published a pointer for).
+    await repo.git.branch(['feat-remote']);
+    const wt = await manager.ensureForBranch('feat-remote');
+    expect(wt.branch).toBe('feat-remote');
+    expect(wt.path).toBe(join(realpathSync(repo.dir), '.worktrees', 'feat-remote'));
+    expect((await manager.list()).map((t) => t.branch).sort()).toEqual(['feat-remote', 'main']);
+  });
+
+  it('ensureForBranch is idempotent: returns the already-checked-out worktree', async () => {
+    const first = await manager.create({ baseBranch: 'main', newBranch: 'feature/x' });
+    const again = await manager.ensureForBranch('feature/x');
+    expect(again.path).toBe(first.path);
+    expect(await manager.list()).toHaveLength(2); // no second worktree created
+  });
+
+  it('ensureForBranch rejects an unsafe (option-injecting) branch name', async () => {
+    await expect(manager.ensureForBranch('--detach')).rejects.toThrow(/unsafe branch name/);
   });
 
   it('rejects an explicit path that escapes the repo root (path traversal)', async () => {

@@ -66,6 +66,20 @@ export function parseWorktreePorcelain(output: string): Worktree[] {
 }
 
 /**
+ * Rejects a branch name that could be option-injected into `git worktree add` argv or
+ * is not a valid git ref. The branch comes from another machine's published pointer
+ * (semi-trusted), so this guards the cross-machine "start here" path: never a leading
+ * '-' (git would read it as an option), no whitespace, and none of git's illegal ref
+ * metacharacters. Slashes are allowed (feature/foo). simple-git uses no shell, so
+ * option-confusion is the only injection vector and this closes it.
+ */
+export function assertSafeBranchName(branch: string): void {
+  if (branch === '' || branch.startsWith('-') || /[\s~^:?*[\\]/.test(branch)) {
+    throw new Error(`unsafe branch name: ${JSON.stringify(branch)}`);
+  }
+}
+
+/**
  * Maps a raw git error into a short, user-facing message for the known failure
  * modes of worktree add/remove. Falls back to the trimmed git message.
  */
@@ -136,6 +150,40 @@ export class WorktreeManager {
     const created = trees.find((t) => t.path === target);
     if (!created) {
       throw new Error(`worktree created at ${target} but not found in listing`);
+    }
+    return created;
+  }
+
+  /**
+   * Ensures a worktree exists for an EXISTING branch (checking it out — NOT creating a
+   * new branch) and returns it. Used by cross-machine "start here": the branch already
+   * lives on the remote (another machine published a pointer for it). If a worktree for
+   * the branch is already checked out, it is returned unchanged. Otherwise the remote is
+   * fetched (best-effort, so a remote-only branch resolves) and `git worktree add <dir>
+   * <branch>` checks it out — git's DWIM creates a local tracking branch when only
+   * `origin/<branch>` exists. The default dir is `<repoRoot>/.worktrees/<sanitized>`.
+   */
+  async ensureForBranch(branch: string): Promise<Worktree> {
+    assertSafeBranchName(branch);
+    const existing = (await this.list()).find((t) => t.branch === branch);
+    if (existing) return existing;
+
+    const target = resolve(this.repoRoot, '.worktrees', sanitizeBranchToDir(branch));
+    // Best-effort fetch so a remote-only branch is resolvable; ignore failure (offline).
+    try {
+      await this.git.fetch();
+    } catch {
+      // no remote / offline — fall through and let `worktree add` fail loudly if needed
+    }
+    try {
+      await this.git.raw(['worktree', 'add', target, branch]);
+    } catch (error) {
+      throw new Error(classifyGitError(error));
+    }
+
+    const created = (await this.list()).find((t) => t.path === target || t.branch === branch);
+    if (!created) {
+      throw new Error(`worktree for '${branch}' created at ${target} but not found in listing`);
     }
     return created;
   }

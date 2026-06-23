@@ -37,6 +37,7 @@ const api: MangoApi = {
   },
   crossMachine: {
     fetch: () => ipcRenderer.invoke(IPC.CROSS_MACHINE_FETCH),
+    startHere: (branch) => ipcRenderer.invoke(IPC.CROSS_MACHINE_START_HERE, { branch }),
   },
   server: {
     start: (req) => ipcRenderer.invoke(IPC.SERVER_START, req),

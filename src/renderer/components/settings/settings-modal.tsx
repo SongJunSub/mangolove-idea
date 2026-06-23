@@ -45,6 +45,8 @@ export function SettingsModal({
   const [serverCommand, setServerCommand] = useState(settings.serverCommand ?? '');
   const [baseBranch, setBaseBranch] = useState(settings.baseBranch ?? '');
   const [persistFull, setPersistFull] = useState(settings.sessionPersistence === 'full');
+  const [crossMachine, setCrossMachine] = useState(settings.crossMachineSessions === 'on');
+  const [machineLabel, setMachineLabel] = useState(settings.machineLabel ?? '');
   const [info, setInfo] = useState<SessionPersistenceInfo | null>(null);
   const [stopping, setStopping] = useState(false);
   const [stoppedNote, setStoppedNote] = useState('');
@@ -68,6 +70,10 @@ export function SettingsModal({
       // 'full' enables b-full; 'lite' (not '') keeps the value a valid enum and
       // reads back as lite. SettingsStore persists both as non-empty strings.
       sessionPersistence: persistFull ? 'full' : 'lite',
+      // 'on' opts into cross-machine session sharing; 'off' (not '') stays a valid
+      // enum. machineLabel blank => unset => the non-identifying default is used.
+      crossMachineSessions: crossMachine ? 'on' : 'off',
+      machineLabel: field(machineLabel),
     });
   };
 
@@ -172,6 +178,29 @@ export function SettingsModal({
             <span style={{ fontSize: 12, color: '#0a7', marginLeft: 8 }}>{stoppedNote}</span>
           )}
         </div>
+
+        <hr style={{ border: 0, borderTop: '1px solid #eee', margin: '16px 0' }} />
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+          <input
+            type="checkbox"
+            data-testid="settings-cross-machine"
+            checked={crossMachine}
+            onChange={(e) => setCrossMachine(e.target.checked)}
+          />
+          Share this machine's sessions across machines (visibility only)
+        </label>
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          Publishes session metadata (branch + status, never the conversation) to the shared remote
+          so you can see sessions from your other machines. Off by default.
+        </p>
+        {crossMachine &&
+          row(
+            'this machine label',
+            'machine-…',
+            machineLabel,
+            setMachineLabel,
+            'settings-machine-label',
+          )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" onClick={onClose}>

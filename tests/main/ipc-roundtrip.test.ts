@@ -252,6 +252,24 @@ describe('registerIpc — session', () => {
     expect(await handlers.get('cross-machine:fetch')!(fakeEvent)).toEqual([]);
   });
 
+  it('CROSS_MACHINE_START_HERE checks out the branch via ensureForBranch and returns it', async () => {
+    const worktree = {
+      id: '/wt/feat',
+      path: '/wt/feat',
+      branch: 'feat-x',
+      isPrimary: false,
+      isLocked: false,
+    };
+    const worktreeManager = { ensureForBranch: vi.fn(async () => worktree) };
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      worktreeManager: worktreeManager as never,
+    });
+    const result = await handlers.get('cross-machine:start-here')!(fakeEvent, { branch: 'feat-x' });
+    expect(worktreeManager.ensureForBranch).toHaveBeenCalledWith('feat-x');
+    expect(result).toEqual(worktree);
+  });
+
   it('SESSION_INPUT is an ipcMain.on handler that delegates to write', () => {
     const sm = fakeSession();
     const { onHandlers, fakeEvent } = registerIpcForTest({
