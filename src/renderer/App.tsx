@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import type { AppInfo, QuitWarningEvent, Worktree } from '../shared/types';
+import type { AppInfo, QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
 import { formatVersions } from './lib/format-versions';
 import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
@@ -64,6 +64,9 @@ export function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fanoutOpen, setFanoutOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
+  // Effective session-persistence mode (b-full). Drives the quit dialog's wording:
+  // under 'full' a quit does NOT lose the turn — it keeps running in the background.
+  const [persistenceInfo, setPersistenceInfo] = useState<SessionPersistenceInfo | null>(null);
   const [paneMode, setPaneMode] = useState<'terminal' | 'diff' | 'conflict' | 'browser'>(
     'terminal',
   );
@@ -72,6 +75,16 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void window.mango.session.persistenceInfo().then((i) => {
+      if (alive) setPersistenceInfo(i);
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // On selecting a worktree, reset the pane: to 'conflict' if THE in-progress merge
@@ -112,6 +125,15 @@ export function App(): React.JSX.Element {
   const onQuitDecision = useCallback(async (quit: boolean): Promise<void> => {
     setQuitWarning(null);
     await window.mango.app.sendQuitDecision(quit);
+  }, []);
+
+  // b-full "Stop all & quit": end every surviving background session FIRST (so the
+  // turn does NOT keep running), then proceed with the quit. Composed in the
+  // renderer so APP_QUIT_DECISION stays a simple boolean.
+  const onQuitStopAll = useCallback(async (): Promise<void> => {
+    setQuitWarning(null);
+    await window.mango.session.stopAllBackground();
+    await window.mango.app.sendQuitDecision(true);
   }, []);
 
   const selectedWorktree = worktrees.find((w) => w.id === selectedId) ?? null;
@@ -388,18 +410,45 @@ export function App(): React.JSX.Element {
         >
           <div style={{ background: '#fff', borderRadius: 8, padding: 24, maxWidth: 380 }}>
             <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
-            <p style={{ fontSize: 13 }}>
-              {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and would
-              be interrupted. (Conversations are saved by claude and resume with{' '}
-              <code>--continue</code> next time — only the in-flight turn is lost.) Quit anyway?
-            </p>
+            {persistenceInfo?.effective === 'full' ? (
+              <p style={{ fontSize: 13 }}>
+                {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With background
+                persistence on, they will <strong>keep running in the background</strong> and
+                re-attach when you reopen — nothing is lost. You can also stop them now.
+              </p>
+            ) : (
+              <p style={{ fontSize: 13 }}>
+                {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and would
+                be interrupted. (Conversations are saved by claude and resume with{' '}
+                <code>--continue</code> next time — only the in-flight turn is lost.) Quit anyway?
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
               <button type="button" onClick={() => void onQuitDecision(false)}>
                 Cancel
               </button>
-              <button type="button" onClick={() => void onQuitDecision(true)}>
-                Quit anyway
-              </button>
+              {persistenceInfo?.effective === 'full' ? (
+                <>
+                  <button
+                    type="button"
+                    data-testid="quit-stop-all"
+                    onClick={() => void onQuitStopAll()}
+                  >
+                    Stop all &amp; quit
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="quit-keep-running"
+                    onClick={() => void onQuitDecision(true)}
+                  >
+                    Keep running &amp; quit
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => void onQuitDecision(true)}>
+                  Quit anyway
+                </button>
+              )}
             </div>
           </div>
         </div>
