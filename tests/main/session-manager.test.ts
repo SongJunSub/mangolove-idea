@@ -248,6 +248,46 @@ describe('SessionManager onIdle (deferred live-apply hook, V2 E)', () => {
   });
 });
 
+describe('SessionManager b-full 3-way reopen (main-side, launcher.isLiveDetached)', () => {
+  /** Builds a SessionManager around a fake launcher that records each launch mode. */
+  function makeWith(isLiveDetached: () => Promise<boolean>) {
+    const modes: string[] = [];
+    const { factory } = makeFakeFactory([makeFakePty(1)]);
+    const { emitter } = makeSpyEmitter();
+    const mgr = new SessionManager({
+      factory,
+      emitter,
+      resolvePath: async (id) => id,
+      launcher: {
+        resolveLaunch: (ctx) => {
+          modes.push(ctx.mode);
+          return { file: 'abduco', args: [] };
+        },
+        isLiveDetached,
+      },
+    });
+    return { mgr, modes };
+  }
+
+  it('overrides to ATTACH when a live detached session exists (ignores continueSession)', async () => {
+    const { mgr, modes } = makeWith(async () => true);
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    expect(modes).toEqual(['attach']);
+  });
+
+  it('uses CONTINUE when no live session and continueSession is true', async () => {
+    const { mgr, modes } = makeWith(async () => false);
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+    expect(modes).toEqual(['continue']);
+  });
+
+  it('uses FRESH when no live session and continueSession is false', async () => {
+    const { mgr, modes } = makeWith(async () => false);
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+    expect(modes).toEqual(['fresh']);
+  });
+});
+
 describe('SessionManager turn detection (output-activity heuristic, V2 C)', () => {
   // A mutable clock so the test advances "now" deterministically.
   function mutableClock(start = 1000) {

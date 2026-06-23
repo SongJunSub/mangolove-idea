@@ -1,5 +1,6 @@
 import type { Ack, AgentSession, AgentStatus, SessionRecord } from '../../shared/types';
 import type { IPtyLike, PtyExitEvent, PtyFactory } from '../pty/pty-factory';
+import { DirectLauncher, type AgentLauncher, type LaunchMode } from '../pty/agent-launcher';
 
 /**
  * A turn is "active" iff the PTY emitted output within the last ACTIVE_TURN_MS.
@@ -36,6 +37,12 @@ export interface SessionManagerDeps {
   readonly emitter: SessionEmitter;
   /** Binary to spawn; default 'claude'. Injectable so smokes use a harmless cmd. */
   readonly command?: string;
+  /**
+   * Decides the launch argv per spawn (Branch by Abstraction seam for b-full).
+   * Optional => a DirectLauncher is derived from `command`, preserving the exact
+   * pre-b-full behavior. Phase 2 injects an AbducoLauncher for detached sessions.
+   */
+  readonly launcher?: AgentLauncher;
   /** Resolves worktreeId -> absolute cwd, or undefined if not a managed worktree. */
   readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
   /** Resolves worktreeId -> branch name for the persisted SessionRecord (Plan 5). */
@@ -78,6 +85,7 @@ export class SessionManager {
   private readonly factory: PtyFactory;
   private readonly emitter: SessionEmitter;
   private readonly command: string;
+  private readonly launcher: AgentLauncher;
   private readonly resolvePath: (worktreeId: string) => Promise<string | undefined>;
   private readonly resolveBranch?: (worktreeId: string) => Promise<string | undefined>;
   private readonly store?: SessionRecordSink;
@@ -89,6 +97,9 @@ export class SessionManager {
     this.factory = deps.factory;
     this.emitter = deps.emitter;
     this.command = deps.command ?? 'claude';
+    // Default to a DirectLauncher built from `command` so an un-injected launcher
+    // reproduces the exact pre-b-full argv (file: command, args: --continue|[]).
+    this.launcher = deps.launcher ?? new DirectLauncher(this.command);
     this.resolvePath = deps.resolvePath;
     this.resolveBranch = deps.resolveBranch;
     this.store = deps.store;
@@ -120,8 +131,18 @@ export class SessionManager {
       return errored;
     }
 
-    const ptyArgs = continueSession ? ['--continue'] : [];
-    const pty = this.factory.spawn(this.command, ptyArgs, { cwd, cols, rows });
+    // 3-way reopen decision (b-full) — taken HERE in main, never in the renderer,
+    // because only main can observe OS-level detached-session liveness (a renderer
+    // round-trip would be a TOCTOU window). The renderer's continueSession is an
+    // INTENT signal; main overrides it to 'attach' when a live background session
+    // exists. DirectLauncher exposes no isLiveDetached, so the b-lite path keeps
+    // exactly its fresh|continue behavior.
+    let mode: LaunchMode = continueSession ? 'continue' : 'fresh';
+    if (this.launcher.isLiveDetached && (await this.launcher.isLiveDetached(worktreeId))) {
+      mode = 'attach';
+    }
+    const { file, args: ptyArgs } = this.launcher.resolveLaunch({ worktreeId, cwd, mode });
+    const pty = this.factory.spawn(file, ptyArgs, { cwd, cols, rows });
 
     const session: Session = {
       pty,

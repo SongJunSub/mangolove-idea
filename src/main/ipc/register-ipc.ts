@@ -47,6 +47,9 @@ import { DiffViewer } from '../git/diff-viewer';
 import { GhStatusReader } from '../git/gh-status-reader';
 import { ConflictResolver } from '../git/conflict-resolver';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
+import { AbducoLauncher } from '../pty/abduco-launcher';
+import { createAbducoExec } from '../pty/abduco-exec';
+import type { AgentLauncher } from '../pty/agent-launcher';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
 import { ServerManager, type ServerEmitter } from '../managers/server-manager';
@@ -126,6 +129,27 @@ export function resolveCommands(settings: AppSettings): ResolvedCommands {
 }
 
 /**
+ * Chooses the AgentLauncher for a SessionManager. Returns undefined — so
+ * SessionManager defaults to a DirectLauncher built from agentCommand (the exact
+ * b-lite behavior) — UNLESS sessionPersistence === 'full' AND an abduco binary was
+ * resolved at boot (ctx.abducoPath). When 'full' is set but abducoPath is null
+ * (abduco missing / non-darwin / not bundled), b-full degrades to b-lite here; the
+ * Settings UI surfaces that effective mode so the downgrade is never silent.
+ */
+export function buildLauncher(
+  settings: AppSettings,
+  agentCommand: string,
+  abducoPath: string | null | undefined,
+): AgentLauncher | undefined {
+  if (settings.sessionPersistence !== 'full' || !abducoPath) return undefined;
+  return new AbducoLauncher({
+    abducoPath,
+    command: agentCommand,
+    ...createAbducoExec(abducoPath),
+  });
+}
+
+/**
  * Resolves the WorktreeManager: prefer the one already on ctx (tests inject a
  * fake); otherwise lazily build a real one from ctx.repoRoot and cache it.
  */
@@ -163,10 +187,16 @@ function buildSessionEmitter(ctx: IpcContext): SessionEmitter {
  */
 function getSessionManager(ctx: IpcContext): SessionManager {
   if (ctx.sessionManager) return ctx.sessionManager;
+  const settings = getSettingsStore(ctx).get();
+  const agentCommand = resolveCommands(settings).agentCommand;
   ctx.sessionManager = new SessionManager({
     factory: new NodePtyFactory(),
     emitter: buildSessionEmitter(ctx),
-    command: resolveCommands(getSettingsStore(ctx).get()).agentCommand,
+    command: agentCommand,
+    // b-full: an AbducoLauncher when sessionPersistence==='full' AND abduco is
+    // available; undefined otherwise => SessionManager builds a DirectLauncher
+    // (b-lite) from `command`, leaving the existing behavior byte-for-byte intact.
+    launcher: buildLauncher(settings, agentCommand, ctx.abducoPath),
     resolvePath: async (worktreeId) => {
       const manager = await getWorktreeManager(ctx);
       const trees = await manager.list();

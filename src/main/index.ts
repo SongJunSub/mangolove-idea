@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { createIpcContext, type IpcContext } from './ipc/ipc-context';
 import { registerIpc } from './ipc/register-ipc';
@@ -17,6 +18,7 @@ import {
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
 import { ScrollbackStore, getDefaultScrollbackPath } from './managers/scrollback-store';
+import { resolveAbducoPath } from './pty/abduco-path';
 import type { QuitWarningEvent } from '../shared/types';
 import { resolveRepoRoot } from './util/resolve-repo-root';
 
@@ -27,6 +29,12 @@ const contexts = new Map<number, IpcContext>();
 let sessionStore: SessionStore;
 let settingsStore: SettingsStore;
 let scrollbackStore: ScrollbackStore;
+/**
+ * The abduco binary path resolved ONCE at boot (or null when unavailable), shared
+ * by every window's ctx so getSessionManager can build an AbducoLauncher for
+ * sessionPersistence==='full'. null => b-full degrades to b-lite.
+ */
+let abducoPath: string | null = null;
 
 /**
  * Opens a window for `repoRoot`, OR focuses the existing window if that repo is
@@ -93,6 +101,7 @@ function createWindow(repoRoot: string | null): BrowserWindow {
   ctx.sessionStore = sessionStore;
   ctx.settingsStore = settingsStore;
   ctx.scrollbackStore = scrollbackStore;
+  ctx.abducoPath = abducoPath;
   ctx.requestQuit = () => quitController.decide(true);
   ctx.openRepo = (root) => openOrFocusRepo(root);
   // Register BEFORE loading content so a quit during load still sweeps this window.
@@ -157,6 +166,16 @@ app.whenReady().then(() => {
       // keep the launchd PATH; spawning degrades gracefully (gh -> gh-missing etc.)
     }
   }
+  // Resolve abduco ONCE by absolute path (b-full). Done AFTER the PATH fix-up above
+  // but using ONLY isPackaged/resourcesPath/known-absolute-paths — never $PATH — so
+  // the user-shell PATH we just imported can't redirect us to a hijacked binary.
+  abducoPath = resolveAbducoPath({
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    resourcesPath: process.resourcesPath,
+    exists: existsSync,
+  });
+
   // Construct the 3 GLOBAL stores ONCE (one process / one userData) and inject them
   // into every per-window ctx that createWindow() builds.
   sessionStore = new SessionStore(getDefaultSessionsPath(() => app.getPath('userData')));

@@ -77,6 +77,14 @@ export interface IpcContext {
    * while a run is active (mirrors the conflictResolver keep-while-busy discipline).
    */
   fanoutManager?: FanoutManager;
+  /**
+   * Absolute path to the abduco binary resolved ONCE at boot (index.ts), or null
+   * when unavailable (non-darwin / not installed / not bundled). getSessionManager
+   * reads it to build an AbducoLauncher when sessionPersistence==='full'; null =>
+   * b-full degrades to b-lite (DirectLauncher). Resolved by ABSOLUTE path only —
+   * never a $PATH lookup (the packaged app overwrites PATH from the user shell).
+   */
+  abducoPath?: string | null;
   /** Injected by index.ts so the quit handler can actually quit (app.quit). */
   requestQuit?: () => void;
   /**

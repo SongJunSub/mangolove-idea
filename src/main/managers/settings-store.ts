@@ -11,13 +11,14 @@ export function getDefaultSettingsPath(getUserDataPath: () => string): string {
   return join(getUserDataPath(), 'settings.json');
 }
 
-/** The five known AppSettings keys — the ONLY keys ever read/written. */
+/** The known string-valued AppSettings keys — the ONLY string keys read/written. */
 const KNOWN_KEYS: readonly (keyof AppSettings)[] = [
   'agentCommand',
   'verifyCommand',
   'serverCommand',
   'baseBranch',
   'repoRoot',
+  'sessionPersistence',
 ];
 
 /** The string-array AppSettings keys (sanitized as arrays of non-empty strings). */
@@ -97,7 +98,7 @@ export class SettingsStore {
   }
 
   /**
-   * Projects an input to EXACTLY the five known STRING fields (drops anything else).
+   * Projects an input to EXACTLY the known STRING fields (drops anything else).
    * Enforces the SAME non-empty invariant as set(): an empty string is treated as
    * UNSET (dropped), so a present key ALWAYS carries a non-empty value on BOTH read
    * and write. This keeps get() from ever surfacing '' — robust to hand-edited or

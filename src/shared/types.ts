@@ -443,6 +443,16 @@ export interface AppSettings {
    * array unsets the key. Seeded from the legacy single `repoRoot` on first read.
    */
   readonly recentRepos?: readonly string[];
+  /**
+   * Session persistence mode (V2 b-full). Unset / 'lite' (default): claude runs as
+   * a child PTY; reopen offers `claude --continue` so the CONVERSATION is restored,
+   * but an in-flight TURN is lost on quit/crash. 'full': claude runs inside an
+   * `abduco` detached session so an in-flight turn SURVIVES quit/crash and is
+   * re-attached on reopen. 'full' degrades to 'lite' when abduco is unavailable
+   * (surfaced in the Settings UI — never a silent downgrade). Any value other than
+   * the exact string 'full' is treated as 'lite'.
+   */
+  readonly sessionPersistence?: 'lite' | 'full';
 }
 
 // ── Repo root picker (V2 packaging) ──
