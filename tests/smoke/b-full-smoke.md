@@ -62,6 +62,16 @@ Throwaway Playwright/Electron driver in a scratch dir (NOT committed). Set up:
    `session.persistenceInfo()` reports `{requested:'full', effective:'lite',
    abducoAvailable:false}`. The agent runs as b-lite (no abduco wrap).
 
+## Executed — 2026-06-23 (Playwright `_electron`, real app, MANGO_HEADLESS=1)
+
+S1 full-mode abduco wrap: **PASS** (created `mango-cc96a78a0a14b6a6`).
+S2 survive a hard SIGKILL of the app + re-attach on relaunch, no duplicate
+(`{survived:true, before:1, after:1}`): **PASS** — the core DoD, end-to-end through
+the real Electron app (not just the node-pty spike).
+S3 kill-switch clears the session: **PASS**. Post-cleanup leak: 0.
+S4 (quit consent) / S5 (loud fallback) are covered by unit tests + the wired UI;
+exercised manually.
+
 ## Acceptance
 
 - [ ] S1: a `mango-<hash>` session is created in full mode.
