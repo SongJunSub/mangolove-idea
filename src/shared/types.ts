@@ -453,6 +453,26 @@ export interface AppSettings {
    * the exact string 'full' is treated as 'lite'.
    */
   readonly sessionPersistence?: 'lite' | 'full';
+  /**
+   * Cross-machine session visibility (V2). Unset / 'off' (default): no session
+   * metadata leaves this machine. 'on': this machine PUBLISHES its session pointers
+   * (branch + status only — never conversation) to the shared remote's dedicated
+   * `mangolove-sessions` orphan branch and FETCHES other machines' pointers. Opt-in
+   * because pointers reach the shared remote. Any value other than 'on' => 'off'.
+   */
+  readonly crossMachineSessions?: 'off' | 'on';
+  /**
+   * Stable, NON-identifying id for THIS machine, generated once (crypto.randomUUID)
+   * and persisted. Namespaces this machine's pointer file (`<machineId>.json`) on the
+   * sync branch. Deliberately NOT the OS hostname (which would leak PII to the remote).
+   */
+  readonly machineId?: string;
+  /**
+   * Human-friendly label for this machine shown in the cross-machine UI (e.g.
+   * "work-mac"). User-settable; defaults to a non-identifying "machine-<id4>". Never
+   * derived from the OS hostname.
+   */
+  readonly machineLabel?: string;
 }
 
 /**
@@ -467,6 +487,30 @@ export interface SessionPersistenceInfo {
   readonly effective: 'lite' | 'full';
   /** True iff an abduco binary was resolved at boot (b-full is possible at all). */
   readonly abducoAvailable: boolean;
+}
+
+// ── Cross-machine sessions (V2, visibility-only) ──
+
+/**
+ * One machine's view of one of its sessions, as published to / read from the shared
+ * `mangolove-sessions` branch. METADATA ONLY — never conversation content and never a
+ * claude session id (cross-machine resume is out of scope; `claude --resume` is
+ * cwd-bucket-bound, so an id would carry no value and only widen exposure). A reopen
+ * on another machine starts a FRESH session on `branch`, it does not resume this one.
+ */
+export interface CrossMachineSessionPointer {
+  /** Branch the session is on — the worktree key the other machine acts on. */
+  readonly branch: string;
+  /** Lifecycle as last seen by the publishing machine. */
+  readonly status: 'running' | 'idle' | 'ended';
+  /** Whether a turn was in flight at publish time (output-activity heuristic). */
+  readonly hasActiveTurn: boolean;
+  /** Non-identifying id of the publishing machine (namespaces its pointer file). */
+  readonly machineId: string;
+  /** Friendly label of the publishing machine for display (never the OS hostname). */
+  readonly machineLabel: string;
+  /** Epoch ms when this pointer was last published. */
+  readonly updatedAt: number;
 }
 
 // ── Repo root picker (V2 packaging) ──
