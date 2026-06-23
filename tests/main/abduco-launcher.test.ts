@@ -97,3 +97,19 @@ describe('AbducoLauncher.endDetached', () => {
     expect(killed).toEqual([]);
   });
 });
+
+describe('AbducoLauncher.endAllDetached (global kill-switch)', () => {
+  it('kills EVERY mango abduco master, sparing non-mango abduco and unrelated procs', async () => {
+    const { l, killed } = makeLauncher({
+      ps: [
+        { pid: 1, cmd: `/opt/homebrew/bin/abduco -A ${NAME} claude` },
+        { pid: 2, cmd: '/opt/homebrew/bin/abduco -A mango-ffffffffffffffff claude' },
+        { pid: 3, cmd: '/opt/homebrew/bin/abduco -A user-session vim' }, // non-mango abduco
+        { pid: 4, cmd: 'some unrelated process' },
+      ],
+    });
+    await l.endAllDetached();
+    expect(killed.map((k) => k.pid).sort()).toEqual([1, 2]);
+    expect(killed.every((k) => k.signal === 'SIGTERM')).toBe(true);
+  });
+});

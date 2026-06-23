@@ -286,6 +286,28 @@ describe('SessionManager b-full 3-way reopen (main-side, launcher.isLiveDetached
     await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
     expect(modes).toEqual(['fresh']);
   });
+
+  it('endAllDetached delegates to launcher.endAllDetached (global kill-switch)', async () => {
+    let called = 0;
+    const { factory } = makeFakeFactory([]);
+    const { emitter } = makeSpyEmitter();
+    const mgr = new SessionManager({
+      factory,
+      emitter,
+      resolvePath: async (id) => id,
+      launcher: {
+        resolveLaunch: () => ({ file: 'abduco', args: [] }),
+        endAllDetached: async () => void called++,
+      },
+    });
+    await mgr.endAllDetached();
+    expect(called).toBe(1);
+  });
+
+  it('endAllDetached is a safe no-op for a b-lite launcher (no endAllDetached)', async () => {
+    const { mgr } = makeManager({ fakes: [] });
+    await expect(mgr.endAllDetached()).resolves.toBeUndefined();
+  });
 });
 
 describe('SessionManager turn detection (output-activity heuristic, V2 C)', () => {

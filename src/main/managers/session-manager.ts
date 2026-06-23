@@ -219,6 +219,26 @@ export class SessionManager {
     this.sessions.clear();
   }
 
+  /**
+   * b-full: ends a worktree's DETACHED background session — closes the front-end
+   * PTY AND kills the surviving abduco master so nothing keeps running in the
+   * background. No-op beyond the front-end kill for b-lite (DirectLauncher has no
+   * endDetached). Best-effort; the master kill is awaited so callers can sequence.
+   */
+  async endDetached(worktreeId: string): Promise<void> {
+    this.kill(worktreeId);
+    if (this.launcher.endDetached) await this.launcher.endDetached(worktreeId);
+  }
+
+  /**
+   * b-full global kill-switch: ends EVERY detached background session (every
+   * surviving abduco master). No-op for b-lite. The front-ends of any currently
+   * attached sessions then receive their natural exit. Best-effort.
+   */
+  async endAllDetached(): Promise<void> {
+    if (this.launcher.endAllDetached) await this.launcher.endAllDetached();
+  }
+
   private handleExit(worktreeId: string, session: Session, e: PtyExitEvent): void {
     // Ignore exits from a PTY that is no longer the current session for this
     // worktree — i.e. it was replaced by a respawn. Identity (not map presence)

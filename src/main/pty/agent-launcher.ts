@@ -51,6 +51,8 @@ export interface AgentLauncher {
   listLiveDetached?(): Promise<string[]>;
   /** Deterministically end the worktree's detached session (kills its master). */
   endDetached?(worktreeId: string): Promise<void>;
+  /** Global kill-switch: end EVERY one of our detached sessions (stop-all). */
+  endAllDetached?(): Promise<void>;
   /**
    * Signal SessionManager must send to DETACH (not kill) the front-end PTY when
    * this launcher owns a surviving master — explicit SIGTERM rather than node-pty's

@@ -455,6 +455,20 @@ export interface AppSettings {
   readonly sessionPersistence?: 'lite' | 'full';
 }
 
+/**
+ * Effective session-persistence state for the Settings UI (b-full LOUD fallback).
+ * Surfaces when 'full' was requested but is NOT actually in effect because abduco
+ * is unavailable — so the downgrade to b-lite is never silent.
+ */
+export interface SessionPersistenceInfo {
+  /** What the user asked for (settings.sessionPersistence, defaulting to 'lite'). */
+  readonly requested: 'lite' | 'full';
+  /** What is ACTUALLY in effect — 'full' only when 'full' was asked AND abduco is available. */
+  readonly effective: 'lite' | 'full';
+  /** True iff an abduco binary was resolved at boot (b-full is possible at all). */
+  readonly abducoAvailable: boolean;
+}
+
 // ── Repo root picker (V2 packaging) ──
 
 /**

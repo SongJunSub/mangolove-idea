@@ -22,6 +22,7 @@ import type {
   DiffListRequest,
   DiffFileRequest,
   AppSettings,
+  SessionPersistenceInfo,
   ConflictedFile,
   ConflictFileVersions,
   ConflictListRequest,
@@ -147,6 +148,22 @@ export function buildLauncher(
     command: agentCommand,
     ...createAbducoExec(abducoPath),
   });
+}
+
+/**
+ * Computes the EFFECTIVE session-persistence state (b-full loud fallback). 'full'
+ * is only in effect when the user asked for it AND abduco was resolved at boot;
+ * otherwise it falls back to 'lite'. The Settings UI surfaces a requested!==effective
+ * mismatch so the downgrade is never silent. Pure + exported for unit tests.
+ */
+export function resolveEffectivePersistence(
+  settings: AppSettings,
+  abducoPath: string | null | undefined,
+): SessionPersistenceInfo {
+  const requested = settings.sessionPersistence === 'full' ? 'full' : 'lite';
+  const abducoAvailable = Boolean(abducoPath);
+  const effective = requested === 'full' && abducoAvailable ? 'full' : 'lite';
+  return { requested, effective, abducoAvailable };
 }
 
 /**
@@ -753,6 +770,18 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     return getSessionStore(ctx)
       .all()
       .map((r) => r.worktreePath);
+  });
+
+  ipcMain.handle(IPC.SESSION_STOP_ALL_BACKGROUND, async (event): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    // b-full kill-switch: end EVERY surviving detached agent (no-op under b-lite).
+    await getSessionManager(ctx).endAllDetached();
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.SESSION_PERSISTENCE_INFO, async (event): Promise<SessionPersistenceInfo> => {
+    const ctx = requireCtx(event);
+    return resolveEffectivePersistence(getSettingsStore(ctx).get(), ctx.abducoPath);
   });
 
   ipcMain.handle(IPC.SETTINGS_GET, async (event): Promise<AppSettings> => {

@@ -76,12 +76,25 @@ export class AbducoLauncher implements AgentLauncher {
 
   async endDetached(worktreeId: string): Promise<void> {
     const name = sessionNameFor(worktreeId);
+    await this.killMatching((cmd) => cmd.includes(name));
+  }
+
+  async endAllDetached(): Promise<void> {
+    // Global kill-switch: end EVERY one of OUR sessions. Scoped to the `mango-`
+    // namespace so a user's other abduco sessions are never touched.
+    await this.killMatching((cmd) => /mango-[a-f0-9]{16}/.test(cmd));
+  }
+
+  /**
+   * Kills the EXACT pids of abduco processes whose cmdline satisfies `match` —
+   * the master (and any client) for a session. Killing the master ends the
+   * session and SIGHUPs the wrapped agent. Always an exact-pid kill verified to
+   * be an abduco process; never a broad process-pattern kill.
+   */
+  private async killMatching(match: (cmd: string) => boolean): Promise<void> {
     const procs = await this.deps.psList();
     for (const p of procs) {
-      // EXACT, verified match: the line must be an abduco process carrying THIS
-      // unique session name. Kill the exact captured pid (master + any client) —
-      // killing the master ends the session and SIGHUPs the wrapped agent.
-      if (p.cmd.includes('abduco') && p.cmd.includes(name)) {
+      if (p.cmd.includes('abduco') && match(p.cmd)) {
         this.deps.killPid(p.pid, this.detachSignal);
       }
     }
