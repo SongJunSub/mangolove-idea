@@ -214,6 +214,24 @@ describe('registerIpc — session', () => {
     expect(ack).toEqual({ ok: true });
   });
 
+  it('SESSION_SPAWN and SESSION_KILL notify the cross-machine publisher (V2)', async () => {
+    const sm = fakeSession();
+    const publisher = { notifyChanged: vi.fn() };
+    const { handlers, fakeEvent } = registerIpcForTest({
+      mainWindow: null,
+      sessionManager: sm as never,
+      sessionPublisher: publisher as never,
+    });
+    await handlers.get('session:spawn')!(fakeEvent, {
+      worktreeId: '/wt',
+      continueSession: false,
+      cols: 80,
+      rows: 24,
+    });
+    await handlers.get('session:kill')!(fakeEvent, { worktreeId: '/wt' });
+    expect(publisher.notifyChanged).toHaveBeenCalledTimes(2); // once per lifecycle change
+  });
+
   it('SESSION_INPUT is an ipcMain.on handler that delegates to write', () => {
     const sm = fakeSession();
     const { onHandlers, fakeEvent } = registerIpcForTest({
