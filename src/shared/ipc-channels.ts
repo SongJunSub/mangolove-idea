@@ -58,6 +58,10 @@ export const IPC = {
   SETTINGS_GET: 'settings:get', // invoke (-> AppSettings)
   SETTINGS_SET: 'settings:set', // invoke (Partial<AppSettings> -> AppSettings)
 
+  // cross-machine sessions (V2, visibility-only) — fetch all machines' session pointers
+  CROSS_MACHINE_FETCH: 'cross-machine:fetch', // invoke (-> CrossMachineSessionPointer[]; [] when opted out)
+  CROSS_MACHINE_START_HERE: 'cross-machine:start-here', // invoke ({branch} -> Worktree; checks out the branch for a FRESH session)
+
   // scrollback (V2) — per-worktree serialized terminal screen for conflict-free replay
   SCROLLBACK_GET: 'scrollback:get', // invoke (worktreeId -> string | null)
   SCROLLBACK_SET: 'scrollback:set', // invoke ({worktreeId, data} -> Ack)

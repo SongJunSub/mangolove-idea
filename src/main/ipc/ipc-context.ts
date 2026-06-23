@@ -11,6 +11,7 @@ import type { DiffViewer } from '../git/diff-viewer';
 import type { ConflictResolver } from '../git/conflict-resolver';
 import type { GhStatusReader } from '../git/gh-status-reader';
 import type { FanoutManager } from '../git/fanout-manager';
+import type { SessionPublisher } from '../sync/session-publisher';
 
 /**
  * Holds main-process singletons + the main window ref for event emitters.
@@ -30,6 +31,12 @@ export interface IpcContext {
   worktreeManager?: WorktreeManager;
   /** Lazily constructed in register-ipc; injectable in tests. */
   sessionManager?: SessionManager;
+  /**
+   * Lazily constructed in register-ipc (V2 cross-machine sessions). Publishes this
+   * machine's session pointers on lifecycle changes when crossMachineSessions==='on';
+   * a no-op when opted out. Injectable in tests.
+   */
+  sessionPublisher?: SessionPublisher;
   /** Lazily constructed in register-ipc; injectable in tests (Plan 3). */
   serverManager?: ServerManager;
   /** The single LogStore (Map<worktreeId, partition>) backing every worktree's server logs. */

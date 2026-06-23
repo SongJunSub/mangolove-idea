@@ -19,6 +19,9 @@ const KNOWN_KEYS: readonly (keyof AppSettings)[] = [
   'baseBranch',
   'repoRoot',
   'sessionPersistence',
+  'crossMachineSessions',
+  'machineId',
+  'machineLabel',
 ];
 
 /** The string-array AppSettings keys (sanitized as arrays of non-empty strings). */
@@ -34,8 +37,9 @@ function sanitizeStringArray(raw: unknown): string[] {
  * Persists the V2 item E AppSettings to a single JSON file whose path is injected
  * (tests use a temp file). Mirrors SessionStore EXACTLY: never throws on a
  * missing/corrupt/non-object file (treated as empty {}), sanitizes to ONLY the
- * five known STRING fields (drops unknown keys, ignores non-strings), and writes
- * atomically (temp file + rename) so a crash mid-write cannot leave a half file.
+ * known string fields (KNOWN_KEYS) and array fields (KNOWN_ARRAY_KEYS) — dropping
+ * unknown keys and wrong-typed values — and writes atomically (temp file + rename)
+ * so a crash mid-write cannot leave a half file.
  *
  * EVERY field is optional: an unset field means the caller falls back to the env
  * seam then the hardcoded default (precedence: settings > env > default).

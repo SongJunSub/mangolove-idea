@@ -65,6 +65,49 @@ export function parseWorktreePorcelain(output: string): Worktree[] {
   return trees;
 }
 
+/** True iff the string contains an ASCII control char (git rejects these in refs). */
+function hasControlChar(s: string): boolean {
+  for (const ch of s) {
+    const code = ch.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Rejects a branch name that could be option-injected into `git worktree add` argv,
+ * names a special pseudo-ref, or is not a normal branch ref. The branch comes from
+ * another machine's published pointer (semi-trusted, attacker-influenceable) and reaches
+ * `git worktree add` argv (simple-git uses no shell, so option-confusion is the only
+ * injection vector). We therefore enforce the relevant git check-ref-format rules:
+ *  - never a leading '-' (git would read it as an option);
+ *  - no whitespace, control chars, or git's illegal metas (~ ^ : ? * [ \ ( ));
+ *  - no `..` or `@{` sequence, and not the pseudo-refs `@` / `HEAD`;
+ *  - no leading/trailing '/' or '.', and no `.lock` suffix;
+ *  - must yield a NON-EMPTY worktree dir segment (else the target would collapse onto
+ *    the `.worktrees` container — the `@`-sanitizes-to-empty hole).
+ * Slashes are allowed (feature/foo). NOT a full git validator — git still rejects the
+ * residual illegal refs loudly; this closes the dangerous/ambiguous cases up front.
+ */
+export function assertSafeBranchName(branch: string): void {
+  const ok =
+    branch !== '' &&
+    !branch.startsWith('-') &&
+    !/[\s~^:?*[\\()]/.test(branch) &&
+    !hasControlChar(branch) &&
+    !branch.includes('..') &&
+    !branch.includes('@{') &&
+    branch !== '@' &&
+    branch !== 'HEAD' &&
+    !branch.startsWith('/') &&
+    !branch.endsWith('/') &&
+    !branch.startsWith('.') &&
+    !branch.endsWith('.') &&
+    !branch.endsWith('.lock') &&
+    sanitizeBranchToDir(branch) !== '';
+  if (!ok) throw new Error(`unsafe branch name: ${JSON.stringify(branch)}`);
+}
+
 /**
  * Maps a raw git error into a short, user-facing message for the known failure
  * modes of worktree add/remove. Falls back to the trimmed git message.
@@ -136,6 +179,48 @@ export class WorktreeManager {
     const created = trees.find((t) => t.path === target);
     if (!created) {
       throw new Error(`worktree created at ${target} but not found in listing`);
+    }
+    return created;
+  }
+
+  /**
+   * Ensures a worktree exists for an EXISTING branch (checking it out — NOT creating a
+   * new branch) and returns it. Used by cross-machine "start here": the branch already
+   * lives on the remote (another machine published a pointer for it). If a worktree for
+   * the branch is already checked out, it is returned unchanged. Otherwise the remote is
+   * fetched (best-effort, so a remote-only branch resolves) and `git worktree add <dir>
+   * <branch>` checks it out — git's DWIM creates a local tracking branch when only
+   * `origin/<branch>` exists. The default dir is `<repoRoot>/.worktrees/<sanitized>`.
+   */
+  async ensureForBranch(branch: string): Promise<Worktree> {
+    assertSafeBranchName(branch);
+    const existing = (await this.list()).find((t) => t.branch === branch);
+    if (existing) return existing;
+
+    const target = resolve(this.repoRoot, '.worktrees', sanitizeBranchToDir(branch));
+    // Defense-in-depth (mirrors create()): the computed dir must stay strictly INSIDE
+    // the repo and not collapse onto repoRoot/.worktrees itself. assertSafeBranchName
+    // already blocks the names that could do this, but this is the same belt-and-suspenders
+    // guard create() uses against any future gap in the sanitizer.
+    const worktreesDir = resolve(this.repoRoot, '.worktrees');
+    if (target === worktreesDir || !target.startsWith(worktreesDir + sep)) {
+      throw new Error('worktree path must be inside the repository');
+    }
+    // Best-effort fetch so a remote-only branch is resolvable; ignore failure (offline).
+    try {
+      await this.git.fetch();
+    } catch {
+      // no remote / offline — fall through and let `worktree add` fail loudly if needed
+    }
+    try {
+      await this.git.raw(['worktree', 'add', target, branch]);
+    } catch (error) {
+      throw new Error(classifyGitError(error));
+    }
+
+    const created = (await this.list()).find((t) => t.path === target || t.branch === branch);
+    if (!created) {
+      throw new Error(`worktree for '${branch}' created at ${target} but not found in listing`);
     }
     return created;
   }

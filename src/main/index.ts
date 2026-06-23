@@ -22,6 +22,7 @@ import { resolveAbducoPath } from './pty/abduco-path';
 import { AbducoLauncher } from './pty/abduco-launcher';
 import { createAbducoExec } from './pty/abduco-exec';
 import { reapOrphanDetachedSessions } from './pty/abduco-reap';
+import { getOrCreateMachineIdentity } from './sync/machine-identity';
 import type { QuitWarningEvent } from '../shared/types';
 import { resolveRepoRoot } from './util/resolve-repo-root';
 
@@ -210,6 +211,12 @@ app.whenReady().then(() => {
   sessionStore = new SessionStore(getDefaultSessionsPath(() => app.getPath('userData')));
   settingsStore = new SettingsStore(getDefaultSettingsPath(() => app.getPath('userData')));
   scrollbackStore = new ScrollbackStore(getDefaultScrollbackPath(() => app.getPath('userData')));
+
+  // Mint this machine's stable, NON-identifying id ONCE at boot (cross-machine sessions)
+  // so SETTINGS_GET already carries it when the renderer mounts — otherwise machineId is
+  // minted lazily on the first publish and the panel can't tell self from other machines
+  // (it would offer "Start here" on this machine's own sessions until a restart).
+  getOrCreateMachineIdentity(settingsStore);
 
   // Channels are process-global: register the handlers ONCE over the registry.
   registerIpc(ipcMain, contexts);

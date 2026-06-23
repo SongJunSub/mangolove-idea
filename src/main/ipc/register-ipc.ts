@@ -23,6 +23,7 @@ import type {
   DiffFileRequest,
   AppSettings,
   SessionPersistenceInfo,
+  CrossMachineSessionPointer,
   ConflictedFile,
   ConflictFileVersions,
   ConflictListRequest,
@@ -51,6 +52,10 @@ import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-fact
 import { AbducoLauncher } from '../pty/abduco-launcher';
 import { createAbducoExec } from '../pty/abduco-exec';
 import type { AgentLauncher } from '../pty/agent-launcher';
+import { SessionRefSync } from '../sync/session-ref-sync';
+import { createRefSyncGit } from '../sync/session-ref-git';
+import { getOrCreateMachineIdentity } from '../sync/machine-identity';
+import { SessionPublisher, type LiveSession } from '../sync/session-publisher';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
 import { ServerManager, type ServerEmitter } from '../managers/server-manager';
@@ -190,7 +195,11 @@ function buildSessionEmitter(ctx: IpcContext): SessionEmitter {
   };
   return {
     emitOutput: (e) => send(IPC.SESSION_OUTPUT, e),
-    emitExit: (e) => send(IPC.SESSION_EXIT, e),
+    emitExit: (e) => {
+      send(IPC.SESSION_EXIT, e);
+      // A session ended -> republish this machine's (now smaller) pointer set.
+      getSessionPublisher(ctx).notifyChanged();
+    },
     emitStatus: (s) => send(IPC.SESSION_STATUS, s),
   };
 }
@@ -239,6 +248,41 @@ function getSessionManager(ctx: IpcContext): SessionManager {
     },
   });
   return ctx.sessionManager;
+}
+
+/**
+ * Resolves the per-ctx SessionPublisher (V2 cross-machine sessions). Gated on the
+ * crossMachineSessions opt-in (default off => notifyChanged is a no-op, zero git/network).
+ * Reads live sessions from the EXISTING sessionManager instance (never reconstructs it)
+ * and resolves each worktree's branch via the WorktreeManager; publishes through a
+ * per-repo SessionRefSync. Best-effort: failures are swallowed (sync is never on the
+ * critical path).
+ */
+function getSessionPublisher(ctx: IpcContext): SessionPublisher {
+  if (ctx.sessionPublisher) return ctx.sessionPublisher;
+  ctx.sessionPublisher = new SessionPublisher({
+    // Read the optional store directly (NOT getSettingsStore, which throws when
+    // uninitialized): absent settings => disabled. Sync is best-effort and must never
+    // break a spawn/kill, so the gate defaults to OFF when anything is missing.
+    isEnabled: () => ctx.settingsStore?.get().crossMachineSessions === 'on',
+    identity: () => getOrCreateMachineIdentity(getSettingsStore(ctx)),
+    liveSessions: async (): Promise<LiveSession[]> => {
+      const manager = ctx.sessionManager;
+      const live = manager?.liveWorktreeIds() ?? [];
+      if (live.length === 0) return [];
+      const trees = await (await getWorktreeManager(ctx)).list();
+      const out: LiveSession[] = [];
+      for (const id of live) {
+        const branch = trees.find((t) => t.id === id)?.branch;
+        if (branch) out.push({ branch, hasActiveTurn: manager!.hasActiveTurn(id) });
+      }
+      return out;
+    },
+    publish: (machineId, pointers) =>
+      new SessionRefSync(createRefSyncGit(requireRepoRoot(ctx))).publish(machineId, pointers),
+    now: Date.now,
+  });
+  return ctx.sessionPublisher;
 }
 
 /** Forwards each LogStore line to the renderer over LOG_LINE (window-guarded). */
@@ -576,7 +620,10 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     IPC.SESSION_SPAWN,
     async (event, req: SpawnSessionRequest): Promise<AgentSession> => {
       const ctx = requireCtx(event);
-      return getSessionManager(ctx).spawn(req);
+      const session = await getSessionManager(ctx).spawn(req);
+      // A session started -> publish this machine's pointer set (best-effort, gated).
+      getSessionPublisher(ctx).notifyChanged();
+      return session;
     },
   );
 
@@ -585,7 +632,9 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     // In b-full, "kill" must actually END the session — close the front-end PTY AND
     // kill the surviving abduco master (endDetached), so the agent does not keep
     // running invisibly. For b-lite this is exactly the front-end kill (no master).
-    return getSessionManager(ctx).endDetached(req.worktreeId);
+    const ack = await getSessionManager(ctx).endDetached(req.worktreeId);
+    getSessionPublisher(ctx).notifyChanged(); // session ended -> republish
+    return ack;
   });
 
   ipcMain.on(IPC.SESSION_INPUT, (event, req: SessionInputRequest) => {
@@ -792,6 +841,29 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     const ctx = requireCtx(event);
     return resolveEffectivePersistence(getSettingsStore(ctx).get(), ctx.abducoPath);
   });
+
+  ipcMain.handle(IPC.CROSS_MACHINE_FETCH, async (event): Promise<CrossMachineSessionPointer[]> => {
+    const ctx = requireCtx(event);
+    // Opt-in gate: no network when off. Best-effort: a sync/network error surfaces as
+    // an empty list (the panel shows "no sessions"), never a thrown IPC error.
+    if (getSettingsStore(ctx).get().crossMachineSessions !== 'on') return [];
+    try {
+      return await new SessionRefSync(createRefSyncGit(requireRepoRoot(ctx))).fetchAll();
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle(
+    IPC.CROSS_MACHINE_START_HERE,
+    async (event, req: { branch: string }): Promise<Worktree> => {
+      const ctx = requireCtx(event);
+      // Checks out the (existing, remote) branch into a local worktree so the renderer
+      // can spawn a FRESH session on it. NOT best-effort — it is an explicit user action,
+      // so a failure (unsafe branch name, checkout conflict) surfaces to the UI.
+      return (await getWorktreeManager(ctx)).ensureForBranch(req.branch);
+    },
+  );
 
   ipcMain.handle(IPC.SETTINGS_GET, async (event): Promise<AppSettings> => {
     const ctx = requireCtx(event);

@@ -8,6 +8,8 @@ import { useWorktreeStatus } from './hooks/use-worktree-status';
 import { useMerge } from './hooks/use-merge';
 import { useSessionRecords } from './hooks/use-session-records';
 import { useSettings } from './hooks/use-settings';
+import { useCrossMachine } from './hooks/use-cross-machine';
+import { CrossMachinePanel } from './components/cross-machine/cross-machine-panel';
 import { useRepo } from './hooks/use-repo';
 import { SettingsModal } from './components/settings/settings-modal';
 import { Toolbar } from './components/toolbar/toolbar';
@@ -61,8 +63,10 @@ export function App(): React.JSX.Element {
 
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
+  const crossMachine = useCrossMachine();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fanoutOpen, setFanoutOpen] = useState(false);
+  const [crossMachineOpen, setCrossMachineOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   // Effective session-persistence mode (b-full). Drives the quit dialog's wording:
   // under 'full' a quit does NOT lose the turn — it keeps running in the background.
@@ -234,6 +238,17 @@ export function App(): React.JSX.Element {
         </button>
         <button
           type="button"
+          data-testid="cross-machine-open"
+          title="Cross-machine sessions"
+          onClick={() => {
+            setCrossMachineOpen(true);
+            void crossMachine.refresh();
+          }}
+        >
+          ⌘ Machines
+        </button>
+        <button
+          type="button"
           data-testid="settings-open"
           aria-label="settings"
           title="Settings"
@@ -392,6 +407,26 @@ export function App(): React.JSX.Element {
             setSettingsOpen(false);
           }}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {crossMachineOpen && (
+        <CrossMachinePanel
+          pointers={crossMachine.pointers}
+          loading={crossMachine.loading}
+          error={crossMachine.error}
+          enabled={settings.crossMachineSessions === 'on'}
+          selfMachineId={settings.machineId}
+          onRefresh={() => void crossMachine.refresh()}
+          onStartHere={(branch) => {
+            void crossMachine.startHere(branch).then((wt) => {
+              if (!wt) return; // failure surfaced via crossMachine.error in the panel
+              setCrossMachineOpen(false);
+              // Refresh the worktree list, then select the (new) worktree — selecting it
+              // mounts AgentTerminal with continueSession=false (no record), a FRESH session.
+              void refresh().then(() => setSelectedId(wt.id));
+            });
+          }}
+          onClose={() => setCrossMachineOpen(false)}
         />
       )}
       {quitWarning && (
