@@ -34,6 +34,26 @@ describe('assertSafeBranchName', () => {
       expect(() => assertSafeBranchName(bad)).toThrow(/unsafe branch name/);
     }
   });
+
+  it('rejects pseudo-refs, the detached sentinel, parens, dot-dot, and empty-sanitizing names', () => {
+    // @ and all-symbol names sanitize to an empty dir (would collapse onto .worktrees);
+    // '(detached)' is the porcelain sentinel that must never match a real branch lookup.
+    for (const bad of [
+      '@',
+      'HEAD',
+      '(detached)',
+      'a..b',
+      '@{0}',
+      '.hidden',
+      'trail/',
+      '/lead',
+      'x.lock',
+      'a\u0001b', // control char
+      '@@@', // sanitizes to ''
+    ]) {
+      expect(() => assertSafeBranchName(bad)).toThrow(/unsafe branch name/);
+    }
+  });
 });
 
 describe('parseWorktreePorcelain', () => {
@@ -195,8 +215,21 @@ describe('WorktreeManager (real temp git repo)', () => {
     expect(await manager.list()).toHaveLength(2); // no second worktree created
   });
 
-  it('ensureForBranch rejects an unsafe (option-injecting) branch name', async () => {
-    await expect(manager.ensureForBranch('--detach')).rejects.toThrow(/unsafe branch name/);
+  it('ensureForBranch rejects unsafe branch names before touching git', async () => {
+    // --detach: option injection; @: would collapse the worktree dir onto .worktrees;
+    // (detached): the porcelain sentinel that must never match a detached worktree.
+    for (const bad of ['--detach', '@', '(detached)', 'HEAD', '..']) {
+      await expect(manager.ensureForBranch(bad)).rejects.toThrow(/unsafe branch name/);
+    }
+  });
+
+  it('ensureForBranch with the (detached) sentinel does NOT return a detached worktree', async () => {
+    // Create a real detached-HEAD worktree, whose parsed branch is the '(detached)' sentinel.
+    const head = (await repo.git.revparse(['HEAD'])).trim();
+    await repo.git.raw(['worktree', 'add', '--detach', join(repo.dir, '.worktrees', 'det'), head]);
+    expect((await manager.list()).some((t) => t.branch === '(detached)')).toBe(true);
+    // A crafted pointer with branch '(detached)' must be REJECTED, not matched to it.
+    await expect(manager.ensureForBranch('(detached)')).rejects.toThrow(/unsafe branch name/);
   });
 
   it('rejects an explicit path that escapes the repo root (path traversal)', async () => {

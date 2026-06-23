@@ -107,42 +107,47 @@ export function CrossMachinePanel({
           </p>
         )}
 
-        {groups.map((g) => (
-          <section
-            key={g.machineId}
-            data-testid={`cm-machine-${g.machineId}`}
-            style={{ marginTop: 12 }}
-          >
-            <h4 style={{ margin: '0 0 4px', fontSize: 13 }}>
-              {g.label}
-              {g.isSelf && <span style={{ color: '#888', fontWeight: 400 }}> (this machine)</span>}
-            </h4>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
-              {g.sessions.map((s, i) => (
-                <li
-                  key={`${s.branch}-${i}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                >
-                  <code>{s.branch}</code>
-                  <span style={{ color: '#888' }}>
-                    {s.status}
-                    {s.hasActiveTurn ? ' · active turn' : ''}
-                  </span>
-                  {!g.isSelf && (
-                    <button
-                      type="button"
-                      data-testid={`cm-start-${s.branch}`}
-                      title="Check out this branch here and start a fresh session"
-                      onClick={() => onStartHere(s.branch)}
-                    >
-                      Start here
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+        {/* Only render the session list (and its "Start here" actions) while opted in, so
+            toggling sharing off mid-open never leaves stale, actionable groups on screen. */}
+        {enabled &&
+          groups.map((g) => (
+            <section
+              key={g.machineId}
+              data-testid={`cm-machine-${g.machineId}`}
+              style={{ marginTop: 12 }}
+            >
+              <h4 style={{ margin: '0 0 4px', fontSize: 13 }}>
+                {g.label}
+                {g.isSelf && (
+                  <span style={{ color: '#888', fontWeight: 400 }}> (this machine)</span>
+                )}
+              </h4>
+              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
+                {g.sessions.map((s, i) => (
+                  <li
+                    key={`${s.branch}-${i}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    <code>{s.branch}</code>
+                    <span style={{ color: '#888' }}>
+                      {s.status}
+                      {s.hasActiveTurn ? ' · active turn' : ''}
+                    </span>
+                    {!g.isSelf && (
+                      <button
+                        type="button"
+                        data-testid={`cm-start-${s.branch}`}
+                        title="Check out this branch here and start a fresh session"
+                        onClick={() => onStartHere(s.branch)}
+                      >
+                        Start here
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" data-testid="cross-machine-close" onClick={onClose}>
