@@ -4,9 +4,15 @@ node_modules/
 # Build output
 dist/
 out/
-build/
 .vite/
 release/
+# The build/ directory is the electron-builder default location for code-signing
+# entitlements. We must TRACK build/*.plist but still ignore any build ARTIFACTS
+# that land there. So: enter the dir, re-ignore its contents, then re-allow plists.
+# (Without the entitlements the signed build silently falls back to osx-sign's broad
+# defaults — camera/mic/usb/...; with a bare `build/` ignore they'd never be tracked.)
+build/*
+!build/*.plist
 
 # Logs
 *.log
@@ -18,6 +24,21 @@ logs/
 .env
 .env.local
 .env.*.local
+
+# Code-signing / notarization credentials — NEVER commit these.
+# App Store Connect API key (.p8), Developer ID cert (.p12), and sourced env files.
+*.p8
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+# electron-builder auto-loads `electron-builder.env`; keep secrets OUT of git.
+electron-builder.env
+# Personal sourced credential file used by the release runbook (docs/RELEASE-SIGNING.md).
+.signing.env
+signing.env
+*.signing.env
 
 # MangoLove 세션 진행 상태 (개인 추적, 커밋하지 않음)
 .progress.md
