@@ -69,6 +69,10 @@ const api: MangoApi = {
   tree: {
     list: (req) => ipcRenderer.invoke(IPC.TREE_LIST, req),
   },
+  file: {
+    read: (req) => ipcRenderer.invoke(IPC.FILE_READ, req),
+    write: (req) => ipcRenderer.invoke(IPC.FILE_WRITE, req),
+  },
   gh: {
     status: (req) => ipcRenderer.invoke(IPC.GH_STATUS, req),
   },

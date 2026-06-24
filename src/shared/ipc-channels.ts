@@ -53,6 +53,10 @@ export const IPC = {
   // file tree (A3) — read the selected worktree's dir tree, scoped (renderer -> main, invoke)
   TREE_LIST: 'tree:list', // invoke ({worktreeId, relPath?} -> TreeEntry[])
 
+  // file content (A4) — read/write ONE file in the selected worktree, scoped + O_NOFOLLOW
+  FILE_READ: 'file:read', // invoke ({worktreeId, relPath} -> FileReadResult)
+  FILE_WRITE: 'file:write', // invoke ({worktreeId, relPath, content, baseToken?} -> FileWriteResult)
+
   // PR/CI status panel (V2) — read-only gh-backed status + the open-in-browser action
   GH_STATUS: 'gh:status', // invoke (worktreeId -> GhStatus)
   APP_OPEN_EXTERNAL: 'app:open-external', // invoke (url -> Ack; shell.openExternal)

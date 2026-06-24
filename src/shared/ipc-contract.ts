@@ -33,6 +33,10 @@ import type {
   DiffFileRequest,
   TreeEntry,
   TreeListRequest,
+  FileReadRequest,
+  FileReadResult,
+  FileWriteRequest,
+  FileWriteResult,
   AppSettings,
   SessionPersistenceInfo,
   CrossMachineSessionPointer,
@@ -140,6 +144,12 @@ export interface MangoApi {
   tree: {
     /** Lists a worktree's directory entries at relPath (scoped to the worktree; '' = root). */
     list(req: TreeListRequest): Promise<TreeEntry[]>;
+  };
+  file: {
+    /** Reads one file as editable UTF-8 text, or a readOnly view (binary/large/non-utf8). */
+    read(req: FileReadRequest): Promise<FileReadResult>;
+    /** Writes one file (scoped + O_NOFOLLOW); returns ok + a fresh optimistic token. */
+    write(req: FileWriteRequest): Promise<FileWriteResult>;
   };
   settings: {
     /** Current persisted settings (every field optional; unset => env/default). */

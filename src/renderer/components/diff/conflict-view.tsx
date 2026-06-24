@@ -10,6 +10,8 @@ export interface ConflictViewProps {
   readonly targetBranch: string;
   /** Remove worktree + delete branch after a successful continue (mirrors the merge flow). */
   readonly cleanup: boolean;
+  /** App's resolved theme — monaco's theme is process-global, so all panes must agree. */
+  readonly theme: 'dark' | 'light';
   /** Called after a successful Continue or Abort so App can clear selection + refresh. */
   onResolved(merged: boolean): void;
 }
@@ -27,6 +29,7 @@ export function ConflictView({
   worktreeId,
   targetBranch,
   cleanup,
+  theme,
   onResolved,
 }: ConflictViewProps): React.JSX.Element {
   const { files, loading, error, resolve, continueMerge, abort, refresh } =
@@ -47,7 +50,7 @@ export function ConflictView({
       language: 'plaintext',
       readOnly: false,
       automaticLayout: true,
-      theme: 'vs-dark',
+      theme: theme === 'dark' ? 'vs-dark' : 'vs',
       minimap: { enabled: false },
     });
     editorRef.current = editor;
@@ -56,7 +59,14 @@ export function ConflictView({
       editor.dispose();
       editorRef.current = null;
     };
+    // Mount-only (theme applied via create + the [theme] effect below).
   }, []);
+
+  // monaco's theme is process-global; follow App's resolved theme so a light-mode
+  // CodeEditor's setTheme('vs') can never leave this pane stuck on 'vs-dark'.
+  useEffect(() => {
+    monaco.editor.setTheme(theme === 'dark' ? 'vs-dark' : 'vs');
+  }, [theme]);
 
   // Load the selected conflicted file's working-tree marker text into a fresh model.
   useEffect(() => {

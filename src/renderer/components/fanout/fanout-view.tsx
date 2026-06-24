@@ -11,6 +11,8 @@ const PRESET_MODELS = ['opus', 'sonnet', 'haiku'] as const;
 export interface FanoutViewProps {
   /** Base branch lanes fork from + merge into (= settings.baseBranch ?? 'main'). */
   readonly base: string;
+  /** App's resolved theme — forwarded to the lane DiffView (monaco theme is global). */
+  readonly theme: 'dark' | 'light';
   /** Called after a lane is successfully merged so the parent refreshes worktrees. */
   readonly onMerged: () => void;
 }
@@ -29,7 +31,7 @@ const STATUS_COLOR: Record<FanoutLane['status'], string> = {
  * "Use this lane" (FANOUT_SELECT). An Abort button tears the whole run down. Not a
  * per-worktree pane — it CREATES N worktrees, so it lives at the app top level.
  */
-export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Element {
+export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JSX.Element {
   const { run, busy, error, start, select, abort } = useFanout();
   const [prompt, setPrompt] = useState('');
   const [models, setModels] = useState<string[]>(['opus', 'haiku']);
@@ -185,6 +187,7 @@ export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Eleme
                   key={`fanout-diff-${selectedLane.laneId}`}
                   worktreeId={selectedLane.worktreeId}
                   base={base}
+                  theme={theme}
                 />
               </Suspense>
               <button

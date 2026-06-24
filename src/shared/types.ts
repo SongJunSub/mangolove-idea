@@ -352,6 +352,41 @@ export interface TreeListRequest {
   readonly relPath?: string;
 }
 
+/** file content (A4) — read/write ONE file in a worktree, scoped exactly like the tree. */
+export interface FileReadRequest {
+  readonly worktreeId: string;
+  /** Path relative to the worktree root; must not escape it. */
+  readonly relPath: string;
+}
+
+export interface FileReadResult {
+  /** UTF-8 text; '' when readOnly (binary/tooLarge/encoding — never savable). */
+  readonly content: string;
+  /** true => view-only: the file cannot round-trip as UTF-8 text, so Save is disabled. */
+  readonly readOnly: boolean;
+  /** Why it is readOnly (absent when editable). */
+  readonly reason?: 'binary' | 'tooLarge' | 'encoding';
+  /** Size in bytes. */
+  readonly size: number;
+  /** Optimistic-concurrency token (`mtimeMs:size`); echoed back on write. */
+  readonly baseToken: string;
+}
+
+export interface FileWriteRequest {
+  readonly worktreeId: string;
+  readonly relPath: string;
+  /** Full UTF-8 contents to write. */
+  readonly content: string;
+  /** The token from the read (or the previous write); rejects the write if the file
+   *  changed on disk since. Omitted for a brand-new file. */
+  readonly baseToken?: string;
+}
+
+/** Ack plus a FRESH token after a successful write (for the next optimistic check). */
+export interface FileWriteResult extends Ack {
+  readonly baseToken?: string;
+}
+
 export interface DiffFileRequest {
   readonly worktreeId: string;
   readonly base?: string;

@@ -23,7 +23,7 @@ beforeEach(() => {
   fanout.start.mockClear();
 });
 
-const view = () => render(<FanoutView base="main" onMerged={vi.fn()} />);
+const view = () => render(<FanoutView base="main" theme="dark" onMerged={vi.fn()} />);
 
 describe('<FanoutView> (form)', () => {
   it('defaults to opus+haiku selected, sonnet unselected', () => {
