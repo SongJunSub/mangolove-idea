@@ -23,10 +23,10 @@ export function MergeControls({
   const stageLabel = progress ? `${progress.stage}${stageMark}: ${progress.message}` : '';
   const stageColor =
     progress && progress.stage === 'conflict'
-      ? '#e0a030'
+      ? 'var(--warn)'
       : progress && !progress.ok
-        ? 'crimson'
-        : '#888';
+        ? 'var(--err)'
+        : 'var(--muted)';
 
   return (
     <div data-testid="merge-controls" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

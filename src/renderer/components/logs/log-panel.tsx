@@ -4,11 +4,11 @@ import { filterLogs } from '../../lib/log-filter';
 
 const LEVEL_OPTIONS: LogLine['level'][] = ['raw', 'debug', 'info', 'warn', 'error'];
 const LEVEL_COLOR: Record<LogLine['level'], string> = {
-  error: '#cf222e',
-  warn: '#b58900',
-  info: '#2ea043',
-  debug: '#6e7781',
-  raw: '#888',
+  error: 'var(--err)',
+  warn: 'var(--warn)',
+  info: 'var(--ok)',
+  debug: 'var(--faint)',
+  raw: 'var(--muted)',
 };
 /** Cap how many lines we actually render (newest), independent of the buffer. */
 const RENDER_CAP = 1000;
@@ -53,14 +53,14 @@ export function LogPanel({ lines }: LogPanelProps): React.JSX.Element {
             ))}
           </select>
         </label>
-        <span style={{ fontSize: 11, color: '#888' }}>{visible.length} shown</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{visible.length} shown</span>
       </div>
       <div
         style={{
           height: 240,
           overflowY: 'auto',
-          background: '#1e1e1e',
-          color: '#ddd',
+          background: 'var(--code-bg)',
+          color: 'var(--text)',
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           fontSize: 12,
           padding: 8,
@@ -68,7 +68,7 @@ export function LogPanel({ lines }: LogPanelProps): React.JSX.Element {
         }}
       >
         {visible.length === 0 ? (
-          <div style={{ color: '#666' }}>no log lines</div>
+          <div style={{ color: 'var(--muted)' }}>no log lines</div>
         ) : (
           visible.map((l) => (
             <div

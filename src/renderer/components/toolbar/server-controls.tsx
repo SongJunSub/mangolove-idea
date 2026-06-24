@@ -36,7 +36,7 @@ export function ServerControls({
       >
         Stop
       </button>
-      <span style={{ fontSize: 11, color: '#888' }}>server: {state}</span>
+      <span style={{ fontSize: 11, color: 'var(--muted)' }}>server: {state}</span>
     </div>
   );
 }

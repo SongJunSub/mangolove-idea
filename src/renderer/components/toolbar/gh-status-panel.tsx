@@ -10,11 +10,11 @@ const BUCKET_MARK: Record<GhBucket, string> = {
   cancel: '⊘',
 };
 const BUCKET_COLOR: Record<GhBucket, string> = {
-  pass: '#2ea043',
-  fail: 'crimson',
-  pending: '#e0a030',
-  skipping: '#888',
-  cancel: 'crimson',
+  pass: 'var(--ok)',
+  fail: 'var(--err)',
+  pending: 'var(--warn)',
+  skipping: 'var(--muted)',
+  cancel: 'var(--err)',
 };
 
 export interface GhStatusPanelProps {
@@ -30,19 +30,19 @@ export interface GhStatusPanelProps {
 function describe(status: GhStatus): { label: string; color: string } {
   switch (status.kind) {
     case 'gh-missing':
-      return { label: 'PR: gh CLI not installed', color: '#888' };
+      return { label: 'PR: gh CLI not installed', color: 'var(--muted)' };
     case 'not-authed':
-      return { label: 'PR: gh not signed in (run gh auth login)', color: '#888' };
+      return { label: 'PR: gh not signed in (run gh auth login)', color: 'var(--muted)' };
     case 'no-remote':
-      return { label: 'PR: not a GitHub repo', color: '#888' };
+      return { label: 'PR: not a GitHub repo', color: 'var(--muted)' };
     case 'not-pushed':
-      return { label: 'PR: branch not pushed', color: '#888' };
+      return { label: 'PR: branch not pushed', color: 'var(--muted)' };
     case 'no-pr':
-      return { label: 'PR: none yet', color: '#888' };
+      return { label: 'PR: none yet', color: 'var(--muted)' };
     case 'rate-limited':
-      return { label: 'PR: GitHub rate limit — try again later', color: '#e0a030' };
+      return { label: 'PR: GitHub rate limit — try again later', color: 'var(--warn)' };
     case 'error':
-      return { label: `PR: ${status.message}`, color: 'crimson' };
+      return { label: `PR: ${status.message}`, color: 'var(--err)' };
     case 'open-pr': {
       const draft = status.pr.isDraft ? ' (draft)' : '';
       const ci =
@@ -55,10 +55,10 @@ function describe(status: GhStatus): { label: string; color: string } {
               : 'CI —';
       const color =
         status.ci.summary === 'failing'
-          ? 'crimson'
+          ? 'var(--err)'
           : status.ci.summary === 'pending'
-            ? '#e0a030'
-            : '#888';
+            ? 'var(--warn)'
+            : 'var(--muted)';
       return {
         label: `PR #${status.pr.number} ${status.pr.state}${draft} · ${ci} · ${status.pr.title}`,
         color,
@@ -85,14 +85,14 @@ export function GhStatusPanel({
   if (!selectedId) {
     return (
       <div data-testid="gh-status" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#888' }}>PR: select a worktree</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>PR: select a worktree</span>
       </div>
     );
   }
   const line = error
-    ? { label: `PR: ${error}`, color: 'crimson' }
+    ? { label: `PR: ${error}`, color: 'var(--err)' }
     : loading || !status
-      ? { label: 'PR: loading…', color: '#888' }
+      ? { label: 'PR: loading…', color: 'var(--muted)' }
       : describe(status);
   const openPr = status && status.kind === 'open-pr' ? status.pr : null;
   const checks = status && status.kind === 'open-pr' ? status.ci.checks : [];

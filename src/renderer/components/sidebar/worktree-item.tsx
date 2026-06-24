@@ -13,11 +13,11 @@ export interface WorktreeItemProps {
 }
 
 const STATUS_COLOR: Record<AgentStatus, string> = {
-  idle: '#bbb',
-  starting: '#d8a657',
-  running: '#2ea043',
-  exited: '#888',
-  error: '#cf222e',
+  idle: 'var(--faint)',
+  starting: 'var(--warn)',
+  running: 'var(--ok)',
+  exited: 'var(--muted)',
+  error: 'var(--err)',
 };
 
 /** A single worktree row: agent dot, branch, badges, short HEAD, Remove. Clickable to select. */
@@ -41,7 +41,7 @@ export function WorktreeItem({
         padding: '6px 8px',
         borderBottom: '1px solid #eee',
         cursor: 'pointer',
-        background: selected ? '#eef4ff' : 'transparent',
+        background: selected ? 'var(--accent-soft)' : 'transparent',
       }}
     >
       <span
@@ -57,9 +57,11 @@ export function WorktreeItem({
       />
       {ownsServer && <ServerDot state={serverState} />}
       <span style={{ flex: 1, fontFamily: 'ui-monospace, monospace' }}>{worktree.branch}</span>
-      {worktree.isPrimary && <span style={{ fontSize: 11, color: '#888' }}>primary</span>}
-      {worktree.isLocked && <span style={{ fontSize: 11, color: '#b58900' }}>locked</span>}
-      {worktree.head && <span style={{ fontSize: 11, color: '#aaa' }}>{worktree.head}</span>}
+      {worktree.isPrimary && <span style={{ fontSize: 11, color: 'var(--muted)' }}>primary</span>}
+      {worktree.isLocked && <span style={{ fontSize: 11, color: 'var(--warn)' }}>locked</span>}
+      {worktree.head && (
+        <span style={{ fontSize: 11, color: 'var(--faint)' }}>{worktree.head}</span>
+      )}
       <button
         type="button"
         disabled={worktree.isPrimary || worktree.isLocked}

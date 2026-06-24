@@ -1,11 +1,11 @@
 import type { ServerState } from '../../../shared/types';
 
 const SERVER_COLOR: Record<ServerState, string> = {
-  stopped: '#bbb',
-  starting: '#d8a657',
-  running: '#1f6feb',
-  stopping: '#d8a657',
-  crashed: '#cf222e',
+  stopped: 'var(--faint)',
+  starting: 'var(--warn)',
+  running: 'var(--accent)',
+  stopping: 'var(--warn)',
+  crashed: 'var(--err)',
 };
 
 export interface ServerDotProps {
