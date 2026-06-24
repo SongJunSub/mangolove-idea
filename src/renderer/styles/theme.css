@@ -257,3 +257,39 @@ a {
   font-size: 12.5px;
   padding: 16px;
 }
+
+/* ---- file tree (A3) ---- */
+.tree {
+  padding: 4px 0;
+  font-size: 12.5px;
+  line-height: 1.9;
+  white-space: nowrap;
+}
+.tree-node {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px 1px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.tree-node:hover {
+  background: var(--accent-soft);
+}
+.tree-node.sel {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+.tree-tw {
+  width: 12px;
+  flex: none;
+  text-align: center;
+  font-size: 9px;
+  color: var(--faint);
+}
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

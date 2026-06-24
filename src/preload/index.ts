@@ -66,6 +66,9 @@ const api: MangoApi = {
     list: (req) => ipcRenderer.invoke(IPC.DIFF_LIST, req),
     file: (req) => ipcRenderer.invoke(IPC.DIFF_FILE, req),
   },
+  tree: {
+    list: (req) => ipcRenderer.invoke(IPC.TREE_LIST, req),
+  },
   gh: {
     status: (req) => ipcRenderer.invoke(IPC.GH_STATUS, req),
   },
