@@ -14,5 +14,24 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  // Build tooling that runs in plain Node/CommonJS (electron-builder config). These
+  // legitimately use require()/module/process, which the TS rules above forbid.
+  // Node globals are declared inline to avoid a (transitive) `globals` dependency.
+  {
+    files: ['**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        exports: 'writable',
+        console: 'readonly',
+      },
+    },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
   prettier,
 );

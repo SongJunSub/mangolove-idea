@@ -24,7 +24,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "dist": "npm run build && electron-builder --mac --arm64",
-    "dist:dir": "npm run build && electron-builder --mac --arm64 --dir"
+    "dist:dir": "npm run build && electron-builder --mac --arm64 --dir",
+    "dist:signed": "npm run build && electron-builder --mac --arm64 --config electron-builder.signed.cjs"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",

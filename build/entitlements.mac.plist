@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!--
+      Hardened-runtime entitlements (Developer ID, NOT App Store). This ONE file is
+      pointed at by BOTH mac.entitlements (the .app) AND mac.entitlementsInherit
+      (every nested Mach-O: the Electron Helper.app bundles, node-pty's
+      spawn-helper/pty.node, and the abduco helper). That mirrors electron-builder's
+      proven default, which ships a single entitlements.mac.plist with exactly these
+      three keys — the Electron Helpers run V8 JIT, so the inherited binaries genuinely
+      need the JIT relaxations too, not just the main process.
+
+      Kept MINIMAL: only what an Electron app that runs a JIT (V8/Chromium) and loads a
+      native addon (node-pty) under hardened runtime needs. Do NOT add capability
+      entitlements (camera, network-server, etc.) unless a feature requires them —
+      notarization does not need them and every extra entitlement widens attack surface.
+    -->
+
+    <!-- V8 / Chromium JIT under hardened runtime. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Electron / V8 map writable+executable pages; required under hardened runtime. -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!--
+      node-pty loads pty.node and EXECs spawn-helper; abduco is EXEC'd too. With
+      library validation ON, the OS would refuse to load/exec Mach-O signed by a
+      different Team ID (or ad-hoc). All our nested binaries are signed with the
+      SAME Developer ID here, but this also covers the abduco helper which was
+      originally ad-hoc/linker-signed and is re-signed during the build. Keeping
+      this entitlement avoids brittle exec failures if a helper's signature lineage
+      differs. (If you later confirm every nested Mach-O carries the same Team ID,
+      you may try removing this and re-verifying.)
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>
