@@ -1,6 +1,9 @@
 <!doctype html>
-<!-- default to dark so the first paint isn't a white flash; lib/theme.ts corrects it
-     from the persisted `theme` setting once it resolves. -->
+<!-- Default the first paint to dark (the recommended default); lib/theme.ts corrects
+     it from the persisted `theme` setting on first render. A user who persisted
+     'light' may see a brief dark frame until that resolves — acceptable (the CSP
+     blocks an inline pre-paint script, and the settings read is a fast local IPC). -->
+
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />

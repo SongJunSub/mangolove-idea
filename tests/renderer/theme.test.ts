@@ -57,6 +57,10 @@ describe('applyTheme', () => {
     (mql as { matches: boolean }).matches = false;
     listeners[0]();
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    // cleanup() must remove the OS listener (the leak-on-transition path) — this is
+    // exactly what the App effect runs when `settings.theme` changes.
     cleanup();
+    expect(mql.removeEventListener).toHaveBeenCalledTimes(1);
   });
 });
