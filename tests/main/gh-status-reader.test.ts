@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { GhStatusReader } from '../../src/main/git/gh-status-reader';
+import { GhStatusReader, remoteHasBranch } from '../../src/main/git/gh-status-reader';
 import { makeFakeRunner, type FakeProcHandle } from '../helpers/fake-runner';
 import type { ProcessRunner, IProcLike } from '../../src/main/proc/process-runner';
 
@@ -27,6 +27,8 @@ function makeDeps(opts: {
   branch: string;
   worktreePath: string;
   hasUpstream: boolean;
+  /** Whether ls-remote shows the branch; only consulted when hasUpstream is false. Default true. */
+  isOnRemote?: boolean;
 }) {
   const { runner, calls } = makeRunnerFactory(opts.fakes);
   const reader = new GhStatusReader({
@@ -37,6 +39,7 @@ function makeDeps(opts: {
     resolveBranch: vi.fn().mockResolvedValue(opts.branch),
     resolvePath: vi.fn().mockResolvedValue(opts.worktreePath),
     hasUpstream: vi.fn().mockResolvedValue(opts.hasUpstream),
+    isOnRemote: vi.fn().mockResolvedValue(opts.isOnRemote ?? true),
     timeoutMs: 50,
   });
   return { reader, calls };
@@ -56,17 +59,57 @@ const CHECKS_JSON = JSON.stringify([
   { name: 'lint', state: 'FAILURE', bucket: 'fail', link: 'y' },
 ]);
 
+describe('remoteHasBranch', () => {
+  const ls = (branch: string) => `abc123\trefs/heads/${branch}\n`;
+
+  it('matches an exact branch ref line (incl. slashes)', () => {
+    expect(remoteHasBranch(ls('feature/login'), 'feature/login')).toBe(true);
+    expect(remoteHasBranch(ls('main'), 'main')).toBe(true);
+  });
+
+  it('is false for an empty result (branch absent on the remote)', () => {
+    expect(remoteHasBranch('', 'feature/login')).toBe(false);
+    expect(remoteHasBranch('\n', 'feature/login')).toBe(false);
+  });
+
+  it('does not match a different branch or a substring/suffix collision', () => {
+    expect(remoteHasBranch(ls('feature/login-2'), 'feature/login')).toBe(false);
+    expect(remoteHasBranch(ls('other'), 'feature/login')).toBe(false);
+    // a tag/note ref named the same must NOT count (only refs/heads/)
+    expect(remoteHasBranch('abc\trefs/tags/feature/login\n', 'feature/login')).toBe(false);
+  });
+});
+
 describe('GhStatusReader', () => {
-  it('not-pushed: no upstream short-circuits WITHOUT spawning gh', async () => {
+  it('not-pushed: no upstream AND not on remote short-circuits WITHOUT spawning gh', async () => {
     const { reader, calls } = makeDeps({
       fakes: [],
       branch: 'feature/login',
       worktreePath: '/repo/.worktrees/feat',
       hasUpstream: false,
+      isOnRemote: false, // ls-remote confirms it is genuinely not pushed
     });
     const status = await reader.status({ worktreeId: '/repo/.worktrees/feat' });
     expect(status).toEqual({ kind: 'not-pushed' });
     expect(calls).toHaveLength(0); // gh NEVER spawned
+  });
+
+  it('pushed WITHOUT local tracking (no upstream but on remote) is NOT not-pushed — queries gh', async () => {
+    // The accuracy fix: a branch pushed without `-u` has no upstream but IS on the remote,
+    // so ls-remote keeps it out of the not-pushed bucket and gh decides (here: no PR yet).
+    const view = makeFakeRunner();
+    const { reader, calls } = makeDeps({
+      fakes: [view],
+      branch: 'feature/login',
+      worktreePath: '/repo/.worktrees/feat',
+      hasUpstream: false,
+      isOnRemote: true,
+    });
+    const p = reader.status({ worktreeId: '/repo/.worktrees/feat' });
+    view.emitStderr('no pull requests found for branch "feature/login"');
+    view.emitExit(1);
+    expect(await p).toEqual({ kind: 'no-pr' }); // gh consulted, not short-circuited to not-pushed
+    expect(calls.length).toBeGreaterThan(0); // gh WAS spawned
   });
 
   it('open-pr: parses pr view + pr checks into pr + ci (ci from bucket)', async () => {
