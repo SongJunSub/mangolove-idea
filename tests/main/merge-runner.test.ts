@@ -255,6 +255,52 @@ describe('MergeRunner', () => {
     expect(result.error).toMatch(/uncommitted|dirty/i);
   });
 
+  it('fires onWorktreeRemoved after a successful cleanup (so scrollback is dropped)', async () => {
+    const feat = await addFeature(repo, 'feature/cb');
+    const { runner } = makeVerifyRunner(0);
+    const { emitter } = makeEmitter();
+    const removed: string[] = [];
+    const mr = new MergeRunner({
+      git,
+      worktrees,
+      verifyRunner: runner,
+      emitter,
+      onWorktreeRemoved: (id) => removed.push(id),
+    });
+    const result = await mr.run({
+      worktreeId: feat.id,
+      targetBranch: 'main',
+      runVerifyHook: false,
+      cleanup: true,
+    });
+    expect(result).toMatchObject({ merged: true, cleanedUp: true });
+    expect(removed).toEqual([feat.id]); // called exactly once, with the removed worktree id
+  });
+
+  it('a THROWING onWorktreeRemoved does NOT break cleanup (non-essential side state)', async () => {
+    const feat = await addFeature(repo, 'feature/throwcb');
+    const { runner } = makeVerifyRunner(0);
+    const { emitter } = makeEmitter();
+    const mr = new MergeRunner({
+      git,
+      worktrees,
+      verifyRunner: runner,
+      emitter,
+      onWorktreeRemoved: () => {
+        throw new Error('disk full'); // models scrollback.remove failing on ENOSPC/EROFS
+      },
+    });
+    const result = await mr.run({
+      worktreeId: feat.id,
+      targetBranch: 'main',
+      runVerifyHook: false,
+      cleanup: true,
+    });
+    // The worktree removal + branch -d still complete; cleanup is NOT misreported as failed.
+    expect(result).toMatchObject({ merged: true, cleanedUp: true });
+    expect((await repo.git.branchLocal()).all).not.toContain('feature/throwcb');
+  });
+
   it('cleans up (removes worktree + deletes branch) after a successful merge', async () => {
     const feat = await addFeature(repo, 'feature/clean');
     const { runner } = makeVerifyRunner(0);

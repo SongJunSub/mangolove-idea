@@ -6,6 +6,7 @@ import {
   ScrollbackStore,
   getDefaultScrollbackPath,
   SCROLLBACK_MAX_BYTES,
+  SCROLLBACK_MAX_ENTRIES,
 } from '../../src/main/managers/scrollback-store';
 
 describe('ScrollbackStore', () => {
@@ -104,5 +105,30 @@ describe('ScrollbackStore', () => {
 
   it('getDefaultScrollbackPath joins userData + scrollback.json', () => {
     expect(getDefaultScrollbackPath(() => '/ud')).toBe(join('/ud', 'scrollback.json'));
+  });
+
+  it('caps the number of entries, evicting the least-recently-set (global backstop)', () => {
+    const store = new ScrollbackStore(file);
+    const n = SCROLLBACK_MAX_ENTRIES + 5;
+    for (let i = 0; i < n; i++) store.set(`/wt${i}`, `data${i}`);
+    const reread = new ScrollbackStore(file);
+    expect(reread.get('/wt0')).toBeUndefined(); // oldest evicted
+    expect(reread.get('/wt4')).toBeUndefined();
+    expect(reread.get('/wt5')).toBe('data5'); // first survivor
+    expect(reread.get(`/wt${n - 1}`)).toBe(`data${n - 1}`); // newest kept
+    let count = 0;
+    for (let i = 0; i < n; i++) if (reread.get(`/wt${i}`) !== undefined) count++;
+    expect(count).toBe(SCROLLBACK_MAX_ENTRIES);
+  });
+
+  it('re-setting an old entry refreshes its recency so it is NOT evicted next', () => {
+    const store = new ScrollbackStore(file);
+    for (let i = 0; i < SCROLLBACK_MAX_ENTRIES; i++) store.set(`/wt${i}`, `d${i}`); // fill to cap
+    store.set('/wt0', 'refreshed'); // touch the oldest -> becomes most-recent
+    store.set('/wtNEW', 'new'); // over cap -> evicts the NOW-oldest (/wt1), not /wt0
+    const reread = new ScrollbackStore(file);
+    expect(reread.get('/wt0')).toBe('refreshed');
+    expect(reread.get('/wt1')).toBeUndefined();
+    expect(reread.get('/wtNEW')).toBe('new');
   });
 });

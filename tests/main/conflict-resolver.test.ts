@@ -221,6 +221,30 @@ describe('ConflictResolver', () => {
     expect(branches.all).not.toContain('feature/cflt');
   });
 
+  it('continue(cleanup) fires onWorktreeRemoved so scrollback is dropped', async () => {
+    const removed: string[] = [];
+    const r = new ConflictResolver({ git, worktrees, onWorktreeRemoved: (id) => removed.push(id) });
+    const wtPath = await seedContentConflict(repo, git);
+    await r.resolve({ path: 'base.txt', choice: 'ours' });
+    await r.continue({ worktreeId: wtPath, targetBranch: 'main', cleanup: true });
+    expect(removed).toEqual([wtPath]); // called once, with the removed worktree id
+  });
+
+  it('continue(cleanup) with a THROWING onWorktreeRemoved still cleans up (non-essential)', async () => {
+    const r = new ConflictResolver({
+      git,
+      worktrees,
+      onWorktreeRemoved: () => {
+        throw new Error('disk full');
+      },
+    });
+    const wtPath = await seedContentConflict(repo, git);
+    await r.resolve({ path: 'base.txt', choice: 'ours' });
+    const res = await r.continue({ worktreeId: wtPath, targetBranch: 'main', cleanup: true });
+    expect(res).toMatchObject({ merged: true, cleanedUp: true }); // not flipped to false
+    expect((await repo.git.branchLocal()).all).not.toContain('feature/cflt'); // branch -d ran
+  });
+
   it('abort() drops MERGE_HEAD and restores the target version', async () => {
     await seedContentConflict(repo, git);
     const res = await resolver.abort({ worktreeId: '' });

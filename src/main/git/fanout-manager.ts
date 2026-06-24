@@ -253,7 +253,16 @@ export class FanoutManager {
     }
   }
 
-  /** Removes any already-created worktrees during a failed start (best-effort). */
+  /**
+   * Removes any already-created worktrees during a failed start (best-effort).
+   *
+   * NB (scrollback): this and the other fan-out worktree removals (doSelect/doAbort) do
+   * NOT drop a scrollback entry the way merge-runner/conflict-resolver now do, because a
+   * lane mounts only a DiffView (never an AgentTerminal), so a lane worktreeId never gets
+   * a scrollback entry — there is nothing to leak. If a lane ever mounts a live terminal,
+   * wire onWorktreeRemoved through here too; until then the SCROLLBACK_MAX_ENTRIES cap is
+   * the backstop.
+   */
   private async rollback(lanes: LaneState[]): Promise<void> {
     for (const lane of lanes) {
       try {

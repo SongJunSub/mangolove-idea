@@ -19,6 +19,13 @@ export interface MergeRunnerDeps {
   readonly emitter: MergeEmitter;
   /** Verify command line; default `process.env.MANGO_VERIFY_CMD ?? 'true'`. */
   readonly verifyCommand?: string;
+  /**
+   * Called with the worktreeId AFTER its worktree is successfully removed during
+   * cleanup. Lets the IPC wiring drop side state keyed by worktreeId (scrollback)
+   * that the WORKTREE_REMOVE handler would otherwise drop — cleanupWorktree bypasses
+   * that handler, so without this the entry would leak. Optional => no-op.
+   */
+  readonly onWorktreeRemoved?: (worktreeId: string) => void;
 }
 
 /**
@@ -34,6 +41,7 @@ export class MergeRunner {
   private readonly verifyRunner: ProcessRunner;
   private readonly emitter: MergeEmitter;
   private readonly verifyCommand: string;
+  private readonly onWorktreeRemoved?: (worktreeId: string) => void;
 
   constructor(deps: MergeRunnerDeps) {
     this.git = deps.git;
@@ -41,6 +49,7 @@ export class MergeRunner {
     this.verifyRunner = deps.verifyRunner;
     this.emitter = deps.emitter;
     this.verifyCommand = deps.verifyCommand ?? process.env.MANGO_VERIFY_CMD ?? 'true';
+    this.onWorktreeRemoved = deps.onWorktreeRemoved;
   }
 
   /** Executes verify -> merge -> cleanup, emitting progress for each stage. */
@@ -180,6 +189,14 @@ export class MergeRunner {
   ): Promise<{ cleanedUp: boolean; failed: boolean; message: string }> {
     try {
       await this.worktrees.remove({ worktreeId });
+      // Drop scrollback etc. (this path bypasses WORKTREE_REMOVE). GUARDED: the callback
+      // writes a disposable cache and could throw (full/read-only disk); a non-essential
+      // side-state failure must NEVER skip `branch -d` or flip the reported cleanup result.
+      try {
+        this.onWorktreeRemoved?.(worktreeId);
+      } catch {
+        /* non-essential — the SCROLLBACK_MAX_ENTRIES cap bounds growth anyway */
+      }
       await this.git.branch(['-d', featureBranch]);
       return { cleanedUp: true, failed: false, message: `removed ${featureBranch}` };
     } catch (error) {

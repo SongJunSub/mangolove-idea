@@ -411,6 +411,9 @@ async function getMergeRunner(ctx: IpcContext): Promise<MergeRunner> {
     verifyRunner: new NodeProcessRunner(),
     emitter: buildMergeEmitter(ctx),
     verifyCommand: resolveCommands(getSettingsStore(ctx).get()).verifyCommand,
+    // cleanupWorktree removes the worktree directly (not via WORKTREE_REMOVE), so drop
+    // its scrollback entry here too — otherwise it leaks in scrollback.json.
+    onWorktreeRemoved: (id) => ctx.scrollbackStore?.remove(id),
   });
   return ctx.mergeRunner;
 }
@@ -560,7 +563,13 @@ async function getConflictResolver(ctx: IpcContext): Promise<ConflictResolver> {
   const repoRoot = requireRepoRoot(ctx);
   const { simpleGit } = await import('simple-git');
   const worktrees = await getWorktreeManager(ctx);
-  ctx.conflictResolver = new ConflictResolver({ git: simpleGit(repoRoot), worktrees });
+  ctx.conflictResolver = new ConflictResolver({
+    git: simpleGit(repoRoot),
+    worktrees,
+    // continue(cleanup) removes the worktree directly (not via WORKTREE_REMOVE), so
+    // drop its scrollback entry here too — otherwise it leaks in scrollback.json.
+    onWorktreeRemoved: (id) => ctx.scrollbackStore?.remove(id),
+  });
   return ctx.conflictResolver;
 }
 

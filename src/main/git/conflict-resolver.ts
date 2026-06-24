@@ -29,6 +29,13 @@ export interface ConflictResolverDeps {
   readonly git: SimpleGit;
   /** Used only by continue(cleanup) to remove the merged worktree (remove BEFORE branch -d). */
   readonly worktrees: WorktreeManager;
+  /**
+   * Called with the worktreeId AFTER continue(cleanup) successfully removes its
+   * worktree. continue() bypasses the WORKTREE_REMOVE handler, so the IPC wiring uses
+   * this to drop side state keyed by worktreeId (scrollback) that would otherwise leak.
+   * Optional => no-op.
+   */
+  readonly onWorktreeRemoved?: (worktreeId: string) => void;
 }
 
 /**
@@ -40,10 +47,12 @@ export interface ConflictResolverDeps {
 export class ConflictResolver {
   private readonly git: SimpleGit;
   private readonly worktrees: WorktreeManager;
+  private readonly onWorktreeRemoved?: (worktreeId: string) => void;
 
   constructor(deps: ConflictResolverDeps) {
     this.git = deps.git;
     this.worktrees = deps.worktrees;
+    this.onWorktreeRemoved = deps.onWorktreeRemoved;
   }
 
   /** True while a merge is paused (`.git/MERGE_HEAD` present). */
@@ -217,6 +226,13 @@ export class ConflictResolver {
         // Order matters: remove the worktree FIRST, then delete the branch —
         // `git branch -d` refuses a branch still held by a worktree.
         await this.worktrees.remove({ worktreeId: req.worktreeId });
+        // Drop scrollback etc. (bypasses WORKTREE_REMOVE). GUARDED: a non-essential
+        // disposable-cache write failure must never skip `branch -d` or flip cleanedUp.
+        try {
+          this.onWorktreeRemoved?.(req.worktreeId);
+        } catch {
+          /* non-essential — the SCROLLBACK_MAX_ENTRIES cap bounds growth anyway */
+        }
         if (feature && feature !== req.targetBranch) await this.git.branch(['-d', feature]);
         cleanedUp = true;
       } catch {
