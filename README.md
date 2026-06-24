@@ -15,6 +15,26 @@ IntelliJ는 특정 브랜치 **디버깅 창**으로 두고, 그 옆에서 **여
 - v2 백로그(규모·의존성·트리거): [docs/V2-BACKLOG.md](docs/V2-BACKLOG.md)
 - 기능별 구현 계획: [docs/plans/](docs/plans/) · 수동 스모크 절차: [tests/smoke/](tests/smoke/)
 
+## 다운로드 / 설치 (macOS arm64)
+
+최신 `.dmg`를 [**Releases**](https://github.com/SongJunSub/mangolove-idea/releases/latest)에서
+받습니다. (태그를 push하면 GitHub Actions가 자동 빌드·발행 — [.github/workflows/release.yml](.github/workflows/release.yml))
+
+> ⚠️ **현재 빌드는 서명되지 않았습니다**(Apple 공증(notarization)은 Apple Developer Program
+> $99/년이 필요). 그래서 **처음 열 때만** macOS가 "확인되지 않은 개발자" 경고를 띄웁니다. 한 번만
+> 아래로 허용하면 이후로는 그냥 열립니다. 앱 동작 자체는 정상입니다.
+
+**여는 법 (둘 중 하나, 최초 1회):**
+
+1. `.dmg`를 열어 **MangoLove IDEA**를 `/Applications`로 드래그
+2. 앱을 더블클릭 → 경고가 뜨면 닫고:
+   - **시스템 설정 → 개인정보 보호 및 보안** → 아래로 스크롤 → "MangoLove IDEA"에 대한
+     **"확인 없이 열기"** 클릭, 또는
+   - 터미널에서 한 줄: `xattr -dr com.apple.quarantine "/Applications/MangoLove IDEA.app"`
+
+> 공증된(경고 없는) 빌드가 필요해지면 [docs/RELEASE-SIGNING.md](docs/RELEASE-SIGNING.md)의
+> 서명 설정을 릴리즈 워크플로우에 끼우면 됩니다 — 나머지는 그대로입니다.
+
 ## 기능
 
 ### v1 (MVP)
