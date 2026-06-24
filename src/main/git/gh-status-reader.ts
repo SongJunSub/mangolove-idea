@@ -1,4 +1,10 @@
-import type { GhCiSummary, GhPrInfo, GhStatus, GhStatusRequest } from '../../shared/types';
+import type {
+  GhCheckItem,
+  GhCiSummary,
+  GhPrInfo,
+  GhStatus,
+  GhStatusRequest,
+} from '../../shared/types';
 import type { IProcLike, ProcessRunner } from '../proc/process-runner';
 
 /**
@@ -10,10 +16,8 @@ import type { IProcLike, ProcessRunner } from '../proc/process-runner';
  */
 export const GH_MISSING_SENTINEL = -100;
 
-/** One row of `gh pr checks --json bucket,...`. We switch ONLY on `bucket`. */
-export interface GhCheckRow {
-  readonly bucket: 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel';
-}
+/** One row of `gh pr checks --json name,state,bucket,link`. We switch ONLY on `bucket`. */
+export type GhCheckRow = GhCheckItem;
 
 /**
  * PURE, table-driven mapping of (exit code, stdout, stderr) to a GhStatus kind.
@@ -87,7 +91,12 @@ export function summarizeChecks(rows: readonly GhCheckRow[]): GhCiSummary {
   else if (counts.fail > 0 || counts.cancel > 0) summary = 'failing';
   else if (counts.pending > 0) summary = 'pending';
   else summary = 'passing';
-  return { summary, counts };
+  // Keep the per-check rows for the expandable panel (name/bucket/link).
+  return {
+    summary,
+    counts,
+    checks: rows.map((r) => ({ name: r.name, bucket: r.bucket, link: r.link })),
+  };
 }
 
 /** Raw `gh pr view --json number,title,state,isDraft,url,reviewDecision` shape. */
@@ -219,12 +228,18 @@ export class GhStatusReader {
     }
     if (!checks.stdout.trim().startsWith('[')) {
       // exit 8 (pending), exit 1 (no checks), or empty — treat as no usable rows.
-      if (checks.code === 8) return { summary: 'pending', counts: empties() };
+      if (checks.code === 8) return { summary: 'pending', counts: empties(), checks: [] };
       return summarizeChecks([]);
     }
     try {
-      const rows = JSON.parse(checks.stdout) as { bucket: GhCheckRow['bucket'] }[];
-      return summarizeChecks(rows.map((r) => ({ bucket: r.bucket })));
+      const rows = JSON.parse(checks.stdout) as Partial<GhCheckItem>[];
+      return summarizeChecks(
+        rows.map((r) => ({
+          name: r.name ?? '',
+          bucket: r.bucket as GhCheckItem['bucket'],
+          link: r.link ?? '',
+        })),
+      );
     } catch {
       return summarizeChecks([]);
     }

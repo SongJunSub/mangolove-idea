@@ -1,4 +1,21 @@
-import type { GhStatus } from '../../../shared/types';
+import { useState } from 'react';
+import type { GhBucket, GhStatus } from '../../../shared/types';
+
+/** Per-bucket glyph + color for a check row (mirrors the summary-line idiom). */
+const BUCKET_MARK: Record<GhBucket, string> = {
+  pass: '✓',
+  fail: '✗',
+  pending: '…',
+  skipping: '⊘',
+  cancel: '⊘',
+};
+const BUCKET_COLOR: Record<GhBucket, string> = {
+  pass: '#2ea043',
+  fail: 'crimson',
+  pending: '#e0a030',
+  skipping: '#888',
+  cancel: 'crimson',
+};
 
 export interface GhStatusPanelProps {
   readonly selectedId: string | null;
@@ -64,6 +81,7 @@ export function GhStatusPanel({
   onRefresh,
   onOpen,
 }: GhStatusPanelProps): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
   if (!selectedId) {
     return (
       <div data-testid="gh-status" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -77,20 +95,62 @@ export function GhStatusPanel({
       ? { label: 'PR: loading…', color: '#888' }
       : describe(status);
   const openPr = status && status.kind === 'open-pr' ? status.pr : null;
+  const checks = status && status.kind === 'open-pr' ? status.ci.checks : [];
 
   return (
-    <div data-testid="gh-status" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <span data-testid="gh-status-line" style={{ fontSize: 11, color: line.color }}>
-        {line.label}
-      </span>
-      {openPr && (
-        <button type="button" data-testid="gh-open" onClick={() => onOpen(openPr.url)}>
-          Open in browser
+    <div data-testid="gh-status" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span data-testid="gh-status-line" style={{ fontSize: 11, color: line.color }}>
+          {line.label}
+        </span>
+        {openPr && (
+          <button type="button" data-testid="gh-open" onClick={() => onOpen(openPr.url)}>
+            Open in browser
+          </button>
+        )}
+        {checks.length > 0 && (
+          <button
+            type="button"
+            data-testid="gh-checks-toggle"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? '▾' : '▸'} Checks ({checks.length})
+          </button>
+        )}
+        <button
+          type="button"
+          data-testid="gh-refresh"
+          disabled={loading}
+          onClick={() => onRefresh()}
+        >
+          Refresh
         </button>
+      </div>
+      {expanded && checks.length > 0 && (
+        <ul
+          data-testid="gh-checks"
+          style={{ listStyle: 'none', margin: 0, paddingLeft: 12, fontSize: 11 }}
+        >
+          {checks.map((c, i) => (
+            <li key={`${c.name}-${i}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ color: BUCKET_COLOR[c.bucket] }} title={c.bucket}>
+                {BUCKET_MARK[c.bucket]}
+              </span>
+              <span style={{ flex: 1 }}>{c.name}</span>
+              {c.link && (
+                <button
+                  type="button"
+                  data-testid={`gh-check-open-${c.name}`}
+                  onClick={() => onOpen(c.link)}
+                >
+                  open
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
-      <button type="button" data-testid="gh-refresh" disabled={loading} onClick={() => onRefresh()}>
-        Refresh
-      </button>
     </div>
   );
 }
