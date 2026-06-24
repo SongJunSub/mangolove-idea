@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { AppInfo, QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
 import { formatVersions } from './lib/format-versions';
+import { applyTheme } from './lib/theme';
 import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
 import { useLogs } from './hooks/use-logs';
@@ -76,6 +77,9 @@ export function App(): React.JSX.Element {
   );
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
+
+  // Apply the persisted theme to <html data-theme>; 'system'/unset tracks the OS.
+  useEffect(() => applyTheme(settings.theme), [settings.theme]);
 
   useEffect(() => {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
@@ -443,7 +447,16 @@ export function App(): React.JSX.Element {
             justifyContent: 'center',
           }}
         >
-          <div style={{ background: '#fff', borderRadius: 8, padding: 24, maxWidth: 380 }}>
+          <div
+            style={{
+              background: 'var(--surface)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              padding: 24,
+              maxWidth: 380,
+            }}
+          >
             <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
             {persistenceInfo?.effective === 'full' ? (
               <p style={{ fontSize: 13 }}>

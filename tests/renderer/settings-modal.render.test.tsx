@@ -20,6 +20,26 @@ beforeEach(() => {
   Object.defineProperty(window, 'mango', { value: mango, configurable: true });
 });
 
+describe('<SettingsModal> theme control', () => {
+  it("defaults to 'system' when unset and persists the picked theme on Save", async () => {
+    const onSave = vi.fn();
+    render(<SettingsModal settings={{}} onSave={onSave} onClose={vi.fn()} />);
+    // unset => 'system' is the active (pressed) option
+    expect(screen.getByTestId('settings-theme-system')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('settings-theme-dark')).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(screen.getByTestId('settings-theme-dark'));
+    await userEvent.click(screen.getByTestId('settings-save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
+  });
+
+  it('seeds the active option from the persisted theme', () => {
+    render(<SettingsModal settings={{ theme: 'light' }} onSave={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByTestId('settings-theme-light')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('settings-theme-system')).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
 describe('<SettingsModal> cross-machine controls', () => {
   it('seeds the toggle + label from settings and persists them on Save', async () => {
     const onSave = vi.fn();

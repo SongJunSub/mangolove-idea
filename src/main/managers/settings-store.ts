@@ -13,6 +13,7 @@ export function getDefaultSettingsPath(getUserDataPath: () => string): string {
 
 /** The known string-valued AppSettings keys — the ONLY string keys read/written. */
 const KNOWN_KEYS: readonly (keyof AppSettings)[] = [
+  'theme',
   'agentCommand',
   'verifyCommand',
   'serverCommand',
