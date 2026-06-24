@@ -84,3 +84,24 @@ mkdir -p "$BASE/udA" "$BASE/udB"
 - "Start here" checks out the branch and starts a fresh (not resumed) session on B.
 - Opt-out stops publishing with no error; a local-only branch never reaches the remote.
 - The user's working tree / HEAD / local branches are never touched by sync.
+
+## Recorded run — 2026-06-23 (automated, PASS)
+
+Driven headless via two ISOLATED Electron instances (playwright-core `_electron`,
+`--user-data-dir=udA`/`udB`, `MANGO_HEADLESS=1`, a harmless `MANGO_AGENT_CMD` fake
+agent) over a shared bare remote with two clones (machine A = mac-A, B = mac-B).
+The live app was exercised through the real preload bridge (`window.mango.*`), so
+the full IPC → main handlers → git plumbing → SessionPublisher path ran end-to-end.
+Teardown was `app.close()` only (no process pattern-kill).
+
+- **S1 PASS** — A spawned a session on `main`; the SessionPublisher pushed
+  `<machineId-A>.json` to the `mangolove-sessions` branch on the shared remote.
+- **S2 PASS** — B's `crossMachine.fetch()` returned A's pointer (mac-A / `main`).
+- **S3 PASS** — B's `crossMachine.startHere('feat-x')` checked out `feat-x` into
+  `repoB/.worktrees/feat-x` (a fresh session, no conversation carryover).
+- **S4 PASS** — `mangolove-sessions` is NOT a local branch on B; the only working-tree
+  entry is the legitimately-created `.worktrees/` (the fixture clone has no
+  `.worktrees` gitignore) — sync never touched HEAD or the index.
+
+Conclusion: cross-machine visibility (publish → fetch → see) and "start here"
+(remote-branch checkout + fresh session) work end-to-end in the live app. (D3 met.)
