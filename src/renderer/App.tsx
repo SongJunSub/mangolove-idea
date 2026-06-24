@@ -12,6 +12,7 @@ import { useSettings } from './hooks/use-settings';
 import { useCrossMachine } from './hooks/use-cross-machine';
 import { CrossMachinePanel } from './components/cross-machine/cross-machine-panel';
 import { useRepo } from './hooks/use-repo';
+import { Titlebar } from './components/titlebar/titlebar';
 import { SettingsModal } from './components/settings/settings-modal';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
@@ -192,325 +193,332 @@ export function App(): React.JSX.Element {
   }
   if (repo.repoRoot === null) {
     return (
-      <main
-        style={{
-          fontFamily: 'system-ui, sans-serif',
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 16,
-        }}
-      >
-        <h1 style={{ margin: 0 }}>MangoLove IDEA</h1>
-        <p data-testid="repo-empty-state" style={{ fontSize: 14, color: 'var(--muted)' }}>
-          Select your git repository to begin
-        </p>
-        <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
-          Select repository…
-        </button>
-      </main>
+      <div className="app-shell">
+        <Titlebar />
+        <main
+          className="app-body"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 16,
+          }}
+        >
+          <p data-testid="repo-empty-state" style={{ fontSize: 14, color: 'var(--muted)' }}>
+            Select your git repository to begin
+          </p>
+          <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
+            Select repository…
+          </button>
+        </main>
+      </div>
     );
   }
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24 }}>
-      <h1>MangoLove IDEA</h1>
-      <div
-        data-testid="repo-header"
-        style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
-      >
-        <code style={{ fontSize: 13, color: 'var(--text)' }}>
-          {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
-        </code>
-        <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
-          change repo
-        </button>
-      </div>
+    <div className="app-shell">
+      <Titlebar />
+      <main className="app-body" style={{ padding: 24 }}>
+        <div
+          data-testid="repo-header"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
+        >
+          <code style={{ fontSize: 13, color: 'var(--text)' }}>
+            {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
+          </code>
+          <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
+            change repo
+          </button>
+        </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Toolbar onCreate={create} />
-        <button
-          type="button"
-          data-testid="fanout-open"
-          aria-pressed={fanoutOpen}
-          title="Multimodel fan-out"
-          onClick={() => setFanoutOpen((v) => !v)}
-        >
-          ⑃ Fan-out
-        </button>
-        <button
-          type="button"
-          data-testid="cross-machine-open"
-          title="Cross-machine sessions"
-          onClick={() => {
-            setCrossMachineOpen(true);
-            void crossMachine.refresh();
-          }}
-        >
-          ⌘ Machines
-        </button>
-        <button
-          type="button"
-          data-testid="settings-open"
-          aria-label="settings"
-          title="Settings"
-          disabled={settingsLoading}
-          onClick={() => setSettingsOpen(true)}
-        >
-          ⚙
-        </button>
-      </div>
-      {fanoutOpen && (
-        <Suspense
-          fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
-        >
-          <FanoutView base={baseBranch} onMerged={() => void refresh()} />
-        </Suspense>
-      )}
-      <ServerControls
-        selectedId={selectedId}
-        status={selectedServer}
-        onStart={(id) => void startServer(id)}
-        onStop={(id) => void stopServer(id)}
-      />
-      <MergeControls
-        selected={selectedWorktree}
-        running={merging}
-        progress={mergeProgress}
-        onMerge={(wt) => void onMerge(wt)}
-      />
-      <GhStatusPanel
-        selectedId={selectedId}
-        status={ghStatus}
-        loading={ghLoading}
-        error={ghError}
-        onRefresh={refreshGh}
-        onOpen={(url) => void window.mango.app.openExternal({ url })}
-      />
-      <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
-        <WorktreeList
-          worktrees={worktrees}
-          loading={loading}
-          error={error}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Toolbar onCreate={create} />
+          <button
+            type="button"
+            data-testid="fanout-open"
+            aria-pressed={fanoutOpen}
+            title="Multimodel fan-out"
+            onClick={() => setFanoutOpen((v) => !v)}
+          >
+            ⑃ Fan-out
+          </button>
+          <button
+            type="button"
+            data-testid="cross-machine-open"
+            title="Cross-machine sessions"
+            onClick={() => {
+              setCrossMachineOpen(true);
+              void crossMachine.refresh();
+            }}
+          >
+            ⌘ Machines
+          </button>
+          <button
+            type="button"
+            data-testid="settings-open"
+            aria-label="settings"
+            title="Settings"
+            disabled={settingsLoading}
+            onClick={() => setSettingsOpen(true)}
+          >
+            ⚙
+          </button>
+        </div>
+        {fanoutOpen && (
+          <Suspense
+            fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
+          >
+            <FanoutView base={baseBranch} onMerged={() => void refresh()} />
+          </Suspense>
+        )}
+        <ServerControls
           selectedId={selectedId}
-          statuses={statuses}
-          onSelect={setSelectedId}
-          onRemove={(id) => void remove(id)}
+          status={selectedServer}
+          onStart={(id) => void startServer(id)}
+          onStop={(id) => void stopServer(id)}
         />
-        <section style={{ flex: 1, minWidth: 0 }}>
-          {selectedId ? (
-            <>
-              <div
-                role="tablist"
-                aria-label="worktree view"
-                style={{ display: 'flex', gap: 4, marginBottom: 8 }}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={paneMode === 'terminal'}
-                  data-testid="tab-terminal"
-                  onClick={() => setPaneMode('terminal')}
+        <MergeControls
+          selected={selectedWorktree}
+          running={merging}
+          progress={mergeProgress}
+          onMerge={(wt) => void onMerge(wt)}
+        />
+        <GhStatusPanel
+          selectedId={selectedId}
+          status={ghStatus}
+          loading={ghLoading}
+          error={ghError}
+          onRefresh={refreshGh}
+          onOpen={(url) => void window.mango.app.openExternal({ url })}
+        />
+        <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
+          <WorktreeList
+            worktrees={worktrees}
+            loading={loading}
+            error={error}
+            selectedId={selectedId}
+            statuses={statuses}
+            onSelect={setSelectedId}
+            onRemove={(id) => void remove(id)}
+          />
+          <section style={{ flex: 1, minWidth: 0 }}>
+            {selectedId ? (
+              <>
+                <div
+                  role="tablist"
+                  aria-label="worktree view"
+                  style={{ display: 'flex', gap: 4, marginBottom: 8 }}
                 >
-                  Terminal
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={paneMode === 'diff'}
-                  data-testid="tab-diff"
-                  onClick={() => setPaneMode('diff')}
-                >
-                  Diff
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={paneMode === 'browser'}
-                  data-testid="tab-browser"
-                  onClick={() => setPaneMode('browser')}
-                >
-                  Browser
-                </button>
-                {conflictWorktreeId === selectedId && (
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={paneMode === 'conflict'}
-                    data-testid="tab-conflict"
-                    style={{ color: 'var(--warn)' }}
-                    onClick={() => setPaneMode('conflict')}
+                    aria-selected={paneMode === 'terminal'}
+                    data-testid="tab-terminal"
+                    onClick={() => setPaneMode('terminal')}
                   >
-                    Conflicts
+                    Terminal
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={paneMode === 'diff'}
+                    data-testid="tab-diff"
+                    onClick={() => setPaneMode('diff')}
+                  >
+                    Diff
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={paneMode === 'browser'}
+                    data-testid="tab-browser"
+                    onClick={() => setPaneMode('browser')}
+                  >
+                    Browser
+                  </button>
+                  {conflictWorktreeId === selectedId && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={paneMode === 'conflict'}
+                      data-testid="tab-conflict"
+                      style={{ color: 'var(--warn)' }}
+                      onClick={() => setPaneMode('conflict')}
+                    >
+                      Conflicts
+                    </button>
+                  )}
+                </div>
+                {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
+                <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
+                  <Suspense
+                    fallback={
+                      <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
+                    }
+                  >
+                    <AgentTerminal
+                      key={selectedId}
+                      worktreeId={selectedId}
+                      continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
+                    />
+                  </Suspense>
+                </div>
+                {paneMode === 'diff' && (
+                  <Suspense
+                    fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>}
+                  >
+                    <DiffView
+                      key={`diff-${selectedId}`}
+                      worktreeId={selectedId}
+                      base={baseBranch}
+                    />
+                  </Suspense>
+                )}
+                {paneMode === 'browser' && (
+                  <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
+                )}
+                {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
+                  <Suspense
+                    fallback={
+                      <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
+                    }
+                  >
+                    <ConflictView
+                      key={`conflict-${selectedId}`}
+                      worktreeId={selectedId}
+                      targetBranch={baseBranch}
+                      cleanup={true}
+                      onResolved={(merged) => {
+                        setConflictWorktreeId(null);
+                        setPaneMode('terminal');
+                        if (merged) {
+                          if (selectedId === selectedWorktree?.id) setSelectedId(null);
+                        }
+                        void refresh();
+                      }}
+                    />
+                  </Suspense>
+                )}
+              </>
+            ) : (
+              <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                Select a worktree to start its agent.
+              </p>
+            )}
+            <div style={{ marginTop: 16 }}>
+              <button type="button" onClick={onPing}>
+                Ping main
+              </button>
+              {pingError && <pre style={{ color: 'var(--err)' }}>error: {pingError}</pre>}
+              {info && (
+                <pre data-testid="ping-result" style={{ marginTop: 16 }}>
+                  {formatVersions(info)}
+                </pre>
+              )}
+            </div>
+            <LogPanel lines={logLines} />
+          </section>
+        </div>
+        {settingsOpen && !settingsLoading && (
+          <SettingsModal
+            settings={settings}
+            onSave={(partial) => {
+              void saveSettings(partial);
+              setSettingsOpen(false);
+            }}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
+        {crossMachineOpen && (
+          <CrossMachinePanel
+            pointers={crossMachine.pointers}
+            loading={crossMachine.loading}
+            error={crossMachine.error}
+            enabled={settings.crossMachineSessions === 'on'}
+            selfMachineId={settings.machineId}
+            onRefresh={() => void crossMachine.refresh()}
+            onStartHere={(branch) => {
+              void crossMachine.startHere(branch).then((wt) => {
+                if (!wt) return; // failure surfaced via crossMachine.error in the panel
+                setCrossMachineOpen(false);
+                // Refresh the worktree list, then select the (new) worktree — selecting it
+                // mounts AgentTerminal with continueSession=false (no record), a FRESH session.
+                void refresh().then(() => setSelectedId(wt.id));
+              });
+            }}
+            onClose={() => setCrossMachineOpen(false)}
+          />
+        )}
+        {quitWarning && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            data-testid="quit-warning"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                background: 'var(--surface)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: 24,
+                maxWidth: 380,
+              }}
+            >
+              <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
+              {persistenceInfo?.effective === 'full' ? (
+                <p style={{ fontSize: 13 }}>
+                  {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With background
+                  persistence on, they will <strong>keep running in the background</strong> and
+                  re-attach when you reopen — nothing is lost. You can also stop them now.
+                </p>
+              ) : (
+                <p style={{ fontSize: 13 }}>
+                  {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and
+                  would be interrupted. (Conversations are saved by claude and resume with{' '}
+                  <code>--continue</code> next time — only the in-flight turn is lost.) Quit anyway?
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+                <button type="button" onClick={() => void onQuitDecision(false)}>
+                  Cancel
+                </button>
+                {persistenceInfo?.effective === 'full' ? (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="quit-stop-all"
+                      onClick={() => void onQuitStopAll()}
+                    >
+                      Stop all &amp; quit
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="quit-keep-running"
+                      onClick={() => void onQuitDecision(true)}
+                    >
+                      Keep running &amp; quit
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => void onQuitDecision(true)}>
+                    Quit anyway
                   </button>
                 )}
               </div>
-              {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
-              <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
-                <Suspense
-                  fallback={
-                    <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
-                  }
-                >
-                  <AgentTerminal
-                    key={selectedId}
-                    worktreeId={selectedId}
-                    continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
-                  />
-                </Suspense>
-              </div>
-              {paneMode === 'diff' && (
-                <Suspense
-                  fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>}
-                >
-                  <DiffView key={`diff-${selectedId}`} worktreeId={selectedId} base={baseBranch} />
-                </Suspense>
-              )}
-              {paneMode === 'browser' && (
-                <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
-              )}
-              {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
-                <Suspense
-                  fallback={
-                    <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
-                  }
-                >
-                  <ConflictView
-                    key={`conflict-${selectedId}`}
-                    worktreeId={selectedId}
-                    targetBranch={baseBranch}
-                    cleanup={true}
-                    onResolved={(merged) => {
-                      setConflictWorktreeId(null);
-                      setPaneMode('terminal');
-                      if (merged) {
-                        if (selectedId === selectedWorktree?.id) setSelectedId(null);
-                      }
-                      void refresh();
-                    }}
-                  />
-                </Suspense>
-              )}
-            </>
-          ) : (
-            <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-              Select a worktree to start its agent.
-            </p>
-          )}
-          <div style={{ marginTop: 16 }}>
-            <button type="button" onClick={onPing}>
-              Ping main
-            </button>
-            {pingError && <pre style={{ color: 'var(--err)' }}>error: {pingError}</pre>}
-            {info && (
-              <pre data-testid="ping-result" style={{ marginTop: 16 }}>
-                {formatVersions(info)}
-              </pre>
-            )}
-          </div>
-          <LogPanel lines={logLines} />
-        </section>
-      </div>
-      {settingsOpen && !settingsLoading && (
-        <SettingsModal
-          settings={settings}
-          onSave={(partial) => {
-            void saveSettings(partial);
-            setSettingsOpen(false);
-          }}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
-      {crossMachineOpen && (
-        <CrossMachinePanel
-          pointers={crossMachine.pointers}
-          loading={crossMachine.loading}
-          error={crossMachine.error}
-          enabled={settings.crossMachineSessions === 'on'}
-          selfMachineId={settings.machineId}
-          onRefresh={() => void crossMachine.refresh()}
-          onStartHere={(branch) => {
-            void crossMachine.startHere(branch).then((wt) => {
-              if (!wt) return; // failure surfaced via crossMachine.error in the panel
-              setCrossMachineOpen(false);
-              // Refresh the worktree list, then select the (new) worktree — selecting it
-              // mounts AgentTerminal with continueSession=false (no record), a FRESH session.
-              void refresh().then(() => setSelectedId(wt.id));
-            });
-          }}
-          onClose={() => setCrossMachineOpen(false)}
-        />
-      )}
-      {quitWarning && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          data-testid="quit-warning"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: 'var(--surface)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: 24,
-              maxWidth: 380,
-            }}
-          >
-            <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
-            {persistenceInfo?.effective === 'full' ? (
-              <p style={{ fontSize: 13 }}>
-                {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With background
-                persistence on, they will <strong>keep running in the background</strong> and
-                re-attach when you reopen — nothing is lost. You can also stop them now.
-              </p>
-            ) : (
-              <p style={{ fontSize: 13 }}>
-                {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and would
-                be interrupted. (Conversations are saved by claude and resume with{' '}
-                <code>--continue</code> next time — only the in-flight turn is lost.) Quit anyway?
-              </p>
-            )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-              <button type="button" onClick={() => void onQuitDecision(false)}>
-                Cancel
-              </button>
-              {persistenceInfo?.effective === 'full' ? (
-                <>
-                  <button
-                    type="button"
-                    data-testid="quit-stop-all"
-                    onClick={() => void onQuitStopAll()}
-                  >
-                    Stop all &amp; quit
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="quit-keep-running"
-                    onClick={() => void onQuitDecision(true)}
-                  >
-                    Keep running &amp; quit
-                  </button>
-                </>
-              ) : (
-                <button type="button" onClick={() => void onQuitDecision(true)}>
-                  Quit anyway
-                </button>
-              )}
             </div>
           </div>
-        </div>
-      )}
-    </main>
+        )}
+      </main>
+    </div>
   );
 }

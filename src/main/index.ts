@@ -83,6 +83,13 @@ function createWindow(repoRoot: string | null): BrowserWindow {
     width: 1280,
     height: 800,
     show: false,
+    // Frameless unified titlebar (macOS): the traffic lights overlay the renderer's
+    // own titlebar, which carries the brand + toolbar (see components/titlebar). The
+    // renderer marks it -webkit-app-region: drag. hiddenInset keeps the standard
+    // traffic-light controls; the inset matches the renderer's left padding.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 16 } }
+      : {}),
     webPreferences: {
       preload: resolve(import.meta.dirname, '../preload/index.mjs'),
       contextIsolation: true,

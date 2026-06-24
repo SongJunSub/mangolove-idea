@@ -141,3 +141,43 @@ a {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ---- app shell + frameless titlebar (A2a) ---- */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.titlebar {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  /* left padding clears the overlaid macOS traffic-light controls */
+  padding: 0 16px 0 84px;
+  background: var(--elevated);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+/* interactive children must opt OUT of the window drag region */
+.titlebar button,
+.titlebar input,
+.titlebar select,
+.titlebar a {
+  -webkit-app-region: no-drag;
+}
+.titlebar-brand {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.titlebar-spacer {
+  flex: 1;
+}
+.app-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
