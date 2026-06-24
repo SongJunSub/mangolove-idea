@@ -2,6 +2,7 @@ out
 dist
 node_modules
 package-lock.json
+.claude
 # Prose docs are hand-written Korean (README, design/plan docs incl. CJK-aligned
 # tables Prettier would reflow). Exclude from the format gate so `format:check`
 # reflects SOURCE formatting only. The pre-existing README.md already violates

@@ -1,0 +1,53 @@
+# Reliability gate as CODE, not prose. The whole session merged 10 PRs by running
+# typecheck/lint/format/test/build by hand each time; methodology/strict.md
+# "신뢰성 게이트" says move forced rules out of prose into a deterministic check.
+# This runs the exact local gates on every PR + push to main, so a red gate blocks
+# merge instead of relying on a human (or agent) remembering to run them.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege: the gates only read the tree. No write scopes are granted.
+permissions:
+  contents: read
+
+# A newer push to the same PR/branch cancels the in-flight run (saves runner time).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck · lint · format · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # satisfies package.json engines (>=22.12)
+          cache: npm
+
+      # `npm ci` runs the postinstall electron-rebuild (node-pty -> Electron ABI). The
+      # gates below never load the native node-pty (probe + PtyFactory are injected in
+      # tests, externalized in the build), so the rebuilt ABI is harmless to them.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
