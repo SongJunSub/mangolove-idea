@@ -21,6 +21,8 @@ import type {
   FileDiff,
   DiffListRequest,
   DiffFileRequest,
+  TreeListRequest,
+  TreeEntry,
   AppSettings,
   SessionPersistenceInfo,
   CrossMachineSessionPointer,
@@ -66,7 +68,8 @@ import { requireCtxFrom, type CtxEventLike } from '../app/window-registry';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { ScrollbackStore } from '../managers/scrollback-store';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
+import { FileTreeReader } from '../fs/file-tree-reader';
 import { join } from 'node:path';
 
 /**
@@ -495,6 +498,18 @@ async function getDiffViewer(ctx: IpcContext): Promise<DiffViewer> {
   return ctx.diffViewer;
 }
 
+async function getFileTreeReader(ctx: IpcContext): Promise<FileTreeReader> {
+  if (ctx.fileTreeReader) return ctx.fileTreeReader;
+  const manager = await getWorktreeManager(ctx);
+  ctx.fileTreeReader = new FileTreeReader({
+    // Trusted worktree ids (= absolute paths) — the reader rejects any other path.
+    knownWorktreeIds: async () => new Set((await manager.list()).map((w) => w.id)),
+    realpathSync,
+    readdirSync: (p) => readdirSync(p, { withFileTypes: true }),
+  });
+  return ctx.fileTreeReader;
+}
+
 /**
  * Resolves the GhStatusReader: prefer ctx (tests inject); else build a real one.
  * Copies getDiffViewer's lazy shape. owner/repo come from the origin remote URL;
@@ -728,6 +743,11 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   ipcMain.handle(IPC.DIFF_FILE, async (event, req: DiffFileRequest): Promise<FileDiff> => {
     const ctx = requireCtx(event);
     return (await getDiffViewer(ctx)).getFileDiff(req);
+  });
+
+  ipcMain.handle(IPC.TREE_LIST, async (event, req: TreeListRequest): Promise<TreeEntry[]> => {
+    const ctx = requireCtx(event);
+    return (await getFileTreeReader(ctx)).list(req);
   });
 
   ipcMain.handle(IPC.GH_STATUS, async (event, req: GhStatusRequest): Promise<GhStatus> => {

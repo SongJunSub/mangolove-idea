@@ -338,6 +338,20 @@ export interface DiffListRequest {
   readonly base?: string;
 }
 
+/** One entry in a worktree's file tree (A3 file explorer). */
+export interface TreeEntry {
+  readonly name: string;
+  readonly isDir: boolean;
+}
+
+/** Lists the entries of `relPath` within a worktree. relPath unset/'' = the worktree root. */
+export interface TreeListRequest {
+  /** The worktree to read; validated against the known worktrees (its id IS its path). */
+  readonly worktreeId: string;
+  /** Path relative to the worktree root; must not escape it. */
+  readonly relPath?: string;
+}
+
 export interface DiffFileRequest {
   readonly worktreeId: string;
   readonly base?: string;

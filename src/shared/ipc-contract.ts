@@ -31,6 +31,8 @@ import type {
   FileDiff,
   DiffListRequest,
   DiffFileRequest,
+  TreeEntry,
+  TreeListRequest,
   AppSettings,
   SessionPersistenceInfo,
   CrossMachineSessionPointer,
@@ -134,6 +136,10 @@ export interface MangoApi {
     list(req: DiffListRequest): Promise<ChangedFile[]>;
     /** Original (merge-base) + modified (branch) contents for one file. */
     file(req: DiffFileRequest): Promise<FileDiff>;
+  };
+  tree: {
+    /** Lists a worktree's directory entries at relPath (scoped to the worktree; '' = root). */
+    list(req: TreeListRequest): Promise<TreeEntry[]>;
   };
   settings: {
     /** Current persisted settings (every field optional; unset => env/default). */

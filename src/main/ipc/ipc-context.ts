@@ -8,6 +8,7 @@ import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { ScrollbackStore } from '../managers/scrollback-store';
 import type { DiffViewer } from '../git/diff-viewer';
+import type { FileTreeReader } from '../fs/file-tree-reader';
 import type { ConflictResolver } from '../git/conflict-resolver';
 import type { GhStatusReader } from '../git/gh-status-reader';
 import type { FanoutManager } from '../git/fanout-manager';
@@ -65,6 +66,8 @@ export interface IpcContext {
   serverSettingsDirty?: boolean;
   /** Lazily constructed in register-ipc; injectable in tests (V2 A1). */
   diffViewer?: DiffViewer;
+  /** Lazily constructed file-tree reader for the worktree file explorer (A3). */
+  fileTreeReader?: FileTreeReader;
   /**
    * Lazily constructed in register-ipc; injectable in tests (V2 PR/CI panel). Holds
    * NO live OS process and NO settings-derived command, so it is NOT nulled on

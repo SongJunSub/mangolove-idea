@@ -13,6 +13,7 @@ import { useCrossMachine } from './hooks/use-cross-machine';
 import { CrossMachinePanel } from './components/cross-machine/cross-machine-panel';
 import { useRepo } from './hooks/use-repo';
 import { Titlebar } from './components/titlebar/titlebar';
+import { FileTree } from './components/tree/file-tree';
 import { SettingsModal } from './components/settings/settings-modal';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
@@ -78,6 +79,11 @@ export function App(): React.JSX.Element {
   );
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
+  // relPath of the file open in the editor pane (A3 selects it; A4 will edit it), or null.
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  // A selected file belongs to ONE worktree; reset it when the worktree changes.
+  useEffect(() => setSelectedFile(null), [selectedId]);
 
   // Apply the persisted theme to <html data-theme>; 'system'/unset tracks the OS.
   useEffect(() => applyTheme(settings.theme), [settings.theme]);
@@ -265,12 +271,22 @@ export function App(): React.JSX.Element {
           {/* top-left: project file tree (A3) */}
           <div className="ws-pane ws-tree">
             <div className="pane-head">📁 Project</div>
-            <div className="pane-placeholder">파일 트리는 곧 추가됩니다 (A3)</div>
+            <FileTree
+              worktreeId={selectedId}
+              selectedFile={selectedFile}
+              onOpenFile={setSelectedFile}
+            />
           </div>
           {/* top-right: code editor (A4) */}
           <div className="ws-pane ws-editor">
             <div className="pane-head">Editor</div>
-            <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다 (A4)</div>
+            {selectedFile ? (
+              <div className="pane-placeholder" data-testid="editor-selected">
+                <code>{selectedFile}</code> — 편집기는 곧 추가됩니다 (A4)
+              </div>
+            ) : (
+              <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다 (A4)</div>
+            )}
           </div>
           {/* bottom-left: worktree management (create + list + per-worktree controls) */}
           <div className="ws-pane ws-worktrees">

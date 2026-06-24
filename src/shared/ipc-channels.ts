@@ -50,6 +50,9 @@ export const IPC = {
   DIFF_LIST: 'diff:list', // invoke (worktreeId, base? -> ChangedFile[])
   DIFF_FILE: 'diff:file', // invoke (worktreeId, base?, path -> FileDiff)
 
+  // file tree (A3) — read the selected worktree's dir tree, scoped (renderer -> main, invoke)
+  TREE_LIST: 'tree:list', // invoke ({worktreeId, relPath?} -> TreeEntry[])
+
   // PR/CI status panel (V2) — read-only gh-backed status + the open-in-browser action
   GH_STATUS: 'gh:status', // invoke (worktreeId -> GhStatus)
   APP_OPEN_EXTERNAL: 'app:open-external', // invoke (url -> Ack; shell.openExternal)
