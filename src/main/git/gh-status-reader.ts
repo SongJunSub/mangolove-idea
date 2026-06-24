@@ -47,6 +47,17 @@ export function classifyGhStatus(code: number | null, stdout: string, stderr: st
   return { kind: 'error', message: trimFriendly(err) };
 }
 
+/**
+ * True iff `git ls-remote --heads origin <branch>` stdout shows the branch on the
+ * remote — i.e. a line ending in exactly `\trefs/heads/<branch>`. Used to confirm a
+ * branch is REALLY pushed when it has no local upstream config (pushed without `-u`,
+ * or from another clone), so such a branch is not mis-reported as not-pushed. Pure.
+ */
+export function remoteHasBranch(lsRemoteStdout: string, branch: string): boolean {
+  const suffix = `\trefs/heads/${branch}`;
+  return lsRemoteStdout.split('\n').some((line) => line.trimEnd().endsWith(suffix));
+}
+
 /** Strips a leading 'fatal:'/'error:' prefix and trims (mirrors classifyGitError). */
 function trimFriendly(raw: string): string {
   return raw
@@ -107,8 +118,15 @@ export interface GhStatusReaderDeps {
   readonly resolveBranch: (worktreeId: string) => Promise<string>;
   /** worktreeId -> absolute worktree path (= gh cwd). */
   readonly resolvePath: (worktreeId: string) => Promise<string>;
-  /** True if the branch has an upstream (no upstream => not-pushed, skip gh). */
+  /** True if the branch has a LOCAL upstream config (fast, no network). */
   readonly hasUpstream: (worktreeId: string) => Promise<boolean>;
+  /**
+   * True if the branch ACTUALLY exists on the remote (authoritative, no API quota),
+   * via `git ls-remote`. Only consulted when hasUpstream is false — it disambiguates a
+   * genuinely not-pushed branch from one pushed without local tracking, which the
+   * upstream check alone would wrongly report as not-pushed.
+   */
+  readonly isOnRemote: (worktreeId: string) => Promise<boolean>;
   /** Per-call timeout (default 12_000ms); kills the child + resolves to error. */
   readonly timeoutMs?: number;
 }
@@ -128,6 +146,7 @@ export class GhStatusReader {
   private readonly resolveBranch: (worktreeId: string) => Promise<string>;
   private readonly resolvePath: (worktreeId: string) => Promise<string>;
   private readonly hasUpstream: (worktreeId: string) => Promise<boolean>;
+  private readonly isOnRemote: (worktreeId: string) => Promise<boolean>;
   private readonly timeoutMs: number;
 
   constructor(deps: GhStatusReaderDeps) {
@@ -137,6 +156,7 @@ export class GhStatusReader {
     this.resolveBranch = deps.resolveBranch;
     this.resolvePath = deps.resolvePath;
     this.hasUpstream = deps.hasUpstream;
+    this.isOnRemote = deps.isOnRemote;
     this.timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
@@ -146,8 +166,11 @@ export class GhStatusReader {
     this.assertSafeRef(branch);
     const cwd = await this.resolvePath(req.worktreeId);
 
-    // LOCAL pre-check: no upstream => not-pushed, WITHOUT spawning gh (no API quota).
-    if (!(await this.hasUpstream(req.worktreeId))) {
+    // Pre-check (no gh, no API quota): a configured upstream means pushed (fast, local).
+    // With NO upstream the branch could STILL be on the remote (pushed without `-u`, or
+    // from another clone), so confirm authoritatively via ls-remote before reporting
+    // not-pushed — && short-circuits so ls-remote only runs in the no-upstream case.
+    if (!(await this.hasUpstream(req.worktreeId)) && !(await this.isOnRemote(req.worktreeId))) {
       return { kind: 'not-pushed' };
     }
 

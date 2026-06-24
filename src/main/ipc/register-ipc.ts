@@ -46,7 +46,7 @@ import { MergeRunner, type MergeEmitter } from '../git/merge-runner';
 import { FanoutManager, type FanoutEmitter } from '../git/fanout-manager';
 import { runLane } from '../git/fanout-run';
 import { DiffViewer } from '../git/diff-viewer';
-import { GhStatusReader } from '../git/gh-status-reader';
+import { GhStatusReader, remoteHasBranch } from '../git/gh-status-reader';
 import { ConflictResolver } from '../git/conflict-resolver';
 import { probeNodePty, NodePtyFactory, type NodePtyProbe } from '../pty/pty-factory';
 import { AbducoLauncher } from '../pty/abduco-launcher';
@@ -499,9 +499,10 @@ async function getDiffViewer(ctx: IpcContext): Promise<DiffViewer> {
  * Resolves the GhStatusReader: prefer ctx (tests inject); else build a real one.
  * Copies getDiffViewer's lazy shape. owner/repo come from the origin remote URL;
  * resolveBranch/resolvePath read WorktreeManager.list() (Worktree.branch / .path);
- * hasUpstream runs a per-worktree
- * `git rev-parse --abbrev-ref --symbolic-full-name @{u}` (no upstream => not-pushed).
- * NEVER reads a token; passes process.env through only for PATH/keyring.
+ * hasUpstream runs `git rev-parse @{u}` (fast, local); isOnRemote runs
+ * `git ls-remote --heads origin <branch>` — consulted ONLY when there's no local
+ * upstream, to confirm a branch pushed without `-u` is on the remote (so it is not
+ * mis-reported as not-pushed). NEVER reads a token; process.env only for PATH/keyring.
  */
 async function getGhStatusReader(ctx: IpcContext): Promise<GhStatusReader> {
   if (ctx.ghStatusReader) return ctx.ghStatusReader;
@@ -512,24 +513,20 @@ async function getGhStatusReader(ctx: IpcContext): Promise<GhStatusReader> {
   const { owner, repo } = parseOwnerRepo(remote.trim());
 
   const manager = await getWorktreeManager(ctx);
-  const pathOf = async (worktreeId: string): Promise<string> => {
-    const trees = await manager.list();
-    const t = trees.find((x) => x.id === worktreeId);
+  const treeOf = async (worktreeId: string): Promise<Worktree> => {
+    const t = (await manager.list()).find((x) => x.id === worktreeId);
     if (!t) throw new Error(`unknown worktree ${worktreeId}`);
-    return t.path;
+    return t;
   };
+  const pathOf = async (worktreeId: string): Promise<string> => (await treeOf(worktreeId)).path;
+  const branchOf = async (worktreeId: string): Promise<string> => (await treeOf(worktreeId)).branch;
 
   ctx.ghStatusReader = new GhStatusReader({
     runner: new NodeProcessRunner(),
     repoRoot,
     owner,
     repo,
-    resolveBranch: async (worktreeId) => {
-      const trees = await manager.list();
-      const t = trees.find((x) => x.id === worktreeId);
-      if (!t) throw new Error(`unknown worktree ${worktreeId}`);
-      return t.branch;
-    },
+    resolveBranch: branchOf,
     resolvePath: pathOf,
     hasUpstream: async (worktreeId) => {
       const wtPath = await pathOf(worktreeId);
@@ -537,8 +534,25 @@ async function getGhStatusReader(ctx: IpcContext): Promise<GhStatusReader> {
         await simpleGit(wtPath).raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
         return true;
       } catch {
-        // exit 128 'fatal: no upstream configured for branch' => not pushed.
+        // exit 128 'fatal: no upstream configured for branch' => no LOCAL tracking.
         return false;
+      }
+    },
+    // Authoritative remote-existence check (no API quota) for the no-upstream case: a
+    // branch pushed without `-u` (or from another clone) has no local tracking but IS
+    // on the remote, so ls-remote distinguishes it from a genuinely not-pushed branch.
+    isOnRemote: async (worktreeId) => {
+      const branch = await branchOf(worktreeId);
+      try {
+        const out = await simpleGit(await pathOf(worktreeId)).raw([
+          'ls-remote',
+          '--heads',
+          'origin',
+          branch,
+        ]);
+        return remoteHasBranch(out, branch);
+      } catch {
+        return false; // no remote / network error => treat as not-on-remote
       }
     },
   });
