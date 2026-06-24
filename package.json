@@ -89,6 +89,7 @@
     "npmRebuild": false,
     "mac": {
       "identity": null,
+      "icon": "resources/icon.png",
       "target": [
         {
           "target": "dmg",
