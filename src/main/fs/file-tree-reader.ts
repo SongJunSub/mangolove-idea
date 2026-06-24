@@ -1,24 +1,17 @@
-import { resolve, sep } from 'node:path';
 import type { TreeEntry, TreeListRequest } from '../../shared/types';
+import { isWithin, resolveExistingScopedPath } from './scoped-path';
 
 /**
  * Reads a worktree's directory tree for the renderer's file explorer (A3).
  *
  * SECURITY (load-bearing): the renderer must NEVER be able to read an arbitrary path.
- * The worktree id IS its absolute path, so a request could carry any path — therefore:
- *   1. The requested worktreeId MUST be one of the CURRENT known worktrees (trusted list
- *      from WorktreeManager); an unknown id is rejected.
- *   2. The base is the worktree's REAL path; the requested relPath is joined and checked
- *      to stay within it (blocks `..` traversal), then the resolved target's REAL path is
- *      re-checked (blocks symlink escapes out of the worktree).
- * Anything outside the worktree throws — never lists.
+ * The three-layer scope check now lives in scoped-path.ts (shared with A4's editor);
+ * this reader delegates to resolveExistingScopedPath, then lists the canonical target.
  */
 
-/** True iff `p` is exactly `base` or strictly nested under it (both absolute + normalized). */
-export function isWithin(base: string, p: string): boolean {
-  const b = base.endsWith(sep) ? base.slice(0, -1) : base;
-  return p === b || p.startsWith(b + sep);
-}
+// Re-exported so the existing tests/main/file-tree-reader.test.ts import stays green
+// after isWithin moved to scoped-path.ts (the ONE audited gate).
+export { isWithin };
 
 /** Directories first, then files; case-insensitive alphabetical within each group. */
 export function sortEntries(entries: readonly TreeEntry[]): TreeEntry[] {
@@ -51,15 +44,11 @@ export class FileTreeReader {
 
   /** Lists the entries of `relPath` within the worktree, scoped + sorted. Throws on escape. */
   async list(req: TreeListRequest): Promise<TreeEntry[]> {
-    const known = await this.deps.knownWorktreeIds();
-    if (!known.has(req.worktreeId)) {
-      throw new Error('unknown worktree'); // never read a path the app doesn't own
-    }
-    const baseReal = this.deps.realpathSync(req.worktreeId);
-    const target = resolve(baseReal, req.relPath ?? '');
-    if (!isWithin(baseReal, target)) throw new Error('path escapes the worktree');
-    const targetReal = this.deps.realpathSync(target);
-    if (!isWithin(baseReal, targetReal)) throw new Error('path escapes the worktree (symlink)');
+    const { targetReal } = await resolveExistingScopedPath(
+      this.deps,
+      req.worktreeId,
+      req.relPath ?? '',
+    );
 
     const entries = this.deps
       .readdirSync(targetReal)

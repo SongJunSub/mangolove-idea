@@ -8,6 +8,8 @@ export interface DiffViewProps {
   readonly worktreeId: string;
   /** Base branch to diff against; defaults to 'main' (main-side default). */
   readonly base?: string;
+  /** App's resolved theme — monaco's theme is process-global, so all panes must agree. */
+  readonly theme: 'dark' | 'light';
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -22,7 +24,7 @@ const STATUS_LABEL: Record<ChangedFile['status'], string> = {
  * a readOnly Monaco DiffEditor (original = merge-base, modified = branch). Monaco +
  * its models are created on mount and disposed on unmount (mirrors AgentTerminal).
  */
-export function DiffView({ worktreeId, base }: DiffViewProps): React.JSX.Element {
+export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.Element {
   const { files, loading, error, loadFile } = useDiff(worktreeId, base);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
@@ -37,7 +39,7 @@ export function DiffView({ worktreeId, base }: DiffViewProps): React.JSX.Element
       readOnly: true,
       renderSideBySide: true,
       automaticLayout: true,
-      theme: 'vs-dark',
+      theme: theme === 'dark' ? 'vs-dark' : 'vs',
     });
     editorRef.current = editor;
     return () => {
@@ -47,7 +49,13 @@ export function DiffView({ worktreeId, base }: DiffViewProps): React.JSX.Element
       editor.dispose();
       editorRef.current = null;
     };
+    // Mount-only (theme applied via create + the [theme] effect below).
   }, []);
+
+  // monaco's theme is process-global; follow App's resolved theme so all panes agree.
+  useEffect(() => {
+    monaco.editor.setTheme(theme === 'dark' ? 'vs-dark' : 'vs');
+  }, [theme]);
 
   // When a file is selected, fetch its diff and swap the editor's models.
   useEffect(() => {

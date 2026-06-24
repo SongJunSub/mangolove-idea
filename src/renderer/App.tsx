@@ -1,7 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { AppInfo, QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
 import { formatVersions } from './lib/format-versions';
-import { applyTheme } from './lib/theme';
+import { applyTheme, resolveTheme } from './lib/theme';
+import { useFileEditor } from './hooks/use-file-editor';
+import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
 import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
 import { useLogs } from './hooks/use-logs';
@@ -44,6 +46,22 @@ const ConflictView = lazy(() =>
 const FanoutView = lazy(() =>
   import('./components/fanout/fanout-view').then((m) => ({ default: m.FanoutView })),
 );
+// Lazy so the editor folds into the shared monaco chunk (A4) — fetched only when a file
+// is first opened, like DiffView/ConflictView.
+const CodeEditor = lazy(() =>
+  import('./components/editor/code-editor').then((m) => ({ default: m.CodeEditor })),
+);
+
+/** Human-readable reason a file opened view-only (mirrors FileReadResult.reason). */
+function readOnlyReason(reason?: 'binary' | 'tooLarge' | 'encoding'): string {
+  if (reason === 'binary') return '바이너리 파일';
+  if (reason === 'tooLarge') return '파일이 너무 큼 (5MB 초과)';
+  if (reason === 'encoding') return 'UTF-8이 아닌 파일';
+  return '읽기 전용';
+}
+
+/** A queued selection change held while the editor is dirty (resolved via the modal). */
+type PendingSwitch = { kind: 'file'; relPath: string } | { kind: 'worktree'; id: string | null };
 
 export function App(): React.JSX.Element {
   const repo = useRepo();
@@ -79,14 +97,72 @@ export function App(): React.JSX.Element {
   );
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
-  // relPath of the file open in the editor pane (A3 selects it; A4 will edit it), or null.
+  // relPath of the file open in the editor pane (A4 edits + saves it), or null.
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  // The A4 editor state for (selectedId, selectedFile). dirty drives the unsaved-guard.
+  const editor = useFileEditor(selectedId, selectedFile);
+  // A selection change queued while the editor is dirty, awaiting the save/discard prompt.
+  const [pending, setPending] = useState<PendingSwitch | null>(null);
 
-  // A selected file belongs to ONE worktree; reset it when the worktree changes.
-  useEffect(() => setSelectedFile(null), [selectedId]);
+  // App's resolved theme ('dark'/'light'), fed to ALL monaco panes (process-global
+  // theme). Initialized synchronously so there is no first-paint flash.
+  const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() =>
+    resolveTheme(settings.theme, window.matchMedia('(prefers-color-scheme: dark)').matches),
+  );
+  // ONE matchMedia listener (inside applyTheme) owns BOTH <html data-theme> and
+  // resolvedTheme — 'system'/unset tracks the OS; explicit modes set once.
+  useEffect(() => applyTheme(settings.theme, setResolvedTheme), [settings.theme]);
 
-  // Apply the persisted theme to <html data-theme>; 'system'/unset tracks the OS.
-  useEffect(() => applyTheme(settings.theme), [settings.theme]);
+  // ── Unsaved-changes guard: the SINGLE chokepoint for every selection mutation. ──
+  // Raw setSelectedId/setSelectedFile are forbidden outside applyWorktree/applyPending,
+  // so no low-level channel can drop a dirty buffer without prompting first.
+
+  /** Apply a worktree selection AND clear the open file (replaces the old line-86 effect,
+   *  which nulled selectedFile on ANY selectedId change — unmounting a dirty editor). */
+  const applyWorktree = useCallback((id: string | null): void => {
+    setSelectedId(id);
+    setSelectedFile(null);
+  }, []);
+
+  const applyPending = useCallback(
+    (p: PendingSwitch): void => {
+      if (p.kind === 'file') setSelectedFile(p.relPath);
+      else applyWorktree(p.id);
+      setPending(null);
+    },
+    [applyWorktree],
+  );
+
+  /** Open a file in the editor; prompts first if the current file is dirty. */
+  const requestOpenFile = useCallback(
+    (relPath: string): void => {
+      if (relPath === selectedFile) return;
+      if (editor.dirty) setPending({ kind: 'file', relPath });
+      else setSelectedFile(relPath);
+    },
+    [selectedFile, editor.dirty],
+  );
+
+  /** Select a worktree; prompts first if a dirty file is open. */
+  const requestSelectWorktree = useCallback(
+    (id: string | null): void => {
+      if (id === selectedId) return;
+      if (editor.dirty) setPending({ kind: 'worktree', id });
+      else applyWorktree(id);
+    },
+    [selectedId, editor.dirty, applyWorktree],
+  );
+
+  // Modal handlers. On save FAILURE keep the modal open (editor.saveError shows inside it)
+  // so the queued navigation is never silently dropped and Save can be retried.
+  const onGuardSave = useCallback(async (): Promise<void> => {
+    const ok = await editor.save();
+    if (ok && pending) applyPending(pending);
+  }, [editor, pending, applyPending]);
+  const onGuardDiscard = useCallback((): void => {
+    if (pending) applyPending(pending);
+  }, [pending, applyPending]);
+  const onGuardCancel = useCallback((): void => setPending(null), []);
 
   useEffect(() => {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
@@ -175,11 +251,11 @@ export function App(): React.JSX.Element {
         return;
       }
       if (result.merged) {
-        if (worktree.id === selectedId) setSelectedId(null);
+        if (worktree.id === selectedId) requestSelectWorktree(null);
         await refresh();
       }
     },
-    [runMerge, refresh, selectedId, baseBranch],
+    [runMerge, refresh, selectedId, baseBranch, requestSelectWorktree],
   );
 
   const onPing = useCallback(async () => {
@@ -274,18 +350,60 @@ export function App(): React.JSX.Element {
             <FileTree
               worktreeId={selectedId}
               selectedFile={selectedFile}
-              onOpenFile={setSelectedFile}
+              onOpenFile={requestOpenFile}
             />
           </div>
-          {/* top-right: code editor (A4) */}
+          {/* top-right: code editor (A4) — edit + ⌘S save */}
           <div className="ws-pane ws-editor">
-            <div className="pane-head">Editor</div>
-            {selectedFile ? (
-              <div className="pane-placeholder" data-testid="editor-selected">
-                <code>{selectedFile}</code> — 편집기는 곧 추가됩니다 (A4)
+            <div className="pane-head">
+              <span>Editor</span>
+              {selectedFile && selectedId && !editor.readOnly && (
+                <button
+                  type="button"
+                  data-testid="editor-save"
+                  className="editor-save-btn"
+                  disabled={!editor.dirty || editor.saving}
+                  title="Save ⌘S"
+                  onClick={() => void editor.save()}
+                >
+                  {editor.saving ? 'Saving…' : 'Save'}
+                </button>
+              )}
+            </div>
+            {!selectedFile || !selectedId ? (
+              <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다</div>
+            ) : editor.loadError ? (
+              <div className="pane-placeholder" data-testid="editor-load-error">
+                불러오기 실패: {editor.loadError}
               </div>
             ) : (
-              <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다 (A4)</div>
+              <div
+                className="pane-body"
+                style={{ display: 'flex', flexDirection: 'column', minHeight: 0, gap: 6 }}
+              >
+                {editor.readOnly && (
+                  <div className="editor-banner" data-testid="editor-readonly">
+                    {readOnlyReason(editor.reason)} — 읽기 전용
+                  </div>
+                )}
+                {editor.saveError && (
+                  <div className="editor-banner err" data-testid="editor-save-error">
+                    저장 실패: {editor.saveError}
+                  </div>
+                )}
+                <Suspense fallback={<div className="pane-placeholder">에디터 로딩…</div>}>
+                  <CodeEditor
+                    worktreeId={selectedId}
+                    relPath={selectedFile}
+                    theme={resolvedTheme}
+                    content={editor.content}
+                    readOnly={editor.readOnly}
+                    dirty={editor.dirty}
+                    onChange={editor.setValue}
+                    onSaveRequested={() => void editor.save()}
+                  />
+                </Suspense>
+              </div>
             )}
           </div>
           {/* bottom-left: worktree management (create + list + per-worktree controls) */}
@@ -319,7 +437,7 @@ export function App(): React.JSX.Element {
                 error={error}
                 selectedId={selectedId}
                 statuses={statuses}
-                onSelect={setSelectedId}
+                onSelect={requestSelectWorktree}
                 onRemove={(id) => void remove(id)}
               />
             </div>
@@ -401,6 +519,7 @@ export function App(): React.JSX.Element {
                         key={`diff-${selectedId}`}
                         worktreeId={selectedId}
                         base={baseBranch}
+                        theme={resolvedTheme}
                       />
                     </Suspense>
                   )}
@@ -418,11 +537,12 @@ export function App(): React.JSX.Element {
                         worktreeId={selectedId}
                         targetBranch={baseBranch}
                         cleanup={true}
+                        theme={resolvedTheme}
                         onResolved={(merged) => {
                           setConflictWorktreeId(null);
                           setPaneMode('terminal');
                           if (merged) {
-                            if (selectedId === selectedWorktree?.id) setSelectedId(null);
+                            if (selectedId === selectedWorktree?.id) requestSelectWorktree(null);
                           }
                           void refresh();
                         }}
@@ -455,7 +575,7 @@ export function App(): React.JSX.Element {
             <Suspense
               fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
             >
-              <FanoutView base={baseBranch} onMerged={() => void refresh()} />
+              <FanoutView base={baseBranch} theme={resolvedTheme} onMerged={() => void refresh()} />
             </Suspense>
           </div>
         )}
@@ -483,10 +603,20 @@ export function App(): React.JSX.Element {
                 setCrossMachineOpen(false);
                 // Refresh the worktree list, then select the (new) worktree — selecting it
                 // mounts AgentTerminal with continueSession=false (no record), a FRESH session.
-                void refresh().then(() => setSelectedId(wt.id));
+                void refresh().then(() => requestSelectWorktree(wt.id));
               });
             }}
             onClose={() => setCrossMachineOpen(false)}
+          />
+        )}
+        {pending && selectedFile && (
+          <ConfirmDiscardModal
+            fileName={selectedFile}
+            saving={editor.saving}
+            saveError={editor.saveError}
+            onSave={() => void onGuardSave()}
+            onDiscard={onGuardDiscard}
+            onCancel={onGuardCancel}
           />
         )}
         {quitWarning && (

@@ -19,11 +19,20 @@ export function resolveTheme(
  * Applies the resolved theme to <html data-theme>. For 'system' (or unset) it also
  * tracks live OS changes. Returns a cleanup that removes the OS listener (a no-op for
  * the explicit modes), so callers can run it from a React effect.
+ *
+ * `onResolved` (optional) is invoked with the concrete 'dark'/'light' on every apply,
+ * so a caller can mirror the resolved mode into React state (e.g. to feed monaco's
+ * process-global theme) from this SINGLE matchMedia listener — no duplicate listener.
  */
-export function applyTheme(setting: ThemeSetting | undefined): () => void {
+export function applyTheme(
+  setting: ThemeSetting | undefined,
+  onResolved?: (resolved: 'dark' | 'light') => void,
+): () => void {
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const apply = (): void => {
-    document.documentElement.setAttribute('data-theme', resolveTheme(setting, mq.matches));
+    const resolved = resolveTheme(setting, mq.matches);
+    document.documentElement.setAttribute('data-theme', resolved);
+    onResolved?.(resolved);
   };
   apply();
   if (setting === 'dark' || setting === 'light') return () => {};

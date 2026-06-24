@@ -9,6 +9,7 @@ import type { SettingsStore } from '../managers/settings-store';
 import type { ScrollbackStore } from '../managers/scrollback-store';
 import type { DiffViewer } from '../git/diff-viewer';
 import type { FileTreeReader } from '../fs/file-tree-reader';
+import type { FileEditor } from '../fs/file-editor';
 import type { ConflictResolver } from '../git/conflict-resolver';
 import type { GhStatusReader } from '../git/gh-status-reader';
 import type { FanoutManager } from '../git/fanout-manager';
@@ -68,6 +69,12 @@ export interface IpcContext {
   diffViewer?: DiffViewer;
   /** Lazily constructed file-tree reader for the worktree file explorer (A3). */
   fileTreeReader?: FileTreeReader;
+  /**
+   * Lazily constructed file reader/writer for the editor pane (A4). Like fileTreeReader,
+   * holds no live OS process and no settings-derived command, so it is NOT nulled on
+   * SETTINGS_SET. Scoped to known worktrees via the shared scoped-path gate.
+   */
+  fileEditor?: FileEditor;
   /**
    * Lazily constructed in register-ipc; injectable in tests (V2 PR/CI panel). Holds
    * NO live OS process and NO settings-derived command, so it is NOT nulled on

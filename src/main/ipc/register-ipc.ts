@@ -23,6 +23,10 @@ import type {
   DiffFileRequest,
   TreeListRequest,
   TreeEntry,
+  FileReadRequest,
+  FileReadResult,
+  FileWriteRequest,
+  FileWriteResult,
   AppSettings,
   SessionPersistenceInfo,
   CrossMachineSessionPointer,
@@ -68,8 +72,21 @@ import { requireCtxFrom, type CtxEventLike } from '../app/window-registry';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { ScrollbackStore } from '../managers/scrollback-store';
-import { existsSync, readdirSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  readdirSync,
+  realpathSync,
+  lstatSync,
+  statSync,
+  readFileSync,
+  openSync,
+  writeSync,
+  closeSync,
+  fstatSync,
+  constants as fsConstants,
+} from 'node:fs';
 import { FileTreeReader } from '../fs/file-tree-reader';
+import { FileEditor } from '../fs/file-editor';
 import { join } from 'node:path';
 
 /**
@@ -511,6 +528,39 @@ async function getFileTreeReader(ctx: IpcContext): Promise<FileTreeReader> {
 }
 
 /**
+ * Resolves the FileEditor (A4) — same trusted worktree set + realpath/lstat seams as the
+ * tree reader, plus the WRITE seam writeNoFollow: it opens the FINAL path component with
+ * O_NOFOLLOW (so a symlink there throws ELOOP and is never written through) and fstats
+ * the fd to reject a non-regular file. This is the load-bearing write security seam.
+ */
+async function getFileEditor(ctx: IpcContext): Promise<FileEditor> {
+  if (ctx.fileEditor) return ctx.fileEditor;
+  const manager = await getWorktreeManager(ctx);
+  ctx.fileEditor = new FileEditor({
+    knownWorktreeIds: async () => new Set((await manager.list()).map((w) => w.id)),
+    realpathSync,
+    lstatSync, // does NOT follow the final symlink (dangling/looping links route to reject)
+    statSync,
+    readFileSync,
+    writeNoFollow: (parentReal, name, content) => {
+      const target = join(parentReal, name);
+      const fd = openSync(
+        target,
+        fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW,
+        0o644,
+      );
+      try {
+        if (!fstatSync(fd).isFile()) throw new Error('not a regular file');
+        writeSync(fd, content, null, 'utf8');
+      } finally {
+        closeSync(fd);
+      }
+    },
+  });
+  return ctx.fileEditor;
+}
+
+/**
  * Resolves the GhStatusReader: prefer ctx (tests inject); else build a real one.
  * Copies getDiffViewer's lazy shape. owner/repo come from the origin remote URL;
  * resolveBranch/resolvePath read WorktreeManager.list() (Worktree.branch / .path);
@@ -754,6 +804,36 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       // (defense-in-depth; mirrors GH_STATUS). The real cause is logged main-side.
       console.error('TREE_LIST failed:', error);
       throw new Error('failed to read directory');
+    }
+  });
+
+  ipcMain.handle(IPC.FILE_READ, async (event, req: FileReadRequest): Promise<FileReadResult> => {
+    const ctx = requireCtx(event);
+    try {
+      return await (await getFileEditor(ctx)).read(req);
+    } catch (error) {
+      // Normalize so a raw fs path never reaches the renderer (mirrors TREE_LIST).
+      console.error('FILE_READ failed:', error);
+      throw new Error('failed to read file');
+    }
+  });
+
+  ipcMain.handle(IPC.FILE_WRITE, async (event, req: FileWriteRequest): Promise<FileWriteResult> => {
+    const ctx = requireCtx(event);
+    try {
+      const { baseToken } = await (await getFileEditor(ctx)).write(req);
+      return { ok: true, baseToken };
+    } catch (error) {
+      // The renderer keeps the buffer dirty on a failed write. Surface ONLY our own
+      // semantic errors (plain Error, no path) so the user sees actionable messages
+      // ('file changed on disk', 'file too large', the scoped-path rejects). A raw fs
+      // syscall error (EACCES/EISDIR/ENOSPC...) carries a `code` AND embeds an absolute
+      // path — collapse it to a generic message so no fs path reaches the renderer
+      // (mirrors FILE_READ/TREE_LIST normalization).
+      console.error('FILE_WRITE failed:', error);
+      const isSyscall = !!(error as NodeJS.ErrnoException | undefined)?.code;
+      const message = error instanceof Error && !isSyscall ? error.message : 'failed to write file';
+      return { ok: false, error: message };
     }
   });
 
