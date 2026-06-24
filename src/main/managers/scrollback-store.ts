@@ -9,6 +9,15 @@ import { join } from 'node:path';
 export const SCROLLBACK_MAX_BYTES = 256 * 1024;
 
 /**
+ * Global cap on the NUMBER of stored worktree entries. A backstop against unbounded
+ * growth from any removal path that forgets to drop its entry: set() evicts the
+ * least-recently-SET entries beyond this count. Combined with the per-entry byte cap
+ * this bounds scrollback.json to ~MAX_ENTRIES * 256 KB. A dev rarely has more than a
+ * handful of live worktrees, so 32 is ample headroom.
+ */
+export const SCROLLBACK_MAX_ENTRIES = 32;
+
+/**
  * Resolves the default scrollback.json path under Electron's userData dir. Kept
  * separate (mirrors getDefaultSettingsPath/getDefaultSessionsPath) so register-ipc reads
  * the store from ctx while tests inject an explicit temp path into the constructor.
@@ -62,8 +71,20 @@ export class ScrollbackStore {
   /** Stores (capped) the buffer for a worktree, then persists atomically. */
   set(worktreeId: string, data: string): void {
     const map = this.load();
+    // Re-insert so this worktree moves to the END of the insertion order (= most
+    // recently set); evictToCap then drops the OLDEST (front) entries past the count
+    // cap, approximating an LRU where each set() "touches" the worktree.
+    delete map[worktreeId];
     map[worktreeId] = this.cap(data);
+    this.evictToCap(map);
     this.write(map);
+  }
+
+  /** Evicts the least-recently-set entries so the map holds at most SCROLLBACK_MAX_ENTRIES. */
+  private evictToCap(map: ScrollbackMap): void {
+    const keys = Object.keys(map);
+    if (keys.length <= SCROLLBACK_MAX_ENTRIES) return;
+    for (const stale of keys.slice(0, keys.length - SCROLLBACK_MAX_ENTRIES)) delete map[stale];
   }
 
   /** Drops the entry for a worktree (no-op if absent), then persists. */
