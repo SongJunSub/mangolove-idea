@@ -364,7 +364,18 @@ export interface ScrollbackSetRequest {
   readonly data: string;
 }
 
-/** Collapsed CI summary derived ONLY from gh's per-check `bucket` field. */
+/** gh's pre-bucketed per-check status (we switch ONLY on this, never raw states). */
+export type GhBucket = 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel';
+
+/** One CI check row for the expandable per-check list (name + bucket + link). */
+export interface GhCheckItem {
+  readonly name: string;
+  readonly bucket: GhBucket;
+  /** Details URL gh reports for the check, or '' when none. */
+  readonly link: string;
+}
+
+/** Collapsed CI summary derived from gh's per-check `bucket` field + the raw rows. */
 export interface GhCiSummary {
   /** 'none' = a PR with zero reported checks. */
   readonly summary: 'passing' | 'failing' | 'pending' | 'none';
@@ -375,6 +386,8 @@ export interface GhCiSummary {
     readonly skipping: number;
     readonly cancel: number;
   };
+  /** Per-check rows for the expandable panel (empty for the pending/none paths). */
+  readonly checks: readonly GhCheckItem[];
 }
 
 /** PR header for an open/merged/closed PR on the worktree's branch. */

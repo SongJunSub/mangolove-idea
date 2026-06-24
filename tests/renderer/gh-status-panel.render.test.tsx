@@ -13,7 +13,14 @@ const openPr = (over: Partial<GhStatus & { kind: 'open-pr' }> = {}): GhStatus =>
     isDraft: false,
     reviewDecision: '',
   },
-  ci: { summary: 'passing', counts: { pass: 3, fail: 0, pending: 0, skipping: 0, cancel: 0 } },
+  ci: {
+    summary: 'passing',
+    counts: { pass: 3, fail: 0, pending: 0, skipping: 0, cancel: 0 },
+    checks: [
+      { name: 'build', bucket: 'pass', link: 'https://ci/build' },
+      { name: 'lint', bucket: 'fail', link: '' },
+    ],
+  },
   ...over,
 });
 
@@ -65,12 +72,42 @@ describe('<GhStatusPanel>', () => {
         ci: {
           summary: 'failing',
           counts: { pass: 0, fail: 1, pending: 0, skipping: 0, cancel: 0 },
+          checks: [{ name: 'lint', bucket: 'fail', link: '' }],
         },
       }),
     });
     const line = screen.getByTestId('gh-status-line');
     expect(line).toHaveTextContent('(draft)');
     expect(line).toHaveTextContent('CI ✗');
+  });
+
+  it('expands a per-check list on toggle and opens a check link', () => {
+    const { props } = panel({ status: openPr() }); // checks: build(pass, link), lint(fail, no link)
+    expect(screen.queryByTestId('gh-checks')).not.toBeInTheDocument(); // collapsed by default
+    fireEvent.click(screen.getByTestId('gh-checks-toggle'));
+    const list = screen.getByTestId('gh-checks');
+    expect(list).toHaveTextContent('build');
+    expect(list).toHaveTextContent('lint');
+    // 'build' has a link -> an open button wired to it; 'lint' has no link -> no button.
+    fireEvent.click(screen.getByTestId('gh-check-open-build'));
+    expect(props.onOpen).toHaveBeenCalledWith('https://ci/build');
+    expect(screen.queryByTestId('gh-check-open-lint')).not.toBeInTheDocument();
+    // toggling again collapses it.
+    fireEvent.click(screen.getByTestId('gh-checks-toggle'));
+    expect(screen.queryByTestId('gh-checks')).not.toBeInTheDocument();
+  });
+
+  it('shows no checks toggle when there are no checks (none CI)', () => {
+    panel({
+      status: openPr({
+        ci: {
+          summary: 'none',
+          counts: { pass: 0, fail: 0, pending: 0, skipping: 0, cancel: 0 },
+          checks: [],
+        },
+      }),
+    });
+    expect(screen.queryByTestId('gh-checks-toggle')).not.toBeInTheDocument();
   });
 
   it('shows a calm neutral state with NO Open button for the no-pr/common kinds', () => {

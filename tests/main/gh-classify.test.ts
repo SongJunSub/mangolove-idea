@@ -4,7 +4,7 @@ import {
   summarizeChecks,
   GH_MISSING_SENTINEL,
 } from '../../src/main/git/gh-status-reader';
-import type { GhStatus } from '../../src/shared/types';
+import type { GhCheckItem, GhStatus } from '../../src/shared/types';
 
 function kind(s: GhStatus): GhStatus['kind'] {
   return s.kind;
@@ -52,34 +52,48 @@ describe('classifyGhStatus (pure, table-driven, no spawning)', () => {
 });
 
 describe('summarizeChecks (pure, switches on bucket only)', () => {
-  it('returns none for zero checks', () => {
+  /** A full check row (name/link carried through for the expandable panel). */
+  const row = (bucket: GhCheckItem['bucket'], name: string = bucket): GhCheckItem => ({
+    name,
+    bucket,
+    link: `https://x/${name}`,
+  });
+
+  it('returns none + empty checks for zero checks', () => {
     expect(summarizeChecks([])).toEqual({
       summary: 'none',
       counts: { pass: 0, fail: 0, pending: 0, skipping: 0, cancel: 0 },
+      checks: [],
     });
   });
 
   it('any fail bucket => failing (precedence over pending/pass)', () => {
-    const out = summarizeChecks([{ bucket: 'pass' }, { bucket: 'fail' }, { bucket: 'pending' }]);
+    const out = summarizeChecks([row('pass'), row('fail'), row('pending')]);
     expect(out.summary).toBe('failing');
     expect(out.counts).toEqual({ pass: 1, fail: 1, pending: 1, skipping: 0, cancel: 0 });
   });
 
   it('a cancel bucket counts as failing-precedence', () => {
-    expect(summarizeChecks([{ bucket: 'pass' }, { bucket: 'cancel' }]).summary).toBe('failing');
+    expect(summarizeChecks([row('pass'), row('cancel')]).summary).toBe('failing');
   });
 
   it('pending (no fails) => pending', () => {
-    expect(summarizeChecks([{ bucket: 'pass' }, { bucket: 'pending' }]).summary).toBe('pending');
+    expect(summarizeChecks([row('pass'), row('pending')]).summary).toBe('pending');
   });
 
   it('all pass/skipping => passing', () => {
-    expect(summarizeChecks([{ bucket: 'pass' }, { bucket: 'skipping' }]).summary).toBe('passing');
+    expect(summarizeChecks([row('pass'), row('skipping')]).summary).toBe('passing');
   });
 
   it('ignores unknown bucket values defensively', () => {
-    expect(summarizeChecks([{ bucket: 'pass' }, { bucket: 'weird' as never }]).summary).toBe(
-      'passing',
-    );
+    expect(summarizeChecks([row('pass'), row('weird' as never)]).summary).toBe('passing');
+  });
+
+  it('carries the per-check rows (name/bucket/link) for the expandable panel', () => {
+    const out = summarizeChecks([row('pass', 'build'), row('fail', 'lint')]);
+    expect(out.checks).toEqual([
+      { name: 'build', bucket: 'pass', link: 'https://x/build' },
+      { name: 'lint', bucket: 'fail', link: 'https://x/lint' },
+    ]);
   });
 });
