@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { realpathSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { ConflictResolver } from '../../src/main/git/conflict-resolver';
+import { ConflictResolver, hasConflictMarkers } from '../../src/main/git/conflict-resolver';
 import { WorktreeManager } from '../../src/main/managers/worktree-manager';
 import { makeTempGitRepo, type TempGitRepo } from '../helpers/temp-git-repo';
 
@@ -43,6 +43,25 @@ async function seedModifyDelete(repo: TempGitRepo, git: SimpleGit): Promise<stri
   await git.merge(['--no-edit', 'feature/md']).catch(() => undefined);
   return path;
 }
+
+describe('hasConflictMarkers', () => {
+  const conflict = '<<<<<<< HEAD\nmain-version\n=======\nfeature-version\n>>>>>>> feature/cflt\n';
+
+  it('detects begin/end conflict markers', () => {
+    expect(hasConflictMarkers(conflict)).toBe(true);
+    expect(hasConflictMarkers('just\n<<<<<<< ours\nx\n')).toBe(true); // begin only
+    expect(hasConflictMarkers('x\n>>>>>>> theirs\n')).toBe(true); // end only
+  });
+
+  it('is false for resolved/clean content', () => {
+    expect(hasConflictMarkers('merged!\n')).toBe(false);
+    expect(hasConflictMarkers('')).toBe(false);
+  });
+
+  it('does NOT false-positive on a markdown setext heading underline (=======)', () => {
+    expect(hasConflictMarkers('Title\n=======\n\nbody\n')).toBe(false);
+  });
+});
 
 describe('ConflictResolver', () => {
   let repo: TempGitRepo;
@@ -133,6 +152,25 @@ describe('ConflictResolver', () => {
     await resolver.resolve({ path: 'base.txt', choice: 'manual', content: 'merged!\n' });
     expect(readFileSync(join(repo.dir, 'base.txt'), 'utf8')).toBe('merged!\n');
     expect(await resolver.list()).toEqual([]);
+  });
+
+  it("resolve 'manual' REJECTS content with leftover conflict markers (not staged)", async () => {
+    await seedContentConflict(repo, git);
+    const stillMarkered =
+      '<<<<<<< HEAD\nmain-version\n=======\nfeature-version\n>>>>>>> feature/cflt\n';
+    await expect(
+      resolver.resolve({ path: 'base.txt', choice: 'manual', content: stillMarkered }),
+    ).rejects.toThrow(/conflict markers/);
+    // The half-resolved edit was NOT staged — the file is still conflicted.
+    expect((await resolver.list()).map((f) => f.path)).toContain('base.txt');
+  });
+
+  it("resolve 'keep' REJECTS a working file that still has conflict markers", async () => {
+    await seedContentConflict(repo, git); // base.txt on disk still carries the raw markers
+    await expect(resolver.resolve({ path: 'base.txt', choice: 'keep' })).rejects.toThrow(
+      /conflict markers/,
+    );
+    expect((await resolver.list()).map((f) => f.path)).toContain('base.txt');
   });
 
   it('continue() is rejected while a conflict remains and creates no commit', async () => {
