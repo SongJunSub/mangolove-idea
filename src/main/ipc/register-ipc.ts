@@ -747,7 +747,14 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
 
   ipcMain.handle(IPC.TREE_LIST, async (event, req: TreeListRequest): Promise<TreeEntry[]> => {
     const ctx = requireCtx(event);
-    return (await getFileTreeReader(ctx)).list(req);
+    try {
+      return await (await getFileTreeReader(ctx)).list(req);
+    } catch (error) {
+      // Normalize so a raw fs path (ENOENT etc.) never reaches the renderer
+      // (defense-in-depth; mirrors GH_STATUS). The real cause is logged main-side.
+      console.error('TREE_LIST failed:', error);
+      throw new Error('failed to read directory');
+    }
   });
 
   ipcMain.handle(IPC.GH_STATUS, async (event, req: GhStatusRequest): Promise<GhStatus> => {
