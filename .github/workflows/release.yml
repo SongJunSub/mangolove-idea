@@ -49,7 +49,11 @@ jobs:
 
       # Build the renderer/main/preload, then the unsigned dmg. --publish never makes the
       # build deterministic (electron-builder never auto-publishes); WE publish below.
+      # NODE_OPTIONS bumps V8's heap: the renderer bundles all Monaco languages (~7 MB),
+      # which OOM'd the macos-14 runner's default heap during `vite build` (exit 134).
       - name: Build unsigned dmg
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           npm run build
           npx electron-builder --mac --arm64 --publish never
