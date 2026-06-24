@@ -40,6 +40,7 @@ export function SettingsModal({
   onSave,
   onClose,
 }: SettingsModalProps): React.JSX.Element {
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(settings.theme ?? 'system');
   const [agentCommand, setAgentCommand] = useState(settings.agentCommand ?? '');
   const [verifyCommand, setVerifyCommand] = useState(settings.verifyCommand ?? '');
   const [serverCommand, setServerCommand] = useState(settings.serverCommand ?? '');
@@ -63,6 +64,9 @@ export function SettingsModal({
 
   const submit = (): void => {
     onSave({
+      // Theme is always one of the three valid enums (never ''), so SettingsStore
+      // persists it; 'system' reads back as follow-the-OS.
+      theme,
       agentCommand: field(agentCommand),
       verifyCommand: field(verifyCommand),
       serverCommand: field(serverCommand),
@@ -126,10 +130,41 @@ export function SettingsModal({
       }}
     >
       <div
-        style={{ background: '#fff', borderRadius: 8, padding: 24, width: 420, maxWidth: '90vw' }}
+        style={{
+          background: 'var(--surface)',
+          color: 'var(--text)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          padding: 24,
+          width: 420,
+          maxWidth: '90vw',
+        }}
       >
         <h2 style={{ marginTop: 0, fontSize: 16 }}>Settings</h2>
-        <p style={{ fontSize: 12, color: '#888', marginTop: 0 }}>
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Theme</div>
+          <div role="group" aria-label="Theme" style={{ display: 'inline-flex', gap: 4 }}>
+            {(['dark', 'light', 'system'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                data-testid={`settings-theme-${t}`}
+                aria-pressed={theme === t}
+                onClick={() => setTheme(t)}
+                style={{
+                  background: theme === t ? 'var(--accent)' : 'var(--surface)',
+                  color: theme === t ? '#fff' : 'var(--text)',
+                  borderColor: theme === t ? 'var(--accent)' : 'var(--border)',
+                }}
+              >
+                {t === 'dark' ? 'Dark' : t === 'light' ? 'Light' : 'System'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 0 }}>
           Blank = fall back to the env seam, then the default.
         </p>
         {row('agent command', 'claude', agentCommand, setAgentCommand, 'settings-agent')}
@@ -137,7 +172,7 @@ export function SettingsModal({
         {row('server command', '(auto-detect)', serverCommand, setServerCommand, 'settings-server')}
         {row('base branch', 'main', baseBranch, setBaseBranch, 'settings-base')}
 
-        <hr style={{ border: 0, borderTop: '1px solid #eee', margin: '16px 0' }} />
+        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
           <input
             type="checkbox"
@@ -147,21 +182,21 @@ export function SettingsModal({
           />
           Keep the agent running in the background after quit (b-full)
         </label>
-        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
           Wraps the agent in an abduco session so an in-flight turn survives quit/crash and
           re-attaches on reopen. macOS only.
         </p>
         {downgraded && (
           <p
             data-testid="settings-persist-warning"
-            style={{ fontSize: 12, color: '#b00', margin: '6px 0 0' }}
+            style={{ fontSize: 12, color: 'var(--err)', margin: '6px 0 0' }}
           >
             ⚠ abduco not found — b-full is disabled and sessions fall back to lite. Install it:{' '}
             <code>brew install abduco</code>
           </p>
         )}
         {info?.effective === 'full' && (
-          <p style={{ fontSize: 12, color: '#0a7', margin: '6px 0 0' }}>
+          <p style={{ fontSize: 12, color: 'var(--ok)', margin: '6px 0 0' }}>
             ✓ b-full active — agents survive quit/crash; reopen re-attaches.
           </p>
         )}
@@ -175,11 +210,11 @@ export function SettingsModal({
             {stopping ? 'Stopping…' : 'Stop all background agents'}
           </button>
           {stoppedNote && (
-            <span style={{ fontSize: 12, color: '#0a7', marginLeft: 8 }}>{stoppedNote}</span>
+            <span style={{ fontSize: 12, color: 'var(--ok)', marginLeft: 8 }}>{stoppedNote}</span>
           )}
         </div>
 
-        <hr style={{ border: 0, borderTop: '1px solid #eee', margin: '16px 0' }} />
+        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
           <input
             type="checkbox"
@@ -189,7 +224,7 @@ export function SettingsModal({
           />
           Share this machine's sessions across machines (visibility only)
         </label>
-        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
           Publishes session metadata (branch + status, never the conversation) to the shared remote
           so you can see sessions from your other machines. Off by default.
         </p>

@@ -436,6 +436,12 @@ export type GhStatus =
  * seams — and the existing Playwright smokes — keep working when settings are unset.
  */
 export interface AppSettings {
+  /**
+   * UI theme. Unset / 'system' (default): follow the OS appearance. 'dark' / 'light':
+   * pinned. Resolved + applied to <html data-theme> by the renderer (lib/theme.ts).
+   * Any value other than 'dark' / 'light' is treated as 'system'.
+   */
+  readonly theme?: 'dark' | 'light' | 'system';
   /** Agent binary to spawn; unset => MANGO_AGENT_CMD ?? 'claude'. */
   readonly agentCommand?: string;
   /** Verify hook command; unset => MANGO_VERIFY_CMD ?? 'true'. */

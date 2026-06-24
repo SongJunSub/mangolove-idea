@@ -75,7 +75,14 @@ export function CrossMachinePanel({
       }}
     >
       <div
-        style={{ background: '#fff', borderRadius: 8, padding: 24, width: 460, maxWidth: '90vw' }}
+        style={{
+          background: 'var(--surface)',
+          color: 'var(--text)',
+          borderRadius: 8,
+          padding: 24,
+          width: 460,
+          maxWidth: '90vw',
+        }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Cross-machine sessions</h2>
@@ -91,18 +98,18 @@ export function CrossMachinePanel({
         </div>
 
         {!enabled && (
-          <p data-testid="cross-machine-disabled" style={{ fontSize: 12, color: '#888' }}>
+          <p data-testid="cross-machine-disabled" style={{ fontSize: 12, color: 'var(--muted)' }}>
             Turn on “Share this machine’s sessions” in Settings to see sessions from your other
             machines.
           </p>
         )}
         {error && (
-          <p data-testid="cross-machine-error" style={{ fontSize: 12, color: '#b00' }}>
+          <p data-testid="cross-machine-error" style={{ fontSize: 12, color: 'var(--err)' }}>
             {error}
           </p>
         )}
         {enabled && !loading && groups.length === 0 && (
-          <p data-testid="cross-machine-empty" style={{ fontSize: 12, color: '#888' }}>
+          <p data-testid="cross-machine-empty" style={{ fontSize: 12, color: 'var(--muted)' }}>
             No sessions published from any machine yet.
           </p>
         )}
@@ -119,7 +126,7 @@ export function CrossMachinePanel({
               <h4 style={{ margin: '0 0 4px', fontSize: 13 }}>
                 {g.label}
                 {g.isSelf && (
-                  <span style={{ color: '#888', fontWeight: 400 }}> (this machine)</span>
+                  <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (this machine)</span>
                 )}
               </h4>
               <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
@@ -129,7 +136,7 @@ export function CrossMachinePanel({
                     style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                   >
                     <code>{s.branch}</code>
-                    <span style={{ color: '#888' }}>
+                    <span style={{ color: 'var(--muted)' }}>
                       {s.status}
                       {s.hasActiveTurn ? ' · active turn' : ''}
                     </span>

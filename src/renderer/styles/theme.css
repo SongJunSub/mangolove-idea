@@ -1,0 +1,143 @@
+/*
+ * MangoLove IDEA — design tokens + base styling.
+ *
+ * One pink accent (the motif) + a mango-gold brand color, over a swappable dark/light
+ * base. The concrete mode is set on <html data-theme="dark|light"> by lib/theme.ts
+ * (driven by the persisted `theme` setting; 'system' follows the OS). :root is the
+ * LIGHT palette; [data-theme='dark'] overrides it. index.html defaults to data-theme
+ * "dark" so the first paint isn't a white flash before settings resolve.
+ */
+
+:root {
+  --accent: #db2777; /* pink — UI accent / the motif */
+  --accent-hover: #ec4899;
+  --accent-soft: rgba(219, 39, 119, 0.1);
+  --accent-ring: rgba(219, 39, 119, 0.4);
+  --mango: #c2680a; /* mango gold-orange — brand wordmark "Mango" + logo */
+
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --elevated: #ffffff;
+  --code-bg: #fbfbfc;
+  --border: #e6e6e8;
+  --text: #1a1a1d;
+  --muted: #6b6b70;
+  --faint: #9a9aa0;
+
+  --ok: #1a7f37;
+  --warn: #b7791f;
+  --err: #d1242f;
+
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --radius: 9px;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+[data-theme='dark'] {
+  --accent: #ec4899;
+  --accent-hover: #f472b6;
+  --accent-soft: rgba(236, 72, 153, 0.14);
+  --accent-ring: rgba(236, 72, 153, 0.45);
+  --mango: #f5a623;
+
+  --bg: #161718;
+  --surface: #1e1f22;
+  --elevated: #25262a;
+  --code-bg: #18191c;
+  --border: #2c2d31;
+  --text: #e8e8ea;
+  --muted: #9a9ba0;
+  --faint: #6b6c72;
+
+  --ok: #3fb950;
+  --warn: #e0a030;
+  --err: #e5484d;
+
+  --shadow: 0 16px 50px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Brand wordmark coloring: <span class="brand-mango">Mango</span><span class="brand-love">Love</span>. */
+.brand-mango {
+  color: var(--mango);
+}
+.brand-love {
+  color: var(--accent);
+}
+
+/* Themed native controls so the whole app picks up the theme without per-component work. */
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+/* Themed scrollbars (WebKit/Electron). */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
