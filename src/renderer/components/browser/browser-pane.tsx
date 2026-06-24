@@ -106,7 +106,7 @@ export function BrowserPane({ detectedUrl }: BrowserPaneProps): React.JSX.Elemen
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#888',
+            color: 'var(--muted)',
             fontSize: 13,
           }}
         >

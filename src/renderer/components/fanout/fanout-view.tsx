@@ -16,10 +16,10 @@ export interface FanoutViewProps {
 }
 
 const STATUS_COLOR: Record<FanoutLane['status'], string> = {
-  queued: '#888',
-  running: '#e0a030',
-  done: '#3ba55d',
-  failed: 'crimson',
+  queued: 'var(--muted)',
+  running: 'var(--warn)',
+  done: 'var(--ok)',
+  failed: 'var(--err)',
 };
 
 /**
@@ -69,7 +69,7 @@ export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Eleme
       style={{ border: '1px solid #333', borderRadius: 8, padding: 16, marginTop: 12 }}
     >
       <h2 style={{ marginTop: 0, fontSize: 16 }}>Multimodel Fan-out</h2>
-      {error && <pre style={{ color: 'crimson', fontSize: 13 }}>error: {error}</pre>}
+      {error && <pre style={{ color: 'var(--err)', fontSize: 13 }}>error: {error}</pre>}
 
       {!run ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -82,7 +82,7 @@ export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Eleme
             style={{ width: '100%', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13 }}
           />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: '#aaa' }}>Models (1–4):</span>
+            <span style={{ fontSize: 13, color: 'var(--faint)' }}>Models (1–4):</span>
             {PRESET_MODELS.map((m) => (
               <label
                 key={m}
@@ -104,7 +104,7 @@ export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Eleme
               display: 'flex',
               gap: 6,
               alignItems: 'center',
-              color: skipPermissions ? 'crimson' : '#aaa',
+              color: skipPermissions ? 'var(--err)' : 'var(--faint)',
             }}
           >
             <input
@@ -128,7 +128,7 @@ export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Eleme
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <code style={{ fontSize: 12, color: '#888' }}>
+            <code style={{ fontSize: 12, color: 'var(--muted)' }}>
               run {run.id} · base {run.base}
             </code>
             <button
@@ -151,23 +151,25 @@ export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Eleme
                 style={{
                   textAlign: 'left',
                   padding: '8px 10px',
-                  border: `1px solid ${selectedLaneId === lane.laneId ? '#094771' : '#333'}`,
+                  border: `1px solid ${selectedLaneId === lane.laneId ? 'var(--accent-soft)' : 'var(--text)'}`,
                   borderRadius: 6,
-                  background: selectedLaneId === lane.laneId ? '#0b2a3f' : 'transparent',
-                  color: '#ddd',
+                  background: selectedLaneId === lane.laneId ? 'var(--accent-soft)' : 'transparent',
+                  color: 'var(--text)',
                   cursor: lane.status === 'done' ? 'pointer' : 'default',
                   minWidth: 160,
                 }}
               >
                 <div style={{ fontWeight: 600 }}>{lane.model}</div>
                 <div style={{ fontSize: 12, color: STATUS_COLOR[lane.status] }}>{lane.status}</div>
-                {lane.error && <div style={{ fontSize: 11, color: 'crimson' }}>{lane.error}</div>}
+                {lane.error && (
+                  <div style={{ fontSize: 11, color: 'var(--err)' }}>{lane.error}</div>
+                )}
               </button>
             ))}
           </div>
 
           {selectResult && selectResult.status !== 'merged' && (
-            <pre style={{ color: '#e0a030', fontSize: 12 }}>
+            <pre style={{ color: 'var(--warn)', fontSize: 12 }}>
               {selectResult.status === 'conflict'
                 ? `merge conflict: ${(selectResult.conflicted ?? []).join(', ')}`
                 : `merge failed: ${selectResult.error ?? 'unknown'}`}
@@ -176,7 +178,9 @@ export function FanoutView({ base, onMerged }: FanoutViewProps): React.JSX.Eleme
 
           {selectedLane && selectedLane.status === 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading diff…</p>}>
+              <Suspense
+                fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>}
+              >
                 <DiffView
                   key={`fanout-diff-${selectedLane.laneId}`}
                   worktreeId={selectedLane.worktreeId}

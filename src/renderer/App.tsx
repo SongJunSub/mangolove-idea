@@ -204,7 +204,7 @@ export function App(): React.JSX.Element {
         }}
       >
         <h1 style={{ margin: 0 }}>MangoLove IDEA</h1>
-        <p data-testid="repo-empty-state" style={{ fontSize: 14, color: '#666' }}>
+        <p data-testid="repo-empty-state" style={{ fontSize: 14, color: 'var(--muted)' }}>
           Select your git repository to begin
         </p>
         <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
@@ -221,7 +221,7 @@ export function App(): React.JSX.Element {
         data-testid="repo-header"
         style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
       >
-        <code style={{ fontSize: 13, color: '#444' }}>
+        <code style={{ fontSize: 13, color: 'var(--text)' }}>
           {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
         </code>
         <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
@@ -263,7 +263,9 @@ export function App(): React.JSX.Element {
         </button>
       </div>
       {fanoutOpen && (
-        <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading fan-out…</p>}>
+        <Suspense
+          fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
+        >
           <FanoutView base={baseBranch} onMerged={() => void refresh()} />
         </Suspense>
       )}
@@ -338,7 +340,7 @@ export function App(): React.JSX.Element {
                     role="tab"
                     aria-selected={paneMode === 'conflict'}
                     data-testid="tab-conflict"
-                    style={{ color: '#e0a030' }}
+                    style={{ color: 'var(--warn)' }}
                     onClick={() => setPaneMode('conflict')}
                   >
                     Conflicts
@@ -348,7 +350,9 @@ export function App(): React.JSX.Element {
               {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
               <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
                 <Suspense
-                  fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading terminal…</p>}
+                  fallback={
+                    <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
+                  }
                 >
                   <AgentTerminal
                     key={selectedId}
@@ -358,7 +362,9 @@ export function App(): React.JSX.Element {
                 </Suspense>
               </div>
               {paneMode === 'diff' && (
-                <Suspense fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading diff…</p>}>
+                <Suspense
+                  fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>}
+                >
                   <DiffView key={`diff-${selectedId}`} worktreeId={selectedId} base={baseBranch} />
                 </Suspense>
               )}
@@ -367,7 +373,9 @@ export function App(): React.JSX.Element {
               )}
               {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
                 <Suspense
-                  fallback={<p style={{ fontSize: 13, color: '#888' }}>Loading conflicts…</p>}
+                  fallback={
+                    <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
+                  }
                 >
                   <ConflictView
                     key={`conflict-${selectedId}`}
@@ -387,13 +395,15 @@ export function App(): React.JSX.Element {
               )}
             </>
           ) : (
-            <p style={{ fontSize: 13, color: '#888' }}>Select a worktree to start its agent.</p>
+            <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+              Select a worktree to start its agent.
+            </p>
           )}
           <div style={{ marginTop: 16 }}>
             <button type="button" onClick={onPing}>
               Ping main
             </button>
-            {pingError && <pre style={{ color: 'crimson' }}>error: {pingError}</pre>}
+            {pingError && <pre style={{ color: 'var(--err)' }}>error: {pingError}</pre>}
             {info && (
               <pre data-testid="ping-result" style={{ marginTop: 16 }}>
                 {formatVersions(info)}

@@ -25,10 +25,10 @@ export function WorktreeList({
   return (
     <section data-testid="worktree-list" style={{ minWidth: 260 }}>
       <h2 style={{ fontSize: 14, margin: '8px 0' }}>Worktrees</h2>
-      {error && <pre style={{ color: 'crimson', fontSize: 12 }}>error: {error}</pre>}
-      {loading && <p style={{ fontSize: 12, color: '#888' }}>loading…</p>}
+      {error && <pre style={{ color: 'var(--err)', fontSize: 12 }}>error: {error}</pre>}
+      {loading && <p style={{ fontSize: 12, color: 'var(--muted)' }}>loading…</p>}
       {!loading && worktrees.length === 0 && (
-        <p style={{ fontSize: 12, color: '#888' }}>no worktrees</p>
+        <p style={{ fontSize: 12, color: 'var(--muted)' }}>no worktrees</p>
       )}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {worktrees.map((wt) => {
