@@ -17,23 +17,30 @@ IntelliJ는 특정 브랜치 **디버깅 창**으로 두고, 그 옆에서 **여
 
 ## 다운로드 / 설치 (macOS arm64)
 
-최신 `.dmg`를 [**Releases**](https://github.com/SongJunSub/mangolove-idea/releases/latest)에서
-받습니다. (태그를 push하면 GitHub Actions가 자동 빌드·발행 — [.github/workflows/release.yml](.github/workflows/release.yml))
+### 터미널 한 줄 (권장)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SongJunSub/mangolove-idea/main/install.sh | bash
+```
+
+[install.sh](install.sh)가 최신 릴리즈 `.dmg`를 받아 `/Applications`(권한 없으면 `~/Applications`,
+sudo 불필요)에 설치하고, **Gatekeeper quarantine을 제거**해 경고 없이 바로 열리게 합니다. 모든
+단계를 출력하므로 감사 가능합니다. 커스텀 위치는 `MANGO_INSTALL_DEST=...`, 오프라인 설치는
+`MANGO_INSTALL_DMG=/path/to.dmg`.
+
+### 수동 (.dmg)
+
+[**Releases**](https://github.com/SongJunSub/mangolove-idea/releases/latest)에서 `.dmg`를 받아
+**MangoLove IDEA**를 `/Applications`로 드래그. 처음 열 때 "확인되지 않은 개발자" 경고가 뜨면
+한 번만 허용:
+
+- **시스템 설정 → 개인정보 보호 및 보안** → 아래로 스크롤 → **"확인 없이 열기"**, 또는
+- 터미널: `xattr -dr com.apple.quarantine "/Applications/MangoLove IDEA.app"`
 
 > ⚠️ **현재 빌드는 서명되지 않았습니다**(Apple 공증(notarization)은 Apple Developer Program
-> $99/년이 필요). 그래서 **처음 열 때만** macOS가 "확인되지 않은 개발자" 경고를 띄웁니다. 한 번만
-> 아래로 허용하면 이후로는 그냥 열립니다. 앱 동작 자체는 정상입니다.
-
-**여는 법 (둘 중 하나, 최초 1회):**
-
-1. `.dmg`를 열어 **MangoLove IDEA**를 `/Applications`로 드래그
-2. 앱을 더블클릭 → 경고가 뜨면 닫고:
-   - **시스템 설정 → 개인정보 보호 및 보안** → 아래로 스크롤 → "MangoLove IDEA"에 대한
-     **"확인 없이 열기"** 클릭, 또는
-   - 터미널에서 한 줄: `xattr -dr com.apple.quarantine "/Applications/MangoLove IDEA.app"`
-
-> 공증된(경고 없는) 빌드가 필요해지면 [docs/RELEASE-SIGNING.md](docs/RELEASE-SIGNING.md)의
-> 서명 설정을 릴리즈 워크플로우에 끼우면 됩니다 — 나머지는 그대로입니다.
+> $99/년 필요). 경고는 위 방법으로 한 번만 허용하면 됩니다 — 앱 동작은 정상입니다. 공증된(경고
+> 없는) 빌드가 필요해지면 [docs/RELEASE-SIGNING.md](docs/RELEASE-SIGNING.md)의 서명 설정을 릴리즈
+> 워크플로우 빌드 단계에 끼우면 같은 파이프라인이 notarized `.dmg`를 냅니다.
 
 ## 기능
 
