@@ -218,208 +218,231 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app-shell">
-      <Titlebar />
-      <main className="app-body" style={{ padding: 24 }}>
-        <div
-          data-testid="repo-header"
-          style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}
-        >
-          <code style={{ fontSize: 13, color: 'var(--text)' }}>
-            {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
-          </code>
-          <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
-            change repo
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Toolbar onCreate={create} />
-          <button
-            type="button"
-            data-testid="fanout-open"
-            aria-pressed={fanoutOpen}
-            title="Multimodel fan-out"
-            onClick={() => setFanoutOpen((v) => !v)}
-          >
-            ⑃ Fan-out
-          </button>
-          <button
-            type="button"
-            data-testid="cross-machine-open"
-            title="Cross-machine sessions"
-            onClick={() => {
-              setCrossMachineOpen(true);
-              void crossMachine.refresh();
-            }}
-          >
-            ⌘ Machines
-          </button>
-          <button
-            type="button"
-            data-testid="settings-open"
-            aria-label="settings"
-            title="Settings"
-            disabled={settingsLoading}
-            onClick={() => setSettingsOpen(true)}
-          >
-            ⚙
-          </button>
-        </div>
-        {fanoutOpen && (
-          <Suspense
-            fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
-          >
-            <FanoutView base={baseBranch} onMerged={() => void refresh()} />
-          </Suspense>
-        )}
-        <ServerControls
-          selectedId={selectedId}
-          status={selectedServer}
-          onStart={(id) => void startServer(id)}
-          onStop={(id) => void stopServer(id)}
-        />
-        <MergeControls
-          selected={selectedWorktree}
-          running={merging}
-          progress={mergeProgress}
-          onMerge={(wt) => void onMerge(wt)}
-        />
-        <GhStatusPanel
-          selectedId={selectedId}
-          status={ghStatus}
-          loading={ghLoading}
-          error={ghError}
-          onRefresh={refreshGh}
-          onOpen={(url) => void window.mango.app.openExternal({ url })}
-        />
-        <div style={{ display: 'flex', gap: 24, marginTop: 12 }}>
-          <WorktreeList
-            worktrees={worktrees}
-            loading={loading}
-            error={error}
-            selectedId={selectedId}
-            statuses={statuses}
-            onSelect={setSelectedId}
-            onRemove={(id) => void remove(id)}
-          />
-          <section style={{ flex: 1, minWidth: 0 }}>
-            {selectedId ? (
-              <>
-                <div
-                  role="tablist"
-                  aria-label="worktree view"
-                  style={{ display: 'flex', gap: 4, marginBottom: 8 }}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={paneMode === 'terminal'}
-                    data-testid="tab-terminal"
-                    onClick={() => setPaneMode('terminal')}
+      <Titlebar
+        right={
+          <div className="titlebar-actions">
+            <span className="titlebar-repo" data-testid="repo-name">
+              {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
+            </span>
+            <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
+              change repo
+            </button>
+            <button
+              type="button"
+              data-testid="fanout-open"
+              aria-pressed={fanoutOpen}
+              title="Multimodel fan-out"
+              onClick={() => setFanoutOpen((v) => !v)}
+            >
+              ⑃ Fan-out
+            </button>
+            <button
+              type="button"
+              data-testid="cross-machine-open"
+              title="Cross-machine sessions"
+              onClick={() => {
+                setCrossMachineOpen(true);
+                void crossMachine.refresh();
+              }}
+            >
+              ⌘ Machines
+            </button>
+            <button
+              type="button"
+              data-testid="settings-open"
+              aria-label="settings"
+              title="Settings"
+              disabled={settingsLoading}
+              onClick={() => setSettingsOpen(true)}
+            >
+              ⚙
+            </button>
+          </div>
+        }
+      />
+      <main className="app-body">
+        <div className="workspace">
+          {/* top-left: project file tree (A3) */}
+          <div className="ws-pane ws-tree">
+            <div className="pane-head">📁 Project</div>
+            <div className="pane-placeholder">파일 트리는 곧 추가됩니다 (A3)</div>
+          </div>
+          {/* top-right: code editor (A4) */}
+          <div className="ws-pane ws-editor">
+            <div className="pane-head">Editor</div>
+            <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다 (A4)</div>
+          </div>
+          {/* bottom-left: worktree management (create + list + per-worktree controls) */}
+          <div className="ws-pane ws-worktrees">
+            <div className="pane-head">🌿 Worktrees</div>
+            <div className="pane-body">
+              <Toolbar onCreate={create} />
+              <ServerControls
+                selectedId={selectedId}
+                status={selectedServer}
+                onStart={(id) => void startServer(id)}
+                onStop={(id) => void stopServer(id)}
+              />
+              <MergeControls
+                selected={selectedWorktree}
+                running={merging}
+                progress={mergeProgress}
+                onMerge={(wt) => void onMerge(wt)}
+              />
+              <GhStatusPanel
+                selectedId={selectedId}
+                status={ghStatus}
+                loading={ghLoading}
+                error={ghError}
+                onRefresh={refreshGh}
+                onOpen={(url) => void window.mango.app.openExternal({ url })}
+              />
+              <WorktreeList
+                worktrees={worktrees}
+                loading={loading}
+                error={error}
+                selectedId={selectedId}
+                statuses={statuses}
+                onSelect={setSelectedId}
+                onRemove={(id) => void remove(id)}
+              />
+            </div>
+          </div>
+          {/* bottom-right: terminal / diff / browser / conflict + logs */}
+          <div className="ws-pane ws-terminal">
+            <section
+              className="pane-body"
+              style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
+            >
+              {selectedId ? (
+                <>
+                  <div
+                    role="tablist"
+                    aria-label="worktree view"
+                    style={{ display: 'flex', gap: 4, marginBottom: 8 }}
                   >
-                    Terminal
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={paneMode === 'diff'}
-                    data-testid="tab-diff"
-                    onClick={() => setPaneMode('diff')}
-                  >
-                    Diff
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={paneMode === 'browser'}
-                    data-testid="tab-browser"
-                    onClick={() => setPaneMode('browser')}
-                  >
-                    Browser
-                  </button>
-                  {conflictWorktreeId === selectedId && (
                     <button
                       type="button"
                       role="tab"
-                      aria-selected={paneMode === 'conflict'}
-                      data-testid="tab-conflict"
-                      style={{ color: 'var(--warn)' }}
-                      onClick={() => setPaneMode('conflict')}
+                      aria-selected={paneMode === 'terminal'}
+                      data-testid="tab-terminal"
+                      onClick={() => setPaneMode('terminal')}
                     >
-                      Conflicts
+                      Terminal
                     </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={paneMode === 'diff'}
+                      data-testid="tab-diff"
+                      onClick={() => setPaneMode('diff')}
+                    >
+                      Diff
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={paneMode === 'browser'}
+                      data-testid="tab-browser"
+                      onClick={() => setPaneMode('browser')}
+                    >
+                      Browser
+                    </button>
+                    {conflictWorktreeId === selectedId && (
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={paneMode === 'conflict'}
+                        data-testid="tab-conflict"
+                        style={{ color: 'var(--warn)' }}
+                        onClick={() => setPaneMode('conflict')}
+                      >
+                        Conflicts
+                      </button>
+                    )}
+                  </div>
+                  {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
+                  <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
+                    <Suspense
+                      fallback={
+                        <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
+                      }
+                    >
+                      <AgentTerminal
+                        key={selectedId}
+                        worktreeId={selectedId}
+                        continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
+                      />
+                    </Suspense>
+                  </div>
+                  {paneMode === 'diff' && (
+                    <Suspense
+                      fallback={
+                        <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>
+                      }
+                    >
+                      <DiffView
+                        key={`diff-${selectedId}`}
+                        worktreeId={selectedId}
+                        base={baseBranch}
+                      />
+                    </Suspense>
                   )}
-                </div>
-                {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
-                <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
-                  <Suspense
-                    fallback={
-                      <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
-                    }
-                  >
-                    <AgentTerminal
-                      key={selectedId}
-                      worktreeId={selectedId}
-                      continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
-                    />
-                  </Suspense>
-                </div>
-                {paneMode === 'diff' && (
-                  <Suspense
-                    fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>}
-                  >
-                    <DiffView
-                      key={`diff-${selectedId}`}
-                      worktreeId={selectedId}
-                      base={baseBranch}
-                    />
-                  </Suspense>
-                )}
-                {paneMode === 'browser' && (
-                  <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
-                )}
-                {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
-                  <Suspense
-                    fallback={
-                      <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
-                    }
-                  >
-                    <ConflictView
-                      key={`conflict-${selectedId}`}
-                      worktreeId={selectedId}
-                      targetBranch={baseBranch}
-                      cleanup={true}
-                      onResolved={(merged) => {
-                        setConflictWorktreeId(null);
-                        setPaneMode('terminal');
-                        if (merged) {
-                          if (selectedId === selectedWorktree?.id) setSelectedId(null);
-                        }
-                        void refresh();
-                      }}
-                    />
-                  </Suspense>
-                )}
-              </>
-            ) : (
-              <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                Select a worktree to start its agent.
-              </p>
-            )}
-            <div style={{ marginTop: 16 }}>
-              <button type="button" onClick={onPing}>
-                Ping main
-              </button>
-              {pingError && <pre style={{ color: 'var(--err)' }}>error: {pingError}</pre>}
-              {info && (
-                <pre data-testid="ping-result" style={{ marginTop: 16 }}>
-                  {formatVersions(info)}
-                </pre>
+                  {paneMode === 'browser' && (
+                    <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
+                  )}
+                  {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
+                    <Suspense
+                      fallback={
+                        <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
+                      }
+                    >
+                      <ConflictView
+                        key={`conflict-${selectedId}`}
+                        worktreeId={selectedId}
+                        targetBranch={baseBranch}
+                        cleanup={true}
+                        onResolved={(merged) => {
+                          setConflictWorktreeId(null);
+                          setPaneMode('terminal');
+                          if (merged) {
+                            if (selectedId === selectedWorktree?.id) setSelectedId(null);
+                          }
+                          void refresh();
+                        }}
+                      />
+                    </Suspense>
+                  )}
+                </>
+              ) : (
+                <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  Select a worktree to start its agent.
+                </p>
               )}
-            </div>
-            <LogPanel lines={logLines} />
-          </section>
+              <div style={{ marginTop: 16 }}>
+                <button type="button" onClick={onPing}>
+                  Ping main
+                </button>
+                {pingError && <pre style={{ color: 'var(--err)' }}>error: {pingError}</pre>}
+                {info && (
+                  <pre data-testid="ping-result" style={{ marginTop: 16 }}>
+                    {formatVersions(info)}
+                  </pre>
+                )}
+              </div>
+              <LogPanel lines={logLines} />
+            </section>
+          </div>
         </div>
+        {fanoutOpen && (
+          <div className="fanout-overlay" data-testid="fanout-overlay">
+            <Suspense
+              fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
+            >
+              <FanoutView base={baseBranch} onMerged={() => void refresh()} />
+            </Suspense>
+          </div>
+        )}
         {settingsOpen && !settingsLoading && (
           <SettingsModal
             settings={settings}
