@@ -11,6 +11,18 @@ import type {
 } from '../../shared/types';
 import type { WorktreeManager } from '../managers/worktree-manager';
 
+/**
+ * True iff `content` still carries git conflict markers — a line that is exactly seven
+ * `<` (begin) or seven `>` (end) optionally followed by a label. We anchor ONLY on the
+ * begin/end markers (which never occur in normal text), NOT the `=======` separator, so
+ * a markdown setext-H1 underline (`=======`) can't false-positive: a real unresolved
+ * conflict ALWAYS still has its begin/end markers. git itself does not block committing
+ * these (only `git diff --check` warns), so this guards the manual-resolution path.
+ */
+export function hasConflictMarkers(content: string): boolean {
+  return content.split('\n').some((line) => /^<{7}( |$)/.test(line) || /^>{7}( |$)/.test(line));
+}
+
 /** Constructor dependencies — injectable so the resolver is unit-testable on a temp repo. */
 export interface ConflictResolverDeps {
   /** SimpleGit bound to the PRIMARY repo root (where MERGE_HEAD + the conflict live). */
@@ -147,10 +159,17 @@ export class ConflictResolver {
         await this.git.add(req.path);
         break;
       case 'manual':
+        // Block staging a half-resolved edit: leftover markers would commit a broken
+        // merge (git's index would treat the file as resolved). git never checks this.
+        if (hasConflictMarkers(req.content ?? '')) throw conflictMarkerError(req.path);
         writeFileSync(join(await this.repoRoot(), req.path), req.content ?? '');
         await this.git.add(req.path);
         break;
       case 'keep':
+        // "Keep" stages the working-tree file AS-IS; reject it too if the user kept a
+        // file that still has unresolved markers (e.g. a UU they never actually edited).
+        if (hasConflictMarkers(await this.readWorking(req.path)))
+          throw conflictMarkerError(req.path);
         await this.git.add(req.path);
         break;
       case 'remove':
@@ -262,6 +281,13 @@ export class ConflictResolver {
   private assertSafeRef(path: string): void {
     if (path.startsWith('-')) throw new Error(`invalid path: ${path}`);
   }
+}
+
+/** A clear, actionable error for a resolution that still has conflict markers. */
+function conflictMarkerError(path: string): Error {
+  return new Error(
+    `unresolved conflict markers remain in ${path} — remove the <<<<<<< / ======= / >>>>>>> markers before resolving`,
+  );
 }
 
 /** Derives a porcelain-ish XY code from which stages are present. */
