@@ -23,7 +23,7 @@ export function WorktreeList({
   onRemove,
 }: WorktreeListProps): React.JSX.Element {
   return (
-    <section data-testid="worktree-list" style={{ minWidth: 260 }}>
+    <section data-testid="worktree-list">
       <h2 style={{ fontSize: 14, margin: '8px 0' }}>Worktrees</h2>
       {error && <pre style={{ color: 'var(--err)', fontSize: 12 }}>error: {error}</pre>}
       {loading && <p style={{ fontSize: 12, color: 'var(--muted)' }}>loading…</p>}

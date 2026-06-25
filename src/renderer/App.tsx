@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import type { AppInfo, QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
-import { formatVersions } from './lib/format-versions';
+import type { QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
 import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
@@ -68,8 +67,6 @@ type PendingSwitch = { kind: 'file'; relPath: string } | { kind: 'worktree'; id:
 
 export function App(): React.JSX.Element {
   const repo = useRepo();
-  const [info, setInfo] = useState<AppInfo | null>(null);
-  const [pingError, setPingError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { worktrees, loading, error, create, remove, refresh } = useWorktrees();
   const { servers, start: startServer, stop: stopServer } = useServer();
@@ -369,15 +366,6 @@ export function App(): React.JSX.Element {
     },
     [runMerge, refresh, selectedId, baseBranch, requestSelectWorktree],
   );
-
-  const onPing = useCallback(async () => {
-    setPingError(null);
-    try {
-      setInfo(await window.mango.app.ping());
-    } catch (e) {
-      setPingError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
 
   // Repo-picker gate: until a git repo is selected, show a centered empty-state
   // INSTEAD of the worktree UI. While loading the initial REPO_GET, render nothing
@@ -680,17 +668,6 @@ export function App(): React.JSX.Element {
                   Select a worktree to start its agent.
                 </p>
               )}
-              <div style={{ marginTop: 16 }}>
-                <button type="button" onClick={onPing}>
-                  Ping main
-                </button>
-                {pingError && <pre style={{ color: 'var(--err)' }}>error: {pingError}</pre>}
-                {info && (
-                  <pre data-testid="ping-result" style={{ marginTop: 16 }}>
-                    {formatVersions(info)}
-                  </pre>
-                )}
-              </div>
               <LogPanel lines={logLines} />
             </section>
           </div>

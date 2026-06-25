@@ -209,7 +209,7 @@ a {
 /* ---- 2x2 workspace grid (A2b): tree | editor / worktrees | terminal ---- */
 .workspace {
   display: grid;
-  grid-template-columns: 248px 1fr;
+  grid-template-columns: 264px 1fr;
   grid-template-rows: 1.25fr 1fr;
   height: 100%;
   min-height: 0;

@@ -22,28 +22,46 @@ export function Toolbar({ onCreate }: ToolbarProps): React.JSX.Element {
   return (
     <div
       data-testid="toolbar"
-      style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0' }}
+      style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', padding: '8px 0' }}
     >
-      <label style={{ fontSize: 12 }}>
+      <label
+        style={{
+          fontSize: 12,
+          flex: '1 1 84px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          minWidth: 0,
+        }}
+      >
         base
         <input
           aria-label="base branch"
           value={baseBranch}
           onChange={(e) => setBaseBranch(e.target.value)}
-          style={{ marginLeft: 4, width: 120 }}
+          style={{ flex: 1, minWidth: 0 }}
         />
       </label>
-      <label style={{ fontSize: 12 }}>
-        new branch
+      <label
+        style={{
+          fontSize: 12,
+          flex: '1 1 130px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          minWidth: 0,
+        }}
+      >
+        new
         <input
           aria-label="new branch"
           value={newBranch}
           placeholder="feature/login"
           onChange={(e) => setNewBranch(e.target.value)}
-          style={{ marginLeft: 4, width: 160 }}
+          style={{ flex: 1, minWidth: 0 }}
         />
       </label>
-      <button type="button" disabled={!canCreate} onClick={submit}>
+      <button type="button" disabled={!canCreate} onClick={submit} style={{ flex: '0 0 auto' }}>
         New worktree
       </button>
     </div>
