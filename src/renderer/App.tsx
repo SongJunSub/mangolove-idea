@@ -4,6 +4,9 @@ import { formatVersions } from './lib/format-versions';
 import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
+import { NavBack } from './components/editor/nav-back';
+import { registerCodeNav } from './lib/code-nav/register-code-nav';
+import { WorktreeModelRegistry } from './lib/code-nav/worktree-model-registry';
 import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
 import { useLogs } from './hooks/use-logs';
@@ -104,6 +107,17 @@ export function App(): React.JSX.Element {
   // A selection change queued while the editor is dirty, awaiting the save/discard prompt.
   const [pending, setPending] = useState<PendingSwitch | null>(null);
 
+  // Code-nav (Phase B): the position to reveal in the editor after a go-to-definition jump
+  // (scoped to its relPath so a normal open never jumps), plus a Back-navigation stack.
+  const [pendingReveal, setPendingReveal] = useState<{
+    relPath: string;
+    line: number;
+    column: number;
+  } | null>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const navHistoryRef = useRef<Array<{ relPath: string; line: number; column: number }>>([]);
+  const currentPosRef = useRef<{ line: number; column: number }>({ line: 1, column: 1 });
+
   // App's resolved theme ('dark'/'light'), fed to ALL monaco panes (process-global
   // theme). Initialized synchronously so there is no first-paint flash.
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() =>
@@ -122,6 +136,10 @@ export function App(): React.JSX.Element {
   const applyWorktree = useCallback((id: string | null): void => {
     setSelectedId(id);
     setSelectedFile(null);
+    // A worktree switch resets code-nav: its history + reveal belonged to the old worktree.
+    setPendingReveal(null);
+    navHistoryRef.current = [];
+    setCanGoBack(false);
   }, []);
 
   const applyPending = useCallback(
@@ -133,10 +151,12 @@ export function App(): React.JSX.Element {
     [applyWorktree],
   );
 
-  /** Open a file in the editor; prompts first if the current file is dirty. */
+  /** Open a file in the editor; prompts first if the current file is dirty. A normal open
+   *  (file tree click) clears any pending nav-reveal so it never jumps the cursor. */
   const requestOpenFile = useCallback(
     (relPath: string): void => {
       if (relPath === selectedFile) return;
+      setPendingReveal(null);
       if (editor.dirty) setPending({ kind: 'file', relPath });
       else setSelectedFile(relPath);
     },
@@ -163,6 +183,64 @@ export function App(): React.JSX.Element {
     if (pending) applyPending(pending);
   }, [pending, applyPending]);
   const onGuardCancel = useCallback((): void => setPending(null), []);
+
+  // ── Code navigation (Phase B) ──
+  // Stable snapshot for the once-registered, process-global code-nav opener (reads refs so
+  // it never goes stale despite [] deps).
+  const navSelRef = useRef({ selectedId, selectedFile, dirty: editor.dirty });
+  navSelRef.current = { selectedId, selectedFile, dirty: editor.dirty };
+
+  /** Cross-file go-to-definition target (from monaco's editor-opener). Pushes the current
+   *  location for Back, then opens the target through the dirty-guard with a reveal. */
+  const onCodeNavOpen = useCallback(
+    (worktreeId: string, relPath: string, position?: { line: number; column: number }): void => {
+      const s = navSelRef.current;
+      if (worktreeId !== s.selectedId) return; // only within the selected worktree (defense)
+      if (s.selectedFile && s.selectedFile !== relPath) {
+        navHistoryRef.current.push({ relPath: s.selectedFile, ...currentPosRef.current });
+        setCanGoBack(true);
+      }
+      setPendingReveal(position ? { relPath, line: position.line, column: position.column } : null);
+      if (relPath !== s.selectedFile) {
+        if (s.dirty) setPending({ kind: 'file', relPath });
+        else setSelectedFile(relPath);
+      }
+    },
+    [],
+  );
+
+  /** Back: return to the previously-jumped-from location through the dirty-guard. */
+  const onNavBack = useCallback((): void => {
+    const prev = navHistoryRef.current.pop();
+    setCanGoBack(navHistoryRef.current.length > 0);
+    if (!prev) return;
+    const s = navSelRef.current;
+    setPendingReveal({ relPath: prev.relPath, line: prev.line, column: prev.column });
+    if (prev.relPath !== s.selectedFile) {
+      if (s.dirty) setPending({ kind: 'file', relPath: prev.relPath });
+      else setSelectedFile(prev.relPath);
+    }
+  }, []);
+
+  // Register the process-global code-nav providers + editor-opener ONCE (idempotent).
+  useEffect(() => {
+    registerCodeNav({ onOpen: onCodeNavOpen });
+  }, [onCodeNavOpen]);
+
+  // Seed first-party TS/JS models for the selected worktree (cross-file nav); dispose on switch.
+  useEffect(() => {
+    if (!selectedId) return;
+    let reg: WorktreeModelRegistry | null = null;
+    let cancelled = false;
+    void WorktreeModelRegistry.create(selectedId).then((r) => {
+      if (cancelled) r.dispose();
+      else reg = r;
+    });
+    return () => {
+      cancelled = true;
+      reg?.dispose();
+    };
+  }, [selectedId]);
 
   useEffect(() => {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
@@ -390,7 +468,10 @@ export function App(): React.JSX.Element {
           {/* top-right: code editor (A4) — edit + ⌘S save */}
           <div className="ws-pane ws-editor">
             <div className="pane-head">
-              <span>Editor</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <NavBack canGoBack={canGoBack} onBack={onNavBack} />
+                Editor
+              </span>
               {selectedFile && selectedId && !editor.readOnly && (
                 <button
                   type="button"
@@ -433,8 +514,16 @@ export function App(): React.JSX.Element {
                     content={editor.content}
                     readOnly={editor.readOnly}
                     dirty={editor.dirty}
+                    reveal={
+                      pendingReveal?.relPath === selectedFile
+                        ? { line: pendingReveal.line, column: pendingReveal.column }
+                        : null
+                    }
                     onChange={editor.setValue}
                     onSaveRequested={() => void editor.save()}
+                    onCursor={(line, column) => {
+                      currentPosRef.current = { line, column };
+                    }}
                   />
                 </Suspense>
               </div>

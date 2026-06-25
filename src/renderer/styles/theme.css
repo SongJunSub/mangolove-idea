@@ -271,6 +271,16 @@ a {
   text-transform: none;
   letter-spacing: 0;
 }
+.nav-back-btn {
+  font-size: 12px;
+  line-height: 1;
+  padding: 1px 7px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.nav-back-btn:disabled {
+  opacity: 0.4;
+}
 .editor-banner {
   flex: none;
   font-size: 11.5px;

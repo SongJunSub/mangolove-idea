@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { AppSettings, SessionPersistenceInfo } from '../../../shared/types';
+import type {
+  AppSettings,
+  SessionPersistenceInfo,
+  CodeNavCapabilities,
+} from '../../../shared/types';
 
 /** Props for the Settings modal. */
 export interface SettingsModalProps {
@@ -48,7 +52,10 @@ export function SettingsModal({
   const [persistFull, setPersistFull] = useState(settings.sessionPersistence === 'full');
   const [crossMachine, setCrossMachine] = useState(settings.crossMachineSessions === 'on');
   const [machineLabel, setMachineLabel] = useState(settings.machineLabel ?? '');
+  const [lspJavaPath, setLspJavaPath] = useState(settings.lspJavaPath ?? '');
+  const [lspKotlinPath, setLspKotlinPath] = useState(settings.lspKotlinPath ?? '');
   const [info, setInfo] = useState<SessionPersistenceInfo | null>(null);
+  const [caps, setCaps] = useState<CodeNavCapabilities | null>(null);
   const [stopping, setStopping] = useState(false);
   const [stoppedNote, setStoppedNote] = useState('');
 
@@ -56,6 +63,10 @@ export function SettingsModal({
     let alive = true;
     void window.mango.session.persistenceInfo().then((i) => {
       if (alive) setInfo(i);
+    });
+    // Code-nav availability is machine-global (PATH-detected); worktreeId is ignored.
+    void window.mango.codenav.capabilities('').then((c) => {
+      if (alive) setCaps(c);
     });
     return () => {
       alive = false;
@@ -78,6 +89,9 @@ export function SettingsModal({
       // enum. machineLabel blank => unset => the non-identifying default is used.
       crossMachineSessions: crossMachine ? 'on' : 'off',
       machineLabel: field(machineLabel),
+      // Blank => unset => fall back to the PATH-dir probe for the LSP server.
+      lspJavaPath: field(lspJavaPath),
+      lspKotlinPath: field(lspKotlinPath),
     });
   };
 
@@ -236,6 +250,46 @@ export function SettingsModal({
             setMachineLabel,
             'settings-machine-label',
           )}
+
+        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+          Code navigation (Java / Kotlin)
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 8px' }}>
+          Command+click go-to-definition for Java/Kotlin uses your installed language server (TS/JS
+          works built-in). Set a path below to override PATH detection.
+        </p>
+        {(['java', 'kotlin'] as const).map((lang) => {
+          const st = caps?.[lang];
+          return (
+            <p
+              key={lang}
+              data-testid={`settings-codenav-${lang}`}
+              style={{
+                fontSize: 12,
+                margin: '2px 0',
+                color: st?.available ? 'var(--ok)' : 'var(--muted)',
+              }}
+            >
+              {st?.available ? '✓' : '⚠'} {lang}:{' '}
+              {st?.available ? 'available' : (st?.reason ?? 'checking…')}
+            </p>
+          );
+        })}
+        {row(
+          'jdtls path (Java)',
+          '(auto-detect)',
+          lspJavaPath,
+          setLspJavaPath,
+          'settings-lsp-java',
+        )}
+        {row(
+          'kotlin-language-server path',
+          '(auto-detect)',
+          lspKotlinPath,
+          setLspKotlinPath,
+          'settings-lsp-kotlin',
+        )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" onClick={onClose}>

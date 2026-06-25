@@ -71,6 +71,7 @@ export function sweepAll(contexts: Map<number, IpcContext>): void {
   for (const ctx of contexts.values()) {
     ctx.sessionManager?.killAll();
     ctx.serverManager?.dispose();
+    ctx.lspManager?.dispose();
   }
 }
 
@@ -84,6 +85,7 @@ export function teardownWindow(contexts: Map<number, IpcContext>, id: number): v
   if (!ctx) return;
   ctx.sessionManager?.killAll();
   ctx.serverManager?.dispose();
+  ctx.lspManager?.dispose();
   contexts.delete(id);
 }
 

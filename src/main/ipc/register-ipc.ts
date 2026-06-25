@@ -27,6 +27,10 @@ import type {
   FileReadResult,
   FileWriteRequest,
   FileWriteResult,
+  CodeNavQuery,
+  CodeNavReferencesQuery,
+  CodeNavResult,
+  CodeNavCapabilities,
   AppSettings,
   SessionPersistenceInfo,
   CrossMachineSessionPointer,
@@ -83,10 +87,14 @@ import {
   writeSync,
   closeSync,
   fstatSync,
+  mkdirSync,
   constants as fsConstants,
 } from 'node:fs';
 import { FileTreeReader } from '../fs/file-tree-reader';
 import { FileEditor } from '../fs/file-editor';
+import { CodeNavService } from '../codenav/code-nav-service';
+import { LspManager } from '../lsp/lsp-manager';
+import { resolveLspServerPath, unavailableReason, type NavServerLanguage } from '../lsp/lsp-detect';
 import { join } from 'node:path';
 
 /**
@@ -561,6 +569,48 @@ async function getFileEditor(ctx: IpcContext): Promise<FileEditor> {
 }
 
 /**
+ * Resolves the CodeNavService (Phase B Java/Kotlin nav). Builds an LspManager (stored on
+ * ctx.lspManager so window teardown/quit can dispose its child servers) wired to the
+ * spawnArgsRpc seam + a per-(worktree,lang) isolated -data dir under userData; the service
+ * confines every nav target to the worktree. Server paths are ABSOLUTE-probed (resolveLsp-
+ * ServerPath) with optional Settings overrides — never $PATH. Absent toolchain => the
+ * service reports unavailable + every query degrades to []. TS/JS never reach this.
+ */
+async function getCodeNavService(ctx: IpcContext): Promise<CodeNavService> {
+  if (ctx.codeNavService) return ctx.codeNavService;
+  const manager = await getWorktreeManager(ctx);
+  const { app } = await import('electron');
+  const userData = app.getPath('userData');
+  const resolveServer = (lang: NavServerLanguage): string | null => {
+    const settings = getSettingsStore(ctx).get();
+    return resolveLspServerPath(lang, {
+      exists: existsSync,
+      overrides: { java: settings.lspJavaPath, kotlin: settings.lspKotlinPath },
+    });
+  };
+  const runner = new NodeProcessRunner();
+  const lspManager = new LspManager({
+    spawnRpc: (serverPath, args, cwd) => runner.spawnArgsRpc(serverPath, args, { cwd }),
+    resolveServer,
+    readFileText: (absPath) => readFileSync(absPath, 'utf8'),
+    dataDir: (worktreeId, lang) => {
+      const dir = join(userData, 'lsp-data', Buffer.from(worktreeId).toString('base64url'), lang);
+      mkdirSync(dir, { recursive: true });
+      return dir;
+    },
+  });
+  ctx.lspManager = lspManager;
+  ctx.codeNavService = new CodeNavService({
+    knownWorktreeIds: async () => new Set((await manager.list()).map((w) => w.id)),
+    realpathSync,
+    resolveServer,
+    reasonFor: unavailableReason,
+    query: (kind, worktreeId, lang, q) => lspManager.query(kind, worktreeId, lang, q),
+  });
+  return ctx.codeNavService;
+}
+
+/**
  * Resolves the GhStatusReader: prefer ctx (tests inject); else build a real one.
  * Copies getDiffViewer's lazy shape. owner/repo come from the origin remote URL;
  * resolveBranch/resolvePath read WorktreeManager.list() (Worktree.branch / .path);
@@ -837,6 +887,46 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     }
   });
 
+  ipcMain.handle(
+    IPC.CODENAV_CAPABILITIES,
+    async (event, req: { worktreeId: string }): Promise<CodeNavCapabilities> => {
+      const ctx = requireCtx(event);
+      try {
+        return await (await getCodeNavService(ctx)).capabilities(req.worktreeId);
+      } catch {
+        // Never block the editor — report both unavailable so providers stay unregistered.
+        const reason = 'code navigation unavailable';
+        return { java: { available: false, reason }, kotlin: { available: false, reason } };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC.CODENAV_DEFINITION,
+    async (event, req: CodeNavQuery): Promise<CodeNavResult> => {
+      const ctx = requireCtx(event);
+      try {
+        return await (await getCodeNavService(ctx)).definition(req);
+      } catch (error) {
+        console.error('CODENAV_DEFINITION failed:', error);
+        return { locations: [] }; // degrade to monaco's 'No definition found'
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC.CODENAV_REFERENCES,
+    async (event, req: CodeNavReferencesQuery): Promise<CodeNavResult> => {
+      const ctx = requireCtx(event);
+      try {
+        return await (await getCodeNavService(ctx)).references(req);
+      } catch (error) {
+        console.error('CODENAV_REFERENCES failed:', error);
+        return { locations: [] };
+      }
+    },
+  );
+
   ipcMain.handle(IPC.GH_STATUS, async (event, req: GhStatusRequest): Promise<GhStatus> => {
     const ctx = requireCtx(event);
     try {
@@ -1076,6 +1166,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     ctx.confirmedQuit = true;
     ctx.sessionManager?.killAll();
     ctx.serverManager?.dispose();
+    ctx.lspManager?.dispose();
     ctx.requestQuit?.();
     return { ok: true };
   });

@@ -387,6 +387,45 @@ export interface FileWriteResult extends Ack {
   readonly baseToken?: string;
 }
 
+/** code navigation (Phase B) — Java/Kotlin go-to-definition/find-usages over an external
+ *  LSP server. TS/JS nav is served entirely in-browser by monaco and never uses this IPC.
+ *  Positions are 0-based (LSP convention); the renderer converts to/from monaco 1-based. */
+export interface CodeNavQuery {
+  readonly worktreeId: string;
+  readonly relPath: string;
+  readonly line: number; // 0-based
+  readonly character: number; // 0-based
+}
+
+export interface CodeNavReferencesQuery extends CodeNavQuery {
+  readonly includeDeclaration: boolean;
+}
+
+/** A nav target, confined to the worktree (relPath is relative to the worktree root). */
+export interface CodeNavLocation {
+  readonly relPath: string;
+  readonly startLine: number; // 0-based
+  readonly startCharacter: number;
+  readonly endLine: number;
+  readonly endCharacter: number;
+}
+
+export interface CodeNavResult {
+  readonly locations: readonly CodeNavLocation[];
+}
+
+/** Per-language availability for the Settings degradation surface (loud fallback). */
+export interface CodeNavLangStatus {
+  readonly available: boolean;
+  readonly reason?: string;
+}
+
+/** Capabilities for the IPC-backed languages only (TS/JS are always available, no IPC). */
+export interface CodeNavCapabilities {
+  readonly java: CodeNavLangStatus;
+  readonly kotlin: CodeNavLangStatus;
+}
+
 export interface DiffFileRequest {
   readonly worktreeId: string;
   readonly base?: string;
@@ -497,6 +536,10 @@ export interface AppSettings {
   readonly verifyCommand?: string;
   /** Server start override; unset => MANGO_SERVER_CMD ?? auto-detection. */
   readonly serverCommand?: string;
+  /** Absolute path override for the Java LSP server (jdtls); unset => PATH-dir probe. */
+  readonly lspJavaPath?: string;
+  /** Absolute path override for the Kotlin LSP server; unset => PATH-dir probe. */
+  readonly lspKotlinPath?: string;
   /** Default base branch for merge target + diff; unset => 'main'. */
   readonly baseBranch?: string;
   /**
