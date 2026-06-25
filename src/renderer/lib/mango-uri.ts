@@ -55,6 +55,31 @@ export function encodeMango(worktreeId: string, relPath: string): MangoUriParts 
   return { scheme: MANGO_SCHEME, path: `/${seg}${rest}` };
 }
 
+/**
+ * The TS module-resolution `baseUrl` for a worktree's mango models: `mango:/<b64url>`.
+ *
+ * Load-bearing detail: encodeMango puts the worktreeId in the PATH (not the authority), so
+ * monaco renders model URIs with a SINGLE slash (`mango:/<b64url>/rel`). TypeScript only
+ * treats a "filename" as URL-rooted when it contains `://`; with one slash it sees `mango:`
+ * as an ordinary path segment, so combinePaths(baseUrl, alias-substitution) reproduces the
+ * exact model URI string the worker matches. A directory-style baseUrl ('src'/'.') would
+ * match no model URI and silently no-op, which is why the base must be this full prefix.
+ */
+export function mangoBaseUrl(worktreeId: string): string {
+  const { scheme, path } = encodeMango(worktreeId, '');
+  return `${scheme}:${path}`;
+}
+
+/**
+ * The TS `baseUrl` to feed setCompilerOptions for a worktree: the `mango:/<b64url>` root
+ * plus the tsconfig's worktree-root-relative base dir ('' => the root). A tsconfig alias
+ * substitution joined onto this reproduces a real model URI (see mangoBaseUrl). PURE.
+ */
+export function navBaseUrl(worktreeId: string, baseDir: string): string {
+  const root = mangoBaseUrl(worktreeId);
+  return baseDir ? `${root}/${baseDir}` : root;
+}
+
 /** Decodes mango URI parts back to (worktreeId, relPath), or null (fail-closed). */
 export function decodeMango(parts: MangoUriParts): { worktreeId: string; relPath: string } | null {
   if (parts.scheme !== MANGO_SCHEME) return null;
