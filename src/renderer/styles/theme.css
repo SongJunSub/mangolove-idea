@@ -314,6 +314,19 @@ a {
   overflow: hidden;
 }
 
+/* ---- server "Open" chip (A5): running server URL -> Browser tab ---- */
+.server-open-chip {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-family: ui-monospace, Menlo, monospace;
+  padding: 2px 8px;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* ---- file tree (A3) ---- */
 .tree {
   padding: 4px 0;

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { AppInfo, QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
 import { formatVersions } from './lib/format-versions';
 import { applyTheme, resolveTheme } from './lib/theme';
@@ -213,6 +213,40 @@ export function App(): React.JSX.Element {
     };
   }, [selectedId]);
 
+  // A5 graft — rising-edge auto-switch to the Browser tab. When the SELECTED worktree's
+  // server first reaches 'running' WITH a detected URL, switch the bottom-right pane to
+  // Browser exactly once per run, so a Run drops to zero clicks. Keyed by (worktreeId,
+  // startedAt) so: (a) a restart (new startedAt) re-opens; (b) it fires once, not on
+  // every re-render, so a later manual tab change is never re-asserted; (c) merely
+  // SELECTING an already-running worktree only adopts the baseline (no yank). Anchored
+  // strictly to selectedServer + detectedServerUrl (both demuxed to selectedId), so a
+  // background worktree's server can never hijack the pane. Independently revertable.
+  const autoOpenRef = useRef<{ id: string | null; key: string | null }>({ id: null, key: null });
+  useEffect(() => {
+    const running = selectedServer?.process.state === 'running';
+    const key =
+      running && detectedServerUrl
+        ? `${selectedId}:${selectedServer?.process.startedAt ?? ''}`
+        : null;
+    const prev = autoOpenRef.current;
+    if (prev.id !== selectedId) {
+      // Worktree switch: adopt the current run as baseline WITHOUT opening (selecting an
+      // already-running worktree must not yank the pane to Browser).
+      autoOpenRef.current = { id: selectedId, key };
+      return;
+    }
+    if (key !== prev.key) {
+      autoOpenRef.current = { id: selectedId, key };
+      // Rising edge for THIS worktree's server (stopped/starting -> running + URL).
+      if (key) setPaneMode('browser');
+    }
+  }, [
+    selectedId,
+    selectedServer?.process.state,
+    selectedServer?.process.startedAt,
+    detectedServerUrl,
+  ]);
+
   const onQuitDecision = useCallback(async (quit: boolean): Promise<void> => {
     setQuitWarning(null);
     await window.mango.app.sendQuitDecision(quit);
@@ -414,8 +448,10 @@ export function App(): React.JSX.Element {
               <ServerControls
                 selectedId={selectedId}
                 status={selectedServer}
+                serverUrl={detectedServerUrl}
                 onStart={(id) => void startServer(id)}
                 onStop={(id) => void stopServer(id)}
+                onOpen={() => setPaneMode('browser')}
               />
               <MergeControls
                 selected={selectedWorktree}

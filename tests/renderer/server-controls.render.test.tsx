@@ -54,4 +54,28 @@ describe('<ServerControls>', () => {
     controls({ status: status('crashed') });
     expect(screen.getByText('server: crashed')).toBeInTheDocument();
   });
+
+  it('running + serverUrl: shows the Open chip with the URL; click fires onOpen', () => {
+    const onOpen = vi.fn();
+    controls({ status: status('running'), serverUrl: 'http://localhost:5174/', onOpen });
+    const chip = screen.getByTestId('server-open');
+    expect(chip).toHaveTextContent('http://localhost:5174/');
+    fireEvent.click(chip);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('running but NO serverUrl: no Open chip (nothing to open yet)', () => {
+    controls({ status: status('running'), serverUrl: null, onOpen: vi.fn() });
+    expect(screen.queryByTestId('server-open')).not.toBeInTheDocument();
+  });
+
+  it('serverUrl present but NOT running: no Open chip (gated on running state)', () => {
+    controls({ status: status('stopped'), serverUrl: 'http://localhost:5174/', onOpen: vi.fn() });
+    expect(screen.queryByTestId('server-open')).not.toBeInTheDocument();
+  });
+
+  it('running + serverUrl but no onOpen handler: no chip (nothing to do)', () => {
+    controls({ status: status('running'), serverUrl: 'http://localhost:5174/' });
+    expect(screen.queryByTestId('server-open')).not.toBeInTheDocument();
+  });
 });
