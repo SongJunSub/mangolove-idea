@@ -65,6 +65,8 @@ export interface MangoApi {
     ping(): Promise<AppInfo>;
     onQuitWarning(cb: (e: QuitWarningEvent) => void): Unsubscribe;
     sendQuitDecision(quit: boolean): Promise<Ack>;
+    /** Report this window's unsaved editor file count to main (fire-and-forget, A4). */
+    setUnsaved(count: number): void;
     /** Open a URL in the OS default browser (read-only action; used by the PR panel). */
     openExternal(req: OpenExternalRequest): Promise<Ack>;
   };

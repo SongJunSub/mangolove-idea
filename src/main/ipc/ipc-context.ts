@@ -59,6 +59,12 @@ export interface IpcContext {
   /** Set true once the user confirms quit so before-quit stops re-intercepting (Plan 5). */
   confirmedQuit?: boolean;
   /**
+   * This window's count of unsaved (dirty) editor files, pushed by the renderer via
+   * APP_SET_UNSAVED (A4). Summed across windows for the before-quit dirty-guard. Holds
+   * no live process, so it is NOT nulled on SETTINGS_SET.
+   */
+  unsavedFileCount?: number;
+  /**
    * Set true by SETTINGS_SET when the live sessionManager was KEPT (busy) so its
    * cached agentCommand is stale. The manager's onIdle callback consumes this once
    * the last PTY exits, clearing ctx.sessionManager so the next spawn rebuilds with

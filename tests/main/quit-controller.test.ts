@@ -11,6 +11,7 @@ function deps(over: Partial<QuitControllerDeps> = {}) {
     // are unchanged (an override of liveWorktreeIds flows through); idle-only cases
     // override this to [].
     activeTurnWorktreeIds: () => liveWorktreeIds(),
+    unsavedFileCount: () => 0,
     emitQuitWarning: vi.fn((ids: readonly string[]) => calls.push(`warn:${ids.join(',')}`)),
     sweep: vi.fn(() => calls.push('sweep')),
     quitNow: vi.fn(() => calls.push('quitNow')),
@@ -26,7 +27,7 @@ describe('QuitController', () => {
     const e = { preventDefault: vi.fn() };
     ctrl.onBeforeQuit(e);
     expect(e.preventDefault).toHaveBeenCalledOnce();
-    expect(base.emitQuitWarning).toHaveBeenCalledWith(['/wt/a', '/wt/b']);
+    expect(base.emitQuitWarning).toHaveBeenCalledWith(['/wt/a', '/wt/b'], 0);
     expect(base.sweep).not.toHaveBeenCalled();
     expect(base.quitNow).not.toHaveBeenCalled();
   });
@@ -99,10 +100,51 @@ describe('QuitController', () => {
     const e = { preventDefault: vi.fn() };
     ctrl.onBeforeQuit(e);
     expect(e.preventDefault).toHaveBeenCalledOnce();
-    expect(base.emitQuitWarning).toHaveBeenCalledWith(['/wt/a']); // active turns only
+    expect(base.emitQuitWarning).toHaveBeenCalledWith(['/wt/a'], 0); // active turns only
     expect(base.sweep).not.toHaveBeenCalled(); // not yet
     ctrl.decide(true);
     // Confirmed quit sweeps (killAll kills ALL live sessions, idle /wt/b included) then quits.
+    expect(calls).toEqual(['warn:/wt/a', 'sweep', 'quitNow']);
+  });
+
+  it('warns on an UNSAVED editor even with NO active turn (a dirty buffer is lost on quit) [A4]', () => {
+    const { base } = deps({
+      liveWorktreeIds: () => [],
+      activeTurnWorktreeIds: () => [],
+      unsavedFileCount: () => 2,
+    });
+    const ctrl = new QuitController(base);
+    const e = { preventDefault: vi.fn() };
+    ctrl.onBeforeQuit(e);
+    expect(e.preventDefault).toHaveBeenCalledOnce();
+    expect(base.emitQuitWarning).toHaveBeenCalledWith([], 2); // no turns, 2 unsaved files
+    expect(base.sweep).not.toHaveBeenCalled();
+  });
+
+  it('does NOT warn when there is neither an active turn nor an unsaved editor [A4]', () => {
+    const { base } = deps({
+      liveWorktreeIds: () => ['/wt/a'], // live but idle
+      activeTurnWorktreeIds: () => [],
+      unsavedFileCount: () => 0,
+    });
+    const ctrl = new QuitController(base);
+    const e = { preventDefault: vi.fn() };
+    ctrl.onBeforeQuit(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(base.emitQuitWarning).not.toHaveBeenCalled();
+    expect(base.sweep).toHaveBeenCalledOnce();
+  });
+
+  it('warns with BOTH the active turns and the unsaved count when both are present [A4]', () => {
+    const { base, calls } = deps({
+      liveWorktreeIds: () => ['/wt/a'],
+      activeTurnWorktreeIds: () => ['/wt/a'],
+      unsavedFileCount: () => 1,
+    });
+    const ctrl = new QuitController(base);
+    ctrl.onBeforeQuit({ preventDefault: vi.fn() });
+    expect(base.emitQuitWarning).toHaveBeenCalledWith(['/wt/a'], 1);
+    ctrl.decide(true);
     expect(calls).toEqual(['warn:/wt/a', 'sweep', 'quitNow']);
   });
 });

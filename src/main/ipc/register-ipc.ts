@@ -1170,4 +1170,13 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     ctx.requestQuit?.();
     return { ok: true };
   });
+
+  // Renderer reports this window's unsaved (dirty) editor file count (A4). Fire-and-forget
+  // send, like SESSION_INPUT/RESIZE (requireCtx directly — no special teardown handling).
+  // Clamped to a non-negative integer so a bad/hostile payload can't make the guard misfire.
+  ipcMain.on(IPC.APP_SET_UNSAVED, (event, req: { count: number }) => {
+    const ctx = requireCtx(event);
+    const n = Number(req?.count);
+    ctx.unsavedFileCount = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  });
 }

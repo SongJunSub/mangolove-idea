@@ -45,6 +45,7 @@ export const IPC = {
   // app quit warning (MVP item 6)
   APP_QUIT_WARNING: 'app:quit-warning', // main -> renderer, event
   APP_QUIT_DECISION: 'app:quit-decision', // renderer -> main, invoke (user said quit/cancel)
+  APP_SET_UNSAVED: 'app:set-unsaved', // renderer -> main, send (per-window unsaved file count, A4)
 
   // diff viewer (V2 A1) — read-only PR-style diff (renderer -> main, invoke)
   DIFF_LIST: 'diff:list', // invoke (worktreeId, base? -> ChangedFile[])

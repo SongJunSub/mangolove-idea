@@ -3,6 +3,7 @@ import { QuitController } from '../../src/main/app/quit-controller';
 import {
   aggregateLiveWorktreeIds,
   aggregateActiveTurnWorktreeIds,
+  aggregateUnsavedCount,
   sweepAll,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
@@ -38,6 +39,7 @@ describe('aggregate quit across all windows', () => {
     const ctrl = new QuitController({
       liveWorktreeIds: () => aggregateLiveWorktreeIds(contexts),
       activeTurnWorktreeIds: () => aggregateActiveTurnWorktreeIds(contexts),
+      unsavedFileCount: () => aggregateUnsavedCount(contexts),
       emitQuitWarning,
       sweep: () => sweepAll(contexts),
       quitNow,
@@ -47,7 +49,7 @@ describe('aggregate quit across all windows', () => {
     const e = { preventDefault: vi.fn() };
     ctrl.onBeforeQuit(e);
     expect(e.preventDefault).toHaveBeenCalledOnce();
-    expect(emitQuitWarning).toHaveBeenCalledWith(['wA']);
+    expect(emitQuitWarning).toHaveBeenCalledWith(['wA'], 0); // no unsaved editors here
 
     // Confirm: sweepAll runs over BOTH windows.
     ctrl.decide(true);
@@ -73,6 +75,7 @@ describe('aggregate quit across all windows', () => {
     const ctrl = new QuitController({
       liveWorktreeIds: () => aggregateLiveWorktreeIds(contexts),
       activeTurnWorktreeIds: () => aggregateActiveTurnWorktreeIds(contexts),
+      unsavedFileCount: () => aggregateUnsavedCount(contexts),
       emitQuitWarning: vi.fn(),
       sweep: () => sweepAll(contexts),
       quitNow: vi.fn(),
@@ -81,5 +84,36 @@ describe('aggregate quit across all windows', () => {
     ctrl.onBeforeQuit(e);
     expect(e.preventDefault).not.toHaveBeenCalled(); // no active turn -> no veto
     expect(sweepCalls.sort()).toEqual(['dispA', 'dispB', 'killA', 'killB']); // still swept
+  });
+
+  it('an UNSAVED editor in any window vetoes the quit even with no active turn (A4, summed)', () => {
+    const mk = (live: string, unsaved: number): IpcContext => ({
+      mainWindow: null,
+      sessionManager: {
+        killAll: () => {},
+        liveWorktreeIds: () => [live],
+        activeTurnWorktreeIds: () => [], // idle: lossless on its own
+      } as never,
+      serverManager: { dispose: () => {} } as never,
+      unsavedFileCount: unsaved,
+    });
+    const contexts = new Map<number, IpcContext>([
+      [1, mk('wA', 1)],
+      [2, mk('wB', 2)],
+    ]);
+    expect(aggregateUnsavedCount(contexts)).toBe(3); // summed across windows
+    const emitQuitWarning = vi.fn();
+    const ctrl = new QuitController({
+      liveWorktreeIds: () => aggregateLiveWorktreeIds(contexts),
+      activeTurnWorktreeIds: () => aggregateActiveTurnWorktreeIds(contexts),
+      unsavedFileCount: () => aggregateUnsavedCount(contexts),
+      emitQuitWarning,
+      sweep: () => sweepAll(contexts),
+      quitNow: vi.fn(),
+    });
+    const e = { preventDefault: vi.fn() };
+    ctrl.onBeforeQuit(e);
+    expect(e.preventDefault).toHaveBeenCalledOnce(); // dirty buffers -> veto + warn
+    expect(emitQuitWarning).toHaveBeenCalledWith([], 3); // no turns, 3 unsaved across windows
   });
 });

@@ -255,6 +255,13 @@ export function App(): React.JSX.Element {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
   }, []);
 
+  // Report this window's unsaved editor count to main so a quit with a dirty buffer — even
+  // with no active agent turn — still warns before the change is lost (A4). The editor
+  // tracks one open file, so this is 0 or 1; main sums it across windows.
+  useEffect(() => {
+    window.mango.app.setUnsaved(editor.dirty ? 1 : 0);
+  }, [editor.dirty]);
+
   useEffect(() => {
     let alive = true;
     void window.mango.session.persistenceInfo().then((i) => {
@@ -758,24 +765,34 @@ export function App(): React.JSX.Element {
               }}
             >
               <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
-              {persistenceInfo?.effective === 'full' ? (
-                <p style={{ fontSize: 13 }}>
-                  {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With background
-                  persistence on, they will <strong>keep running in the background</strong> and
-                  re-attach when you reopen — nothing is lost. You can also stop them now.
-                </p>
-              ) : (
-                <p style={{ fontSize: 13 }}>
-                  {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and
-                  would be interrupted. (Conversations are saved by claude and resume with{' '}
-                  <code>--continue</code> next time — only the in-flight turn is lost.) Quit anyway?
+              {quitWarning.activeWorktreeIds.length > 0 &&
+                (persistenceInfo?.effective === 'full' ? (
+                  <p style={{ fontSize: 13 }}>
+                    {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With
+                    background persistence on, they will{' '}
+                    <strong>keep running in the background</strong> and re-attach when you reopen —
+                    nothing is lost. You can also stop them now.
+                  </p>
+                ) : (
+                  <p style={{ fontSize: 13 }}>
+                    {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and
+                    would be interrupted. (Conversations are saved by claude and resume with{' '}
+                    <code>--continue</code> next time — only the in-flight turn is lost.) Quit
+                    anyway?
+                  </p>
+                ))}
+              {quitWarning.unsavedFileCount > 0 && (
+                <p data-testid="quit-unsaved" style={{ fontSize: 13 }}>
+                  <strong>{quitWarning.unsavedFileCount}</strong> unsaved editor file(s) will be
+                  lost — they were never saved to disk.
                 </p>
               )}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
                 <button type="button" onClick={() => void onQuitDecision(false)}>
                   Cancel
                 </button>
-                {persistenceInfo?.effective === 'full' ? (
+                {quitWarning.activeWorktreeIds.length > 0 &&
+                persistenceInfo?.effective === 'full' ? (
                   <>
                     <button
                       type="button"
@@ -793,7 +810,11 @@ export function App(): React.JSX.Element {
                     </button>
                   </>
                 ) : (
-                  <button type="button" onClick={() => void onQuitDecision(true)}>
+                  <button
+                    type="button"
+                    data-testid="quit-anyway"
+                    onClick={() => void onQuitDecision(true)}
+                  >
                     Quit anyway
                   </button>
                 )}

@@ -9,6 +9,7 @@ import { QuitController } from './app/quit-controller';
 import {
   aggregateLiveWorktreeIds,
   aggregateActiveTurnWorktreeIds,
+  aggregateUnsavedCount,
   sweepAll,
   teardownWindow,
   findCtxByRepoRoot,
@@ -144,8 +145,8 @@ function createWindow(repoRoot: string | null): BrowserWindow {
  * Sends APP_QUIT_WARNING to EVERY live window (each window's renderer owns its own
  * warning modal). Window-guarded; a destroyed window is skipped.
  */
-function emitQuitWarning(activeWorktreeIds: readonly string[]): void {
-  const payload: QuitWarningEvent = { activeWorktreeIds };
+function emitQuitWarning(activeWorktreeIds: readonly string[], unsavedFileCount: number): void {
+  const payload: QuitWarningEvent = { activeWorktreeIds, unsavedFileCount };
   for (const ctx of contexts.values()) {
     const win = ctx.mainWindow;
     if (win && !win.isDestroyed()) win.webContents.send(IPC.APP_QUIT_WARNING, payload);
@@ -157,6 +158,7 @@ const quitController = new QuitController({
   // kill-sweep both span every window (no orphan claude/server in any window).
   liveWorktreeIds: () => aggregateLiveWorktreeIds(contexts),
   activeTurnWorktreeIds: () => aggregateActiveTurnWorktreeIds(contexts),
+  unsavedFileCount: () => aggregateUnsavedCount(contexts),
   emitQuitWarning,
   sweep: () => sweepAll(contexts),
   quitNow: () => app.quit(),
