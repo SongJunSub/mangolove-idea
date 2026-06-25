@@ -148,7 +148,7 @@ export function ConflictView({
   return (
     <div data-testid="conflict-view" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <strong style={{ color: '#e0a030', fontSize: 13 }}>
+        <strong style={{ color: 'var(--warn)', fontSize: 13 }}>
           Merge conflict — {files.length} file(s) to resolve
         </strong>
         <button
@@ -179,13 +179,13 @@ export function ConflictView({
             listStyle: 'none',
             overflowY: 'auto',
             fontSize: 13,
-            borderRight: '1px solid #333',
+            borderRight: '1px solid var(--border)',
           }}
         >
-          {loading && <li style={{ color: '#888' }}>Loading conflicts…</li>}
-          {error && <li style={{ color: 'crimson' }}>error: {error}</li>}
+          {loading && <li style={{ color: 'var(--muted)' }}>Loading conflicts…</li>}
+          {error && <li style={{ color: 'var(--err)' }}>error: {error}</li>}
           {!loading && !error && files.length === 0 && (
-            <li style={{ color: '#888' }}>No conflicts remaining — Continue merge.</li>
+            <li style={{ color: 'var(--muted)' }}>No conflicts remaining — Continue merge.</li>
           )}
           {files.map((f) => (
             <li key={f.path} style={{ marginBottom: 6 }}>
@@ -197,8 +197,8 @@ export function ConflictView({
                   width: '100%',
                   textAlign: 'left',
                   padding: '4px 6px',
-                  background: selectedPath === f.path ? '#5a3a14' : 'transparent',
-                  color: '#ddd',
+                  background: selectedPath === f.path ? 'var(--accent-soft)' : 'transparent',
+                  color: 'var(--text)',
                   border: 'none',
                   cursor: 'pointer',
                   fontFamily: 'ui-monospace, Menlo, monospace',
@@ -269,14 +269,14 @@ export function ConflictView({
         </ul>
 
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-          {fileError && <p style={{ color: 'crimson', fontSize: 13 }}>error: {fileError}</p>}
+          {fileError && <p style={{ color: 'var(--err)', fontSize: 13 }}>error: {fileError}</p>}
           {!selectedPath && !fileError && (
-            <p style={{ color: '#888', fontSize: 13 }}>
+            <p style={{ color: 'var(--muted)', fontSize: 13 }}>
               Select a conflicted file to edit its markers, or use the per-file buttons.
             </p>
           )}
           {versions && !versions.hasOurs !== !versions.hasTheirs && (
-            <p style={{ color: '#e0a030', fontSize: 12 }}>
+            <p style={{ color: 'var(--warn)', fontSize: 12 }}>
               Missing index stage ({versions.code}) — content ours/theirs unavailable; edit manually
               or keep/remove the file.
             </p>

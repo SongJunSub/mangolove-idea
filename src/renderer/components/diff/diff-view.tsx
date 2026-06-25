@@ -102,13 +102,13 @@ export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.
           listStyle: 'none',
           overflowY: 'auto',
           fontSize: 13,
-          borderRight: '1px solid #333',
+          borderRight: '1px solid var(--border)',
         }}
       >
-        {loading && <li style={{ color: '#888' }}>Loading changes…</li>}
-        {error && <li style={{ color: 'crimson' }}>error: {error}</li>}
+        {loading && <li style={{ color: 'var(--muted)' }}>Loading changes…</li>}
+        {error && <li style={{ color: 'var(--err)' }}>error: {error}</li>}
         {!loading && !error && files.length === 0 && (
-          <li style={{ color: '#888' }}>No changes vs base.</li>
+          <li style={{ color: 'var(--muted)' }}>No changes vs base.</li>
         )}
         {files.map((f) => (
           <li key={f.path}>
@@ -120,8 +120,8 @@ export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.
                 width: '100%',
                 textAlign: 'left',
                 padding: '4px 6px',
-                background: selectedPath === f.path ? '#094771' : 'transparent',
-                color: '#ddd',
+                background: selectedPath === f.path ? 'var(--accent-soft)' : 'transparent',
+                color: 'var(--text)',
                 border: 'none',
                 cursor: 'pointer',
                 fontFamily: 'ui-monospace, Menlo, monospace',
@@ -135,9 +135,9 @@ export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.
         ))}
       </ul>
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-        {fileError && <p style={{ color: 'crimson', fontSize: 13 }}>error: {fileError}</p>}
+        {fileError && <p style={{ color: 'var(--err)', fontSize: 13 }}>error: {fileError}</p>}
         {!selectedPath && !fileError && (
-          <p style={{ color: '#888', fontSize: 13 }}>Select a file to view its diff.</p>
+          <p style={{ color: 'var(--muted)', fontSize: 13 }}>Select a file to view its diff.</p>
         )}
         <div ref={hostRef} style={{ width: '100%', height: 460, borderRadius: 4 }} />
       </div>
