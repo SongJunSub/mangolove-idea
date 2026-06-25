@@ -4,6 +4,8 @@ import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
 import { NavBack } from './components/editor/nav-back';
+import { UsagesPanel } from './components/editor/usages-panel';
+import type { UsageLocation } from './lib/code-nav/find-usages';
 import { registerCodeNav } from './lib/code-nav/register-code-nav';
 import { applyTsconfigToNav } from './lib/code-nav/ts-nav';
 import { loadTsconfigNav } from './lib/code-nav/tsconfig-loader';
@@ -94,9 +96,9 @@ export function App(): React.JSX.Element {
   // Effective session-persistence mode (b-full). Drives the quit dialog's wording:
   // under 'full' a quit does NOT lose the turn — it keeps running in the background.
   const [persistenceInfo, setPersistenceInfo] = useState<SessionPersistenceInfo | null>(null);
-  const [paneMode, setPaneMode] = useState<'terminal' | 'diff' | 'conflict' | 'browser'>(
-    'terminal',
-  );
+  const [paneMode, setPaneMode] = useState<
+    'terminal' | 'diff' | 'conflict' | 'browser' | 'references'
+  >('terminal');
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
   // relPath of the file open in the editor pane (A4 edits + saves it), or null.
@@ -139,6 +141,11 @@ export function App(): React.JSX.Element {
     setPendingReveal(null);
     navHistoryRef.current = [];
     setCanGoBack(false);
+    // Clear find-usages too: it stores worktree-relative paths (not mango URIs), so leaving
+    // OLD-worktree rows around would let a later click re-bind them to the NEW selectedId and
+    // open the wrong worktree's path (stale cross-worktree nav).
+    setUsages([]);
+    setUsagesLoading(false);
   }, []);
 
   const applyPending = useCallback(
@@ -207,6 +214,16 @@ export function App(): React.JSX.Element {
     },
     [],
   );
+
+  // Find-usages panel (Phase B). CodeEditor reports loading, then the results; a row click
+  // routes back through onCodeNavOpen (dirty-guard + reveal + Back history).
+  const [usages, setUsages] = useState<readonly UsageLocation[]>([]);
+  const [usagesLoading, setUsagesLoading] = useState(false);
+  const onFindUsages = useCallback((list: UsageLocation[] | null, loading: boolean): void => {
+    setUsagesLoading(loading);
+    if (!loading) setUsages(list ?? []);
+    setPaneMode('references');
+  }, []);
 
   /** Back: return to the previously-jumped-from location through the dirty-guard. */
   const onNavBack = useCallback((): void => {
@@ -531,6 +548,7 @@ export function App(): React.JSX.Element {
                     onCursor={(line, column) => {
                       currentPosRef.current = { line, column };
                     }}
+                    onUsages={onFindUsages}
                   />
                 </Suspense>
               </div>
@@ -614,6 +632,15 @@ export function App(): React.JSX.Element {
                     >
                       Browser
                     </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={paneMode === 'references'}
+                      data-testid="tab-references"
+                      onClick={() => setPaneMode('references')}
+                    >
+                      Usages
+                    </button>
                     {conflictWorktreeId === selectedId && (
                       <button
                         type="button"
@@ -657,6 +684,15 @@ export function App(): React.JSX.Element {
                   )}
                   {paneMode === 'browser' && (
                     <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
+                  )}
+                  {paneMode === 'references' && (
+                    <UsagesPanel
+                      usages={usages}
+                      loading={usagesLoading}
+                      onOpen={(relPath, line, column) => {
+                        if (selectedId) onCodeNavOpen(selectedId, relPath, { line, column });
+                      }}
+                    />
                   )}
                   {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
                     <Suspense
