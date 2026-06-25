@@ -3,6 +3,7 @@ import * as monaco from 'monaco-editor';
 import { useEffect, useRef } from 'react';
 import { encodeMango } from '../../lib/mango-uri';
 import { languageForPath } from '../../lib/language-for-path';
+import { collectUsages, type UsageLocation } from '../../lib/code-nav/find-usages';
 
 export interface CodeEditorProps {
   readonly worktreeId: string;
@@ -18,6 +19,8 @@ export interface CodeEditorProps {
   onSaveRequested(): void;
   /** Reports the cursor position (1-based) so App can remember the jump-from spot for Back. */
   onCursor?(line: number, column: number): void;
+  /** Find-usages: reports loading then the results so App shows them in the usages panel. */
+  onUsages?(usages: UsageLocation[] | null, loading: boolean): void;
 }
 
 /**
@@ -41,6 +44,7 @@ export function CodeEditor({
   onChange,
   onSaveRequested,
   onCursor,
+  onUsages,
 }: CodeEditorProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -50,9 +54,11 @@ export function CodeEditor({
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSaveRequested);
   const onCursorRef = useRef(onCursor);
+  const onUsagesRef = useRef(onUsages);
   onChangeRef.current = onChange;
   onSaveRef.current = onSaveRequested;
   onCursorRef.current = onCursor;
+  onUsagesRef.current = onUsages;
 
   // Create once on mount; dispose on unmount.
   useEffect(() => {
@@ -75,9 +81,27 @@ export function CodeEditor({
     );
     // addCommand (not a window keydown — monaco swallows keys while focused).
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
+    // Find-usages into the persistent panel (context menu + Cmd/Ctrl+Shift+F12). Distinct from
+    // monaco's built-in Shift+F12 inline references peek, which is kept.
+    const usagesAction = editor.addAction({
+      id: 'mango.findUsagesPanel',
+      label: 'Find All Usages',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.6,
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.F12],
+      run: async (ed) => {
+        const m = ed.getModel();
+        const p = ed.getPosition();
+        if (!m || !p) return;
+        onUsagesRef.current?.(null, true); // loading
+        const usages = await collectUsages(m, p);
+        onUsagesRef.current?.(usages, false);
+      },
+    });
     return () => {
       sub.dispose();
       cursorSub.dispose();
+      usagesAction.dispose();
       ownedModelRef.current?.dispose(); // dispose ONLY our own model, never a borrowed one
       ownedModelRef.current = null;
       editor.dispose();
