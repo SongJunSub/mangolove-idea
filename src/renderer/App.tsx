@@ -5,6 +5,8 @@ import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
 import { NavBack } from './components/editor/nav-back';
 import { registerCodeNav } from './lib/code-nav/register-code-nav';
+import { applyTsconfigToNav } from './lib/code-nav/ts-nav';
+import { loadTsconfigNav } from './lib/code-nav/tsconfig-loader';
 import { WorktreeModelRegistry } from './lib/code-nav/worktree-model-registry';
 import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
@@ -225,13 +227,23 @@ export function App(): React.JSX.Element {
   }, [onCodeNavOpen]);
 
   // Seed first-party TS/JS models for the selected worktree (cross-file nav); dispose on switch.
+  // Also layer this worktree's tsconfig path aliases onto the shared TS service so '@/foo'
+  // style imports resolve. The compiler options are process-global, so this re-applies per
+  // worktree in lockstep with the registry; an empty/missing tsconfig is a harmless no-op.
   useEffect(() => {
     if (!selectedId) return;
     let reg: WorktreeModelRegistry | null = null;
     let cancelled = false;
-    void WorktreeModelRegistry.create(selectedId).then((r) => {
-      if (cancelled) r.dispose();
-      else reg = r;
+    // Apply the tsconfig aliases BEFORE seeding so the registry's models land in an
+    // already-configured worker — avoids setCompilerOptions rebuilding + reprocessing
+    // the (up to 2000) seeded models a second time on every worktree switch.
+    void loadTsconfigNav(selectedId).then((nav) => {
+      if (cancelled) return;
+      applyTsconfigToNav(selectedId, nav);
+      void WorktreeModelRegistry.create(selectedId).then((r) => {
+        if (cancelled) r.dispose();
+        else reg = r;
+      });
     });
     return () => {
       cancelled = true;

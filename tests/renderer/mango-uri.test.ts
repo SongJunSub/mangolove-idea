@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { encodeMango, decodeMango, MANGO_SCHEME } from '../../src/renderer/lib/mango-uri';
+import {
+  encodeMango,
+  decodeMango,
+  mangoBaseUrl,
+  navBaseUrl,
+  MANGO_SCHEME,
+} from '../../src/renderer/lib/mango-uri';
 
 describe('mango-uri codec', () => {
   it('round-trips (worktreeId, relPath) through encode/decode', () => {
@@ -32,5 +38,22 @@ describe('mango-uri codec', () => {
     expect(decodeMango({ scheme: 'mango', path: 'no-leading-slash' })).toBeNull();
     expect(decodeMango({ scheme: 'mango', path: '/' })).toBeNull(); // empty worktree segment
     expect(decodeMango({ scheme: 'mango', path: '/!!!not-base64!!!/x.ts' })).toBeNull();
+  });
+
+  it('mangoBaseUrl is the single-slash mango root that aliases join onto', () => {
+    const id = '/a/b/c';
+    const seg = encodeMango(id, '').path.slice(1); // <b64url>
+    // Single slash (empty authority) is load-bearing: TS sees 'mango:' as a path segment.
+    expect(mangoBaseUrl(id)).toBe(`mango:/${seg}`);
+    // Joining an alias substitution reproduces the EXACT model URI string the worker matches.
+    const modelUri = `${encodeMango(id, 'src/foo.ts').scheme}:${encodeMango(id, 'src/foo.ts').path}`;
+    expect(`${mangoBaseUrl(id)}/src/foo.ts`).toBe(modelUri);
+  });
+
+  it('navBaseUrl appends the tsconfig base dir (or stays at the root when empty)', () => {
+    const id = '/a/b/c';
+    expect(navBaseUrl(id, '')).toBe(mangoBaseUrl(id));
+    expect(navBaseUrl(id, 'src')).toBe(`${mangoBaseUrl(id)}/src`);
+    expect(navBaseUrl(id, 'packages/app')).toBe(`${mangoBaseUrl(id)}/packages/app`);
   });
 });
