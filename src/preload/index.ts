@@ -16,6 +16,7 @@ const api: MangoApi = {
     ping: () => ipcRenderer.invoke(IPC.APP_PING),
     onQuitWarning: (cb) => subscribe(IPC.APP_QUIT_WARNING, cb), // wired in Plan 5
     sendQuitDecision: (quit) => ipcRenderer.invoke(IPC.APP_QUIT_DECISION, { quit }),
+    setUnsaved: (count) => ipcRenderer.send(IPC.APP_SET_UNSAVED, { count }),
     openExternal: (req) => ipcRenderer.invoke(IPC.APP_OPEN_EXTERNAL, req),
   },
   worktree: {

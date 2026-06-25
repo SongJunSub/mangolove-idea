@@ -66,6 +66,13 @@ export function aggregateActiveTurnWorktreeIds(contexts: Map<number, IpcContext>
   return [...out];
 }
 
+/** Sum of every window's unsaved (dirty) editor file count — the before-quit dirty-guard (A4). */
+export function aggregateUnsavedCount(contexts: Map<number, IpcContext>): number {
+  let total = 0;
+  for (const ctx of contexts.values()) total += ctx.unsavedFileCount ?? 0;
+  return total;
+}
+
 /** killAll() + dispose() EVERY window's managers (no orphan claude/server anywhere). */
 export function sweepAll(contexts: Map<number, IpcContext>): void {
   for (const ctx of contexts.values()) {

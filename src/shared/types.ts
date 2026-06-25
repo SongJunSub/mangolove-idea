@@ -277,6 +277,12 @@ export interface ConflictInProgressRequest {
 export interface QuitWarningEvent {
   /** worktreeIds that currently have an ACTIVE TURN (live PTY, output within ACTIVE_TURN_MS). */
   readonly activeWorktreeIds: readonly string[];
+  /**
+   * Count of unsaved editor files across all windows at quit (A4). Unlike an in-flight
+   * turn, a dirty buffer is NOT recoverable on quit (it never reached disk), so the
+   * before-quit warning fires when EITHER this is > 0 OR activeWorktreeIds is non-empty.
+   */
+  readonly unsavedFileCount: number;
 }
 
 /** Generic OK/err envelope for invoke handlers that don't return data. */
