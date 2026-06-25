@@ -16,6 +16,14 @@ import { languageForPath, TSJS_LANGUAGES } from '../language-for-path';
  * model (monaco enforces one model per URI) rather than duplicating it.
  */
 
+// Caps validated by a sizing spike (2026-06-25): the worst-case 1st-party monorepo on hand
+// (CRS — 1554 TS/JS files, 3.7MB) stays UNDER both caps, so every file is seeded; building
+// its single ts.worker Program costs ~0.9s and ~276MB worker heap (~180KB/file of AST+symbols).
+// MAX_FILES=2000 therefore admits up to ~380MB worker heap — the intended ceiling against a
+// runaway monorepo. MAX_SIZE guards generated/bundled files (none tripped it; max observed 49KB).
+// A repo that trips MAX_FILES loses cross-file nav for the overflow (warned below); switch to
+// lazy-seed-on-first-nav only if such repos appear — lazy trades nav completeness for memory,
+// since TS cross-file resolution needs the whole Program.
 const MAX_FILES = 2000;
 const MAX_SIZE = 512 * 1024;
 const EXCLUDED_DIRS = new Set([
