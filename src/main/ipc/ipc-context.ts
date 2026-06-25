@@ -10,6 +10,8 @@ import type { ScrollbackStore } from '../managers/scrollback-store';
 import type { DiffViewer } from '../git/diff-viewer';
 import type { FileTreeReader } from '../fs/file-tree-reader';
 import type { FileEditor } from '../fs/file-editor';
+import type { CodeNavService } from '../codenav/code-nav-service';
+import type { LspManager } from '../lsp/lsp-manager';
 import type { ConflictResolver } from '../git/conflict-resolver';
 import type { GhStatusReader } from '../git/gh-status-reader';
 import type { FanoutManager } from '../git/fanout-manager';
@@ -81,6 +83,13 @@ export interface IpcContext {
    * SETTINGS_SET. The RESULT is never cached — only the reader.
    */
   ghStatusReader?: GhStatusReader;
+  /**
+   * Code navigation (Phase B). The CodeNavService facade confines every LSP nav target
+   * to the worktree; the LspManager owns the live jdtls/kotlin-ls children and MUST be
+   * disposed on window teardown / quit (mirrors serverManager). Lazily constructed.
+   */
+  codeNavService?: CodeNavService;
+  lspManager?: LspManager;
   /**
    * Lazily constructed in register-ipc; injectable in tests (V2 merge conflict).
    * STATEFUL only in the sense that it owns the in-progress merge — it is NOT nulled

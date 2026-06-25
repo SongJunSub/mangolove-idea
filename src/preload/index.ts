@@ -73,6 +73,11 @@ const api: MangoApi = {
     read: (req) => ipcRenderer.invoke(IPC.FILE_READ, req),
     write: (req) => ipcRenderer.invoke(IPC.FILE_WRITE, req),
   },
+  codenav: {
+    capabilities: (worktreeId) => ipcRenderer.invoke(IPC.CODENAV_CAPABILITIES, { worktreeId }),
+    definition: (req) => ipcRenderer.invoke(IPC.CODENAV_DEFINITION, req),
+    references: (req) => ipcRenderer.invoke(IPC.CODENAV_REFERENCES, req),
+  },
   gh: {
     status: (req) => ipcRenderer.invoke(IPC.GH_STATUS, req),
   },

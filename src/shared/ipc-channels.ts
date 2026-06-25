@@ -57,6 +57,12 @@ export const IPC = {
   FILE_READ: 'file:read', // invoke ({worktreeId, relPath} -> FileReadResult)
   FILE_WRITE: 'file:write', // invoke ({worktreeId, relPath, content, baseToken?} -> FileWriteResult)
 
+  // code navigation (Phase B) — Java/Kotlin go-to-def/find-usages via external LSP on PATH.
+  // TS/JS nav is in-browser (monaco) and never touches these. Targets are worktree-confined.
+  CODENAV_CAPABILITIES: 'codenav:capabilities', // invoke ({worktreeId} -> CodeNavCapabilities)
+  CODENAV_DEFINITION: 'codenav:definition', // invoke (CodeNavQuery -> CodeNavResult)
+  CODENAV_REFERENCES: 'codenav:references', // invoke (CodeNavReferencesQuery -> CodeNavResult)
+
   // PR/CI status panel (V2) — read-only gh-backed status + the open-in-browser action
   GH_STATUS: 'gh:status', // invoke (worktreeId -> GhStatus)
   APP_OPEN_EXTERNAL: 'app:open-external', // invoke (url -> Ack; shell.openExternal)

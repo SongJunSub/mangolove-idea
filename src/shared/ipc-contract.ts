@@ -37,6 +37,10 @@ import type {
   FileReadResult,
   FileWriteRequest,
   FileWriteResult,
+  CodeNavQuery,
+  CodeNavReferencesQuery,
+  CodeNavResult,
+  CodeNavCapabilities,
   AppSettings,
   SessionPersistenceInfo,
   CrossMachineSessionPointer,
@@ -150,6 +154,14 @@ export interface MangoApi {
     read(req: FileReadRequest): Promise<FileReadResult>;
     /** Writes one file (scoped + O_NOFOLLOW); returns ok + a fresh optimistic token. */
     write(req: FileWriteRequest): Promise<FileWriteResult>;
+  };
+  codenav: {
+    /** Per-language Java/Kotlin LSP availability (PATH-detected); drives provider registration + Settings. */
+    capabilities(worktreeId: string): Promise<CodeNavCapabilities>;
+    /** Java/Kotlin go-to-definition; targets confined to the worktree ([] when degraded). */
+    definition(req: CodeNavQuery): Promise<CodeNavResult>;
+    /** Java/Kotlin find-references; targets confined to the worktree ([] when degraded). */
+    references(req: CodeNavReferencesQuery): Promise<CodeNavResult>;
   };
   settings: {
     /** Current persisted settings (every field optional; unset => env/default). */

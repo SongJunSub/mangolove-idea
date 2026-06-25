@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsModal } from '../../src/renderer/components/settings/settings-modal';
 
-// SettingsModal calls window.mango.session.persistenceInfo() on mount; stub the bridge.
+// SettingsModal calls window.mango.session.persistenceInfo() + codenav.capabilities() on
+// mount; stub the bridge.
 beforeEach(() => {
   const mango = {
     session: {
@@ -13,6 +14,12 @@ beforeEach(() => {
         abducoAvailable: true,
       })),
       stopAllBackground: vi.fn(async () => ({ ok: true })),
+    },
+    codenav: {
+      capabilities: vi.fn(async () => ({
+        java: { available: false, reason: 'jdtls not found' },
+        kotlin: { available: false, reason: 'kotlin-language-server not found' },
+      })),
     },
   };
   // window.mango is declared read-only; defineProperty (configurable) installs the stub

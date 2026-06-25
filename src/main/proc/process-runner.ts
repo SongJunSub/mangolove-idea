@@ -40,6 +40,33 @@ export interface ProcessRunner {
 }
 
 /**
+ * A child with a WRITABLE stdin and RAW (Buffer) stdout — for byte-accurate JSON-RPC
+ * framing with a language server. Separate from IProcLike so the existing string-based
+ * spawn paths (ServerManager) are untouched and their fakes don't need to grow.
+ */
+export interface IRpcProc {
+  readonly pid: number | undefined;
+  kill(signal?: NodeJS.Signals): void;
+  /** Write a framed JSON-RPC chunk to the child's stdin. */
+  write(data: Buffer): void;
+  /** RAW stdout bytes (NO utf-8 decode — Content-Length counts bytes). */
+  onStdout(cb: (chunk: Buffer) => void): void;
+  onStderr(cb: (chunk: string) => void): void;
+  onExit(cb: (e: ProcExitEvent) => void): void;
+  onError(cb: (err: Error) => void): void;
+}
+
+/** Runner that can spawn an interactive (stdin-writable, raw-stdout) child for LSP. */
+export interface RpcProcessRunner {
+  /**
+   * Spawns an argv WITHOUT a shell, with stdin:'pipe' and RAW (Buffer) stdout, so the
+   * caller can write JSON-RPC and frame responses by byte length. NodeProcessRunner
+   * implements this; LspManager depends on it.
+   */
+  spawnArgsRpc(file: string, args: readonly string[], opts: ProcSpawnOptions): IRpcProc;
+}
+
+/**
  * Production ProcessRunner over node:child_process. shell:true lets us run a
  * command STRING ('./gradlew bootRun', 'npm run dev'); stdout/stderr are piped
  * and adapted to string callbacks. Servers are non-interactive — we capture
@@ -78,6 +105,25 @@ export class NodeProcessRunner implements ProcessRunner {
       pid: child.pid,
       kill: (signal) => void child.kill(signal ?? 'SIGTERM'),
       onStdout: (cb) => void child.stdout?.on('data', (c: string) => cb(c)),
+      onStderr: (cb) => void child.stderr?.on('data', (c: string) => cb(c)),
+      onExit: (cb) => void child.on('exit', (code, signal) => cb({ code, signal })),
+      onError: (cb) => void child.on('error', (e: Error) => cb(e)),
+    };
+  }
+
+  spawnArgsRpc(file: string, args: readonly string[], opts: ProcSpawnOptions): IRpcProc {
+    const child = spawn(file, [...args], {
+      shell: false, // no word-split / injection; file is an ABSOLUTE resolveLspServerPath
+      cwd: opts.cwd,
+      env: opts.env ?? process.env,
+      stdio: ['pipe', 'pipe', 'pipe'], // stdin writable; stdout RAW (no setEncoding)
+    });
+    child.stderr?.setEncoding('utf8');
+    return {
+      pid: child.pid,
+      kill: (signal) => void child.kill(signal ?? 'SIGTERM'),
+      write: (data) => void child.stdin?.write(data),
+      onStdout: (cb) => void child.stdout?.on('data', (c: Buffer) => cb(c)),
       onStderr: (cb) => void child.stderr?.on('data', (c: string) => cb(c)),
       onExit: (cb) => void child.on('exit', (code, signal) => cb({ code, signal })),
       onError: (cb) => void child.on('error', (e: Error) => cb(e)),

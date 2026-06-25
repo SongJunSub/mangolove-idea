@@ -17,6 +17,8 @@ const KNOWN_KEYS: readonly (keyof AppSettings)[] = [
   'agentCommand',
   'verifyCommand',
   'serverCommand',
+  'lspJavaPath',
+  'lspKotlinPath',
   'baseBranch',
   'repoRoot',
   'sessionPersistence',
