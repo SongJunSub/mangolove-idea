@@ -3,6 +3,7 @@ import { IPC } from '../../shared/ipc-channels';
 import type {
   Ack,
   AppInfo,
+  UpdateStatus,
   CreateWorktreeRequest,
   RemoveWorktreeRequest,
   Worktree,
@@ -94,6 +95,7 @@ import { FileTreeReader } from '../fs/file-tree-reader';
 import { FileEditor } from '../fs/file-editor';
 import { CodeNavService } from '../codenav/code-nav-service';
 import { LspManager } from '../lsp/lsp-manager';
+import { checkForUpdate } from '../update/update-checker';
 import { resolveLspServerPath, unavailableReason, type NavServerLanguage } from '../lsp/lsp-detect';
 import { join } from 'node:path';
 
@@ -953,6 +955,13 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
+  });
+
+  ipcMain.handle(IPC.UPDATE_CHECK, async (): Promise<UpdateStatus> => {
+    // Repo-agnostic + GitHub-pinned (no ctx, no user input): read-only release check.
+    // checkForUpdate NEVER throws — a failed check returns a status with `error` set.
+    const { app } = await import('electron');
+    return checkForUpdate({ currentVersion: app.getVersion() });
   });
 
   ipcMain.handle(

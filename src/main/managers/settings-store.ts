@@ -25,6 +25,7 @@ const KNOWN_KEYS: readonly (keyof AppSettings)[] = [
   'crossMachineSessions',
   'machineId',
   'machineLabel',
+  'lastDismissedUpdateVersion',
 ];
 
 /** The string-array AppSettings keys (sanitized as arrays of non-empty strings). */
