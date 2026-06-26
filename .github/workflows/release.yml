@@ -14,15 +14,24 @@ on:
     tags: ['v*'] # e.g. v0.1.0 — publishes a public GitHub Release
   workflow_dispatch: # manual run — builds + uploads a workflow ARTIFACT only (no public release)
 
-# Least privilege: only the release-publishing scope. Granted at workflow level because
-# there is a single job; the manual (artifact) path does not exercise it.
+# Least privilege, declared per job (there are two). The default is read-only; the `release`
+# job widens to `contents: write` to publish the GitHub Release. The `bump-homebrew` job
+# pushes to a DIFFERENT repo (the tap) via HOMEBREW_TAP_TOKEN, so it needs no write here.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
     name: build + publish macOS arm64 dmg
     runs-on: macos-14 # Apple Silicon image → native arm64 build (macos-13 is Intel)
+    permissions:
+      contents: write # publish the GitHub Release (overrides the read-only default)
+    # Consumed by the bump-homebrew job. Only the tag path sets them (the meta step is
+    # tag-gated); on workflow_dispatch they stay empty and the bump job is skipped.
+    outputs:
+      dmg_sha256: ${{ steps.meta.outputs.dmg_sha256 }}
+      version: ${{ steps.meta.outputs.version }}
+      is_stable: ${{ steps.meta.outputs.is_stable }}
     steps:
       - uses: actions/checkout@v5
 
@@ -58,6 +67,34 @@ jobs:
           npm run build
           npx electron-builder --mac --arm64 --publish never
 
+      # The cask needs the sha256 of the EXACT published artifact. Compute it once here, from
+      # the dmg we just built and are about to publish, and hand it to the bump job as an
+      # output — so the cask's sha can never disagree with the file users download. Also
+      # derive the version + whether this is a stable tag (rc/beta carry a hyphen).
+      - name: Compute dmg checksum + release metadata
+        id: meta
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          shopt -s nullglob # no match -> empty array (not the literal pattern), so 0 is caught
+          dmgs=(release/*.dmg) # glob avoids parsing `ls` output
+          if [ "${#dmgs[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one dmg, found ${#dmgs[@]}: ${dmgs[*]:-<none>}"
+            exit 1
+          fi
+          dmg="${dmgs[0]}"
+          sha="$(shasum -a 256 "$dmg" | awk '{print $1}')"
+          version="${GITHUB_REF_NAME#v}"
+          case "$GITHUB_REF_NAME" in
+            *-*) stable=false ;; # pre-release tag (e.g. v0.2.0-rc.1) — do NOT touch the cask
+            *) stable=true ;;
+          esac
+          {
+            echo "dmg_sha256=$sha"
+            echo "version=$version"
+            echo "is_stable=$stable"
+          } >>"$GITHUB_OUTPUT"
+          echo "dmg=$dmg version=$version stable=$stable sha=$sha"
+
       # Manual runs: hand back the dmg as a downloadable run artifact so the pipeline can
       # be tested WITHOUT cutting a public release.
       - name: Upload dmg as workflow artifact (manual runs only)
@@ -74,12 +111,75 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
+          IS_STABLE: ${{ steps.meta.outputs.is_stable }} # single source of truth (the meta step)
         run: |
           FLAGS=()
-          case "$GITHUB_REF_NAME" in
-            *-*) FLAGS+=(--prerelease) ;;
-          esac
+          if [ "$IS_STABLE" != "true" ]; then
+            FLAGS+=(--prerelease) # pre-release tag (or unknown stability) — mark it
+          fi
           gh release create "$GITHUB_REF_NAME" release/*.dmg \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             "${FLAGS[@]}"
+
+  # After a STABLE release is published, bump the Homebrew cask in the separate
+  # SongJunSub/homebrew-tap repo to the new version + sha256. Cross-repo write needs a
+  # fine-grained PAT (HOMEBREW_TAP_TOKEN, Contents:write on the tap only) — GITHUB_TOKEN is
+  # scoped to THIS repo. See docs/HOMEBREW-AUTOBUMP.md. A failure here does not unpublish the
+  # release (separate job); the cask can also be bumped by hand with the same script.
+  bump-homebrew:
+    name: bump the Homebrew cask in the tap
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/') && needs.release.outputs.is_stable == 'true'
+    runs-on: ubuntu-latest # a text edit + git push; no macOS needed
+    # Serialize tap pushes across overlapping releases. Two stable tags built close together
+    # would otherwise each checkout the tap at the same commit and the second `git push` would
+    # be rejected non-fast-forward, leaving the cask stale with only a red job as the signal.
+    # Queue (do not cancel) so the second bump checks out AFTER the first pushed -> fast-forward.
+    concurrency:
+      group: homebrew-tap-bump
+      cancel-in-progress: false
+    permissions:
+      contents: read # the tap push authenticates with HOMEBREW_TAP_TOKEN, not GITHUB_TOKEN
+    env:
+      VERSION: ${{ needs.release.outputs.version }} # consumed by the bump + commit steps
+    steps:
+      - name: Ensure the tap token is configured
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is not set. Add a fine-grained PAT with" \
+                 "Contents: Read and write on SongJunSub/homebrew-tap. See docs/HOMEBREW-AUTOBUMP.md."
+            exit 1
+          fi
+
+      - name: Checkout mangolove-idea (for the bump script)
+        uses: actions/checkout@v5
+
+      - name: Checkout the Homebrew tap
+        uses: actions/checkout@v5
+        with:
+          repository: SongJunSub/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      # version/sha reach the script via env (NOT ${{ }} inlined into the run block) so a
+      # crafted tag can never inject shell; the script also re-validates both before editing.
+      - name: Bump cask version + sha256
+        env:
+          SHA: ${{ needs.release.outputs.dmg_sha256 }}
+        run: ./scripts/bump-homebrew-cask.sh tap/Casks/mangolove-idea.rb "$VERSION" "$SHA"
+
+      - name: Commit + push to the tap
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/mangolove-idea.rb
+          if git diff --cached --quiet; then
+            echo "cask already at $VERSION — nothing to push"
+            exit 0
+          fi
+          git commit -m "chore: bump mangolove-idea to $VERSION"
+          git push
