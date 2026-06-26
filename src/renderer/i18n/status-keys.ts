@@ -1,4 +1,11 @@
-import type { AgentStatus, GhBucket, ServerState } from '../../shared/types';
+import type {
+  AgentStatus,
+  CrossMachineSessionPointer,
+  FanoutLane,
+  GhBucket,
+  LogLine,
+  ServerState,
+} from '../../shared/types';
 import type { MessageKey } from './messages';
 
 /** Localized label key for each agent status (type-safe dynamic lookup, shared by the row + dot). */
@@ -26,4 +33,28 @@ export const GH_BUCKET_KEY: Record<GhBucket, MessageKey> = {
   pending: 'gh.bucket.pending',
   skipping: 'gh.bucket.skipping',
   cancel: 'gh.bucket.cancel',
+};
+
+/** Localized label key for a cross-machine session's status (reuses the agent states). */
+export const CM_SESSION_STATUS_KEY: Record<CrossMachineSessionPointer['status'], MessageKey> = {
+  running: 'status.agent.running',
+  idle: 'status.agent.idle',
+  ended: 'crossMachine.status.ended',
+};
+
+/** Localized label key for each server-log level (the min-level select + option labels). */
+export const LOG_LEVEL_KEY: Record<LogLine['level'], MessageKey> = {
+  raw: 'logs.level.raw',
+  debug: 'logs.level.debug',
+  info: 'logs.level.info',
+  warn: 'logs.level.warn',
+  error: 'logs.level.error',
+};
+
+/** Localized label key for each fan-out lane status. */
+export const FANOUT_STATUS_KEY: Record<FanoutLane['status'], MessageKey> = {
+  queued: 'fanout.status.queued',
+  running: 'fanout.status.running',
+  done: 'fanout.status.done',
+  failed: 'fanout.status.failed',
 };

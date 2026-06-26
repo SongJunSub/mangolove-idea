@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TreeEntry } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
 
 interface Node extends TreeEntry {
   /** Path relative to the worktree root (POSIX-style, what the IPC expects). */
@@ -29,6 +30,7 @@ export function FileTree({
   selectedFile,
   onOpenFile,
 }: FileTreeProps): React.JSX.Element {
+  const { t } = useI18n();
   const [roots, setRoots] = useState<Node[] | null>(null);
   const [children, setChildren] = useState<Record<string, Node[] | 'loading'>>({});
   const [error, setError] = useState<string | null>(null);
@@ -98,10 +100,10 @@ export function FileTree({
       );
     });
 
-  if (!worktreeId) return <div className="pane-placeholder">worktree를 선택하세요</div>;
-  if (error) return <div className="pane-placeholder">트리 로드 실패: {error}</div>;
-  if (roots === null) return <div className="pane-placeholder">로딩…</div>;
-  if (roots.length === 0) return <div className="pane-placeholder">빈 디렉토리</div>;
+  if (!worktreeId) return <div className="pane-placeholder">{t('tree.selectWorktree')}</div>;
+  if (error) return <div className="pane-placeholder">{t('tree.loadError', { error })}</div>;
+  if (roots === null) return <div className="pane-placeholder">{t('tree.loading')}</div>;
+  if (roots.length === 0) return <div className="pane-placeholder">{t('tree.empty')}</div>;
   return (
     <div className="tree" data-testid="file-tree">
       {renderNodes(roots, 0)}

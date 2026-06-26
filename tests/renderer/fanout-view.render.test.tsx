@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import type { FanoutRun } from '../../src/shared/types';
 
 // Control the fan-out hook so the view is tested in isolation from IPC.
@@ -23,7 +24,7 @@ beforeEach(() => {
   fanout.start.mockClear();
 });
 
-const view = () => render(<FanoutView base="main" theme="dark" onMerged={vi.fn()} />);
+const view = () => render(wrapI18n(<FanoutView base="main" theme="dark" onMerged={vi.fn()} />));
 
 describe('<FanoutView> (form)', () => {
   it('defaults to opus+haiku selected, sonnet unselected', () => {

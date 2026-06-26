@@ -1,3 +1,5 @@
+import { useI18n } from '../../i18n/i18n-context';
+
 export interface ConfirmDiscardModalProps {
   /** File with unsaved edits (shown in the prompt). */
   readonly fileName: string;
@@ -23,6 +25,7 @@ export function ConfirmDiscardModal({
   onDiscard,
   onCancel,
 }: ConfirmDiscardModalProps): React.JSX.Element {
+  const { t } = useI18n();
   return (
     <div
       role="dialog"
@@ -48,24 +51,22 @@ export function ConfirmDiscardModal({
           maxWidth: 400,
         }}
       >
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Unsaved changes</h2>
-        <p style={{ fontSize: 13 }}>
-          <code>{fileName}</code> has unsaved changes. Save before switching?
-        </p>
+        <h2 style={{ marginTop: 0, fontSize: 16 }}>{t('app.discard.title')}</h2>
+        <p style={{ fontSize: 13 }}>{t('app.discard.body', { name: fileName })}</p>
         {saveError && (
           <p data-testid="discard-save-error" style={{ color: 'var(--err)', fontSize: 12 }}>
-            save failed: {saveError}
+            {t('app.discard.saveError', { error: saveError })}
           </p>
         )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" data-testid="discard-cancel" disabled={saving} onClick={onCancel}>
-            Cancel
+            {t('app.quit.cancel')}
           </button>
           <button type="button" data-testid="discard-discard" disabled={saving} onClick={onDiscard}>
-            Discard
+            {t('app.discard.action')}
           </button>
           <button type="button" data-testid="discard-save" disabled={saving} onClick={onSave}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('app.saving') : t('app.save')}
           </button>
         </div>
       </div>

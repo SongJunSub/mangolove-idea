@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useI18n } from '../../i18n/i18n-context';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SerializeAddon } from '@xterm/addon-serialize';
@@ -40,10 +41,15 @@ export function AgentTerminal({
   worktreeId,
   continueSession = false,
 }: AgentTerminalProps): React.JSX.Element {
+  const { t } = useI18n();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const { spawn, kill, sendInput, resize } = useSession(worktreeId);
 
   // Keep the latest glue callbacks without retriggering the heavy mount effect.
+  // tRef lets the exit notice read the current locale without t being an effect dep
+  // (which would re-create the whole terminal on a language switch).
+  const tRef = useRef(t);
+  tRef.current = t;
   const spawnRef = useRef(spawn);
   const killRef = useRef(kill);
   const sendInputRef = useRef(sendInput);
@@ -119,7 +125,9 @@ export function AgentTerminal({
     });
     const offExit = window.mango.session.onExit((e) => {
       if (e.worktreeId === worktreeId) {
-        term.writeln(`\r\n\x1b[2m[claude exited: code ${e.exitCode}]\x1b[0m`);
+        term.writeln(
+          `\r\n\x1b[2m[${tRef.current('terminal.claudeExited', { code: e.exitCode })}]\x1b[0m`,
+        );
       }
     });
 

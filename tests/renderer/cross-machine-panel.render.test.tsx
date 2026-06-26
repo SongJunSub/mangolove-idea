@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import { CrossMachinePanel } from '../../src/renderer/components/cross-machine/cross-machine-panel';
 import type { CrossMachineSessionPointer } from '../../src/shared/types';
 
@@ -25,7 +26,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof CrossMachinePanel
     onClose: vi.fn(),
     ...over,
   };
-  return { props, ...render(<CrossMachinePanel {...props} />) };
+  return { props, ...render(wrapI18n(<CrossMachinePanel {...props} />)) };
 }
 
 describe('<CrossMachinePanel>', () => {

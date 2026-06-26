@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { UsageLocation } from '../../lib/code-nav/find-usages';
+import { useI18n } from '../../i18n/i18n-context';
 
 /**
  * Persistent find-usages panel: the results of collectUsages() grouped by file, each row
@@ -14,6 +15,7 @@ export interface UsagesPanelProps {
 }
 
 export function UsagesPanel({ usages, loading, onOpen }: UsagesPanelProps): React.JSX.Element {
+  const { t } = useI18n();
   // Group by file, preserving first-seen order. Memoized so a re-render with a stable
   // `usages` reference (e.g. unrelated parent state) doesn't rebuild the Map. Hook runs
   // before the early returns to keep hook order stable.
@@ -34,7 +36,7 @@ export function UsagesPanel({ usages, loading, onOpen }: UsagesPanelProps): Reac
         data-testid="usages-loading"
         style={{ color: 'var(--muted)' }}
       >
-        Finding usages…
+        {t('usages.loading')}
       </div>
     );
   }
@@ -45,7 +47,7 @@ export function UsagesPanel({ usages, loading, onOpen }: UsagesPanelProps): Reac
         data-testid="usages-empty"
         style={{ color: 'var(--muted)' }}
       >
-        No usages found. Place the cursor on a symbol and run “Find All Usages”.
+        {t('usages.empty')}
       </div>
     );
   }
@@ -56,7 +58,7 @@ export function UsagesPanel({ usages, loading, onOpen }: UsagesPanelProps): Reac
       style={{ overflowY: 'auto', height: 460, flexShrink: 0, fontSize: 13 }}
     >
       <div data-testid="usages-count" style={{ padding: '4px 6px', color: 'var(--muted)' }}>
-        {usages.length} usage(s) in {groups.size} file(s)
+        {t('usages.count', { count: usages.length, files: groups.size })}
       </div>
       {[...groups.entries()].map(([relPath, locs]) => (
         <div key={relPath}>
