@@ -76,6 +76,26 @@ function readOnlyReason(reason?: 'binary' | 'tooLarge' | 'encoding'): string {
 /** A queued selection change held while the editor is dirty (resolved via the modal). */
 type PendingSwitch = { kind: 'file'; relPath: string } | { kind: 'worktree'; id: string | null };
 
+/** The titlebar Settings glyph: a crisp 16px gear (currentColor), inlined like ClaudeMark. */
+function GearIcon(): React.JSX.Element {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
 export function App(): React.JSX.Element {
   const repo = useRepo();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -480,13 +500,14 @@ export function App(): React.JSX.Element {
             </button>
             <button
               type="button"
+              className="icon-btn"
               data-testid="settings-open"
               aria-label="settings"
               title="Settings"
               disabled={settingsLoading}
               onClick={() => setSettingsOpen(true)}
             >
-              ⚙
+              <GearIcon />
             </button>
           </div>
         }
@@ -752,10 +773,7 @@ export function App(): React.JSX.Element {
         {settingsOpen && !settingsLoading && (
           <SettingsModal
             settings={settings}
-            onSave={(partial) => {
-              void saveSettings(partial);
-              setSettingsOpen(false);
-            }}
+            onChange={(partial) => void saveSettings(partial)}
             onClose={() => setSettingsOpen(false)}
           />
         )}

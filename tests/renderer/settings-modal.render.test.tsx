@@ -43,65 +43,88 @@ beforeEach(() => {
 });
 
 describe('<SettingsModal> theme control', () => {
-  it("defaults to 'system' when unset and persists the picked theme on Save", async () => {
-    const onSave = vi.fn();
-    render(<SettingsModal settings={{}} onSave={onSave} onClose={vi.fn()} />);
+  it("defaults to 'system' when unset and auto-saves the picked theme on click", async () => {
+    const onChange = vi.fn();
+    render(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
     // unset => 'system' is the active (pressed) option
     expect(screen.getByTestId('settings-theme-system')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('settings-theme-dark')).toHaveAttribute('aria-pressed', 'false');
 
+    // No Save button: picking a theme persists immediately.
     await userEvent.click(screen.getByTestId('settings-theme-dark'));
-    await userEvent.click(screen.getByTestId('settings-save'));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
   });
 
   it('seeds the active option from the persisted theme', () => {
-    render(<SettingsModal settings={{ theme: 'light' }} onSave={vi.fn()} onClose={vi.fn()} />);
+    render(<SettingsModal settings={{ theme: 'light' }} onChange={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByTestId('settings-theme-light')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('settings-theme-system')).toHaveAttribute('aria-pressed', 'false');
   });
 });
 
+describe('<SettingsModal> auto-save', () => {
+  it('has no Save button (fields auto-save)', () => {
+    render(<SettingsModal settings={{}} onChange={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByTestId('settings-save')).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-close')).toBeInTheDocument();
+  });
+
+  it('persists a text field (trimmed) on blur', async () => {
+    const onChange = vi.fn();
+    render(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
+    const input = screen.getByTestId('settings-agent');
+    await userEvent.type(input, '  claude-next  ');
+    await userEvent.tab(); // blur flushes the debounced write
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ agentCommand: 'claude-next' }));
+  });
+
+  it('flushes a pending text edit when Done is clicked', async () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    render(<SettingsModal settings={{}} onChange={onChange} onClose={onClose} />);
+    const input = screen.getByTestId('settings-base');
+    await userEvent.type(input, 'develop');
+    await userEvent.click(screen.getByTestId('settings-close'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ baseBranch: 'develop' }));
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
 describe('<SettingsModal> cross-machine controls', () => {
-  it('seeds the toggle + label from settings and persists them on Save', async () => {
-    const onSave = vi.fn();
+  it('seeds the toggle + label from settings', () => {
     render(
       <SettingsModal
         settings={{ crossMachineSessions: 'on', machineLabel: 'work-mac' }}
-        onSave={onSave}
+        onChange={vi.fn()}
         onClose={vi.fn()}
       />,
     );
     expect(screen.getByTestId('settings-cross-machine')).toBeChecked();
     expect(screen.getByTestId('settings-machine-label')).toHaveValue('work-mac');
-
-    await userEvent.click(screen.getByTestId('settings-save'));
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ crossMachineSessions: 'on', machineLabel: 'work-mac' }),
-    );
   });
 
-  it('defaults to off (unchecked) and hides the label input until enabled', async () => {
-    const onSave = vi.fn();
-    render(<SettingsModal settings={{}} onSave={onSave} onClose={vi.fn()} />);
+  it('defaults to off, reveals the label on enable, and auto-saves the toggle', async () => {
+    const onChange = vi.fn();
+    render(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
     expect(screen.getByTestId('settings-cross-machine')).not.toBeChecked();
     expect(screen.queryByTestId('settings-machine-label')).not.toBeInTheDocument();
 
-    // Enable -> the label input appears.
+    // Enable -> the label input appears and the toggle persists immediately.
     await userEvent.click(screen.getByTestId('settings-cross-machine'));
     expect(screen.getByTestId('settings-machine-label')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByTestId('settings-save'));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ crossMachineSessions: 'on' }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ crossMachineSessions: 'on' }));
   });
 
-  it('toggling an enabled instance OFF persists off', async () => {
-    const onSave = vi.fn();
+  it('toggling an enabled instance OFF persists off immediately', async () => {
+    const onChange = vi.fn();
     render(
-      <SettingsModal settings={{ crossMachineSessions: 'on' }} onSave={onSave} onClose={vi.fn()} />,
+      <SettingsModal
+        settings={{ crossMachineSessions: 'on' }}
+        onChange={onChange}
+        onClose={vi.fn()}
+      />,
     );
     await userEvent.click(screen.getByTestId('settings-cross-machine')); // on -> off
-    await userEvent.click(screen.getByTestId('settings-save'));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ crossMachineSessions: 'off' }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ crossMachineSessions: 'off' }));
   });
 });
