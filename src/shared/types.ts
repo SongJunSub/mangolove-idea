@@ -624,6 +624,39 @@ export interface UpdateStatus {
   readonly error?: 'offline' | 'rate_limited' | 'failed';
 }
 
+/** Renderer request to perform a one-click update (download + verify + swap + restart). */
+export interface UpdatePerformRequest {
+  /** Direct .dmg asset URL (from UpdateStatus.dmgUrl). */
+  readonly dmgUrl: string;
+  /** Expected sha256 of the .dmg (UpdateStatus.sha256). Auto-install is REFUSED when null. */
+  readonly sha256: string | null;
+}
+
+/** Live progress for a one-click update (main -> renderer event, UPDATE_PROGRESS). */
+export interface UpdateProgress {
+  readonly phase: 'downloading' | 'verifying' | 'staging' | 'applying';
+  /** Bytes received so far (downloading phase). */
+  readonly receivedBytes?: number;
+  /** Total bytes if the server sent Content-Length (downloading phase), else undefined. */
+  readonly totalBytes?: number;
+}
+
+/**
+ * Result of UPDATE_PERFORM. On SUCCESS the app quits to let the helper swap the bundle, so
+ * the invoke never resolves — the renderer relies on UPDATE_PROGRESS + the app exiting. A
+ * non-success status means nothing was changed and the renderer falls back to a manual
+ * download:
+ *  - blocked     : unsaved editors exist — save first (no download, no restart).
+ *  - ineligible  : can't safely swap in place (dev / translocated / Homebrew / read-only /
+ *                  no checksum) — `reason` says which; fall back to opening the .dmg.
+ *  - error       : download / checksum / mount / stage failed — `reason` is a short message.
+ */
+export interface UpdateApplyResult {
+  /** 'started' = staged + helper launched + app quitting; the others left everything unchanged. */
+  readonly status: 'started' | 'blocked' | 'ineligible' | 'error';
+  readonly reason: string;
+}
+
 /**
  * Effective session-persistence state for the Settings UI (b-full LOUD fallback).
  * Surfaces when 'full' was requested but is NOT actually in effect because abduco

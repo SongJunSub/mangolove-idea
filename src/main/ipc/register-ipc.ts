@@ -4,6 +4,9 @@ import type {
   Ack,
   AppInfo,
   UpdateStatus,
+  UpdatePerformRequest,
+  UpdateApplyResult,
+  UpdateProgress,
   CreateWorktreeRequest,
   RemoveWorktreeRequest,
   Worktree,
@@ -73,7 +76,12 @@ import { ServerManager, type ServerEmitter } from '../managers/server-manager';
 import { LogStore, type LogEmitter } from '../managers/log-store';
 import { NodeProcessRunner, type IProcLike } from '../proc/process-runner';
 import type { IpcContext } from './ipc-context';
-import { requireCtxFrom, type CtxEventLike } from '../app/window-registry';
+import {
+  requireCtxFrom,
+  aggregateUnsavedCount,
+  sweepAll,
+  type CtxEventLike,
+} from '../app/window-registry';
 import type { SessionStore } from '../managers/session-store';
 import type { SettingsStore } from '../managers/settings-store';
 import type { ScrollbackStore } from '../managers/scrollback-store';
@@ -96,8 +104,26 @@ import { FileEditor } from '../fs/file-editor';
 import { CodeNavService } from '../codenav/code-nav-service';
 import { LspManager } from '../lsp/lsp-manager';
 import { checkForUpdate } from '../update/update-checker';
+import { UpdaterService } from '../update/updater-service';
+import { createRealUpdaterSystem } from '../update/real-updater-system';
 import { resolveLspServerPath, unavailableReason, type NavServerLanguage } from '../lsp/lsp-detect';
 import { join } from 'node:path';
+
+/**
+ * The single github.com-pinned URL guard, shared by APP_OPEN_EXTERNAL (open a link) and
+ * UPDATE_PERFORM (download the dmg) — both are SSRF/off-host boundaries, so the allow policy
+ * must have ONE source. True iff `raw` is an https URL on github.com (or a subdomain).
+ */
+function isHttpsGithubUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return (
+      u.protocol === 'https:' && (u.hostname === 'github.com' || u.hostname.endsWith('.github.com'))
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Asserts a repo is selected and returns it. The renderer GATES all worktree ops
@@ -613,6 +639,39 @@ async function getCodeNavService(ctx: IpcContext): Promise<CodeNavService> {
 }
 
 /**
+ * Resolves the UpdaterService (one-click self-update). Wires the REAL macOS system
+ * (hdiutil/ditto/xattr/detached-helper) to the tested orchestrator and emits UPDATE_PROGRESS
+ * to the invoking window. A self-update restarts the WHOLE process, so the unsaved guard +
+ * the teardown are REGISTRY-WIDE (aggregateUnsavedCount / sweepAll over EVERY window) — not
+ * just this window — mirroring the QuitController. onQuit sweeps all windows' child processes
+ * (no orphan claude/server/LSP) then hard-exits (app.exit bypasses the before-quit guard so
+ * the detached swap helper is never deadlocked by an active turn; unsaved work was already
+ * blocked by the orchestrator).
+ */
+async function getUpdaterService(
+  ctx: IpcContext,
+  contexts: Map<number, IpcContext>,
+): Promise<UpdaterService> {
+  if (ctx.updaterService) return ctx.updaterService;
+  const { app } = await import('electron');
+  const emit = (e: UpdateProgress): void => {
+    const win = ctx.mainWindow;
+    if (win && !win.isDestroyed()) win.webContents.send(IPC.UPDATE_PROGRESS, e);
+  };
+  const system = createRealUpdaterSystem({
+    userDataDir: app.getPath('userData'),
+    exePath: app.getPath('exe'),
+    isPackaged: app.isPackaged,
+    onQuit: () => {
+      sweepAll(contexts); // kill EVERY window's PTYs / servers / LSP children (no orphans)
+      app.exit(0);
+    },
+  });
+  ctx.updaterService = new UpdaterService(system, emit, () => aggregateUnsavedCount(contexts));
+  return ctx.updaterService;
+}
+
+/**
  * Resolves the GhStatusReader: prefer ctx (tests inject); else build a real one.
  * Copies getDiffViewer's lazy shape. owner/repo come from the origin remote URL;
  * resolveBranch/resolvePath read WorktreeManager.list() (Worktree.branch / .path);
@@ -940,15 +999,11 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   });
 
   ipcMain.handle(IPC.APP_OPEN_EXTERNAL, async (_event, req: OpenExternalRequest): Promise<Ack> => {
-    // APP_OPEN_EXTERNAL is repo-agnostic + github-pinned: body UNCHANGED, no ctx.
+    // Repo-agnostic + github-pinned (shared guard), no ctx.
+    if (!isHttpsGithubUrl(req.url)) {
+      return { ok: false, error: 'refused: only https github.com URLs may be opened' };
+    }
     try {
-      const u = new URL(req.url);
-      if (
-        u.protocol !== 'https:' ||
-        (u.hostname !== 'github.com' && !u.hostname.endsWith('.github.com'))
-      ) {
-        return { ok: false, error: 'refused: only https github.com URLs may be opened' };
-      }
       const { shell } = await import('electron');
       await shell.openExternal(req.url);
       return { ok: true };
@@ -963,6 +1018,19 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     const { app } = await import('electron');
     return checkForUpdate({ currentVersion: app.getVersion() });
   });
+
+  ipcMain.handle(
+    IPC.UPDATE_PERFORM,
+    async (event, req: UpdatePerformRequest): Promise<UpdateApplyResult> => {
+      const ctx = requireCtx(event);
+      // Pin the download to https github.com BEFORE anything runs (shared openExternal guard)
+      // so a hostile API response cannot point the downloader off-host.
+      if (!isHttpsGithubUrl(req.dmgUrl)) {
+        return { status: 'ineligible', reason: 'refused: the download URL is not on github.com' };
+      }
+      return (await getUpdaterService(ctx, contexts)).perform(req);
+    },
+  );
 
   ipcMain.handle(
     IPC.MERGE_CONFLICTS,

@@ -12,6 +12,7 @@ import type { FileTreeReader } from '../fs/file-tree-reader';
 import type { FileEditor } from '../fs/file-editor';
 import type { CodeNavService } from '../codenav/code-nav-service';
 import type { LspManager } from '../lsp/lsp-manager';
+import type { UpdaterService } from '../update/updater-service';
 import type { ConflictResolver } from '../git/conflict-resolver';
 import type { GhStatusReader } from '../git/gh-status-reader';
 import type { FanoutManager } from '../git/fanout-manager';
@@ -96,6 +97,8 @@ export interface IpcContext {
    */
   codeNavService?: CodeNavService;
   lspManager?: LspManager;
+  /** One-click self-updater (download + verify + bundle swap + restart). Lazily constructed. */
+  updaterService?: UpdaterService;
   /**
    * Lazily constructed in register-ipc; injectable in tests (V2 merge conflict).
    * STATEFUL only in the sense that it owns the in-progress merge — it is NOT nulled
