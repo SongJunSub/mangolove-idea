@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CreateWorktreeRequest } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
 
 /** Props for the toolbar's New-worktree form. */
 export interface ToolbarProps {
@@ -8,6 +9,7 @@ export interface ToolbarProps {
 
 /** Toolbar: base-branch + new-branch inputs and a Create action (MVP item 1). */
 export function Toolbar({ onCreate }: ToolbarProps): React.JSX.Element {
+  const { t } = useI18n();
   const [baseBranch, setBaseBranch] = useState<string>('main');
   const [newBranch, setNewBranch] = useState<string>('');
 
@@ -34,9 +36,9 @@ export function Toolbar({ onCreate }: ToolbarProps): React.JSX.Element {
           minWidth: 0,
         }}
       >
-        base
+        {t('toolbar.base')}
         <input
-          aria-label="base branch"
+          aria-label={t('toolbar.baseBranch')}
           value={baseBranch}
           onChange={(e) => setBaseBranch(e.target.value)}
           style={{ flex: 1, minWidth: 0 }}
@@ -52,9 +54,9 @@ export function Toolbar({ onCreate }: ToolbarProps): React.JSX.Element {
           minWidth: 0,
         }}
       >
-        new
+        {t('toolbar.new')}
         <input
-          aria-label="new branch"
+          aria-label={t('toolbar.newBranch')}
           value={newBranch}
           placeholder="feature/login"
           onChange={(e) => setNewBranch(e.target.value)}
@@ -62,7 +64,7 @@ export function Toolbar({ onCreate }: ToolbarProps): React.JSX.Element {
         />
       </label>
       <button type="button" disabled={!canCreate} onClick={submit} style={{ flex: '0 0 auto' }}>
-        New worktree
+        {t('toolbar.create')}
       </button>
     </div>
   );

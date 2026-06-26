@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import { WorktreeList } from '../../src/renderer/components/sidebar/worktree-list';
 import type { Worktree } from '../../src/shared/types';
 import type { WorktreeRowStatus } from '../../src/renderer/state/app-store';
@@ -24,7 +25,7 @@ function list(over: Partial<React.ComponentProps<typeof WorktreeList>> = {}) {
     onRemove: vi.fn(),
     ...over,
   };
-  return { props, ...render(<WorktreeList {...props} />) };
+  return { props, ...render(wrapI18n(<WorktreeList {...props} />)) };
 }
 
 describe('<WorktreeList>', () => {

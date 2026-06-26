@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import { WorktreeItem } from '../../src/renderer/components/sidebar/worktree-item';
 import type { Worktree } from '../../src/shared/types';
 
@@ -24,7 +25,7 @@ function item(over: Partial<React.ComponentProps<typeof WorktreeItem>> = {}) {
     onRemove: vi.fn(),
     ...over,
   };
-  return { props, ...render(<WorktreeItem {...props} />) };
+  return { props, ...render(wrapI18n(<WorktreeItem {...props} />)) };
 }
 
 describe('<WorktreeItem>', () => {

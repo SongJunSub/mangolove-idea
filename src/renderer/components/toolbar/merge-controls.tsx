@@ -1,4 +1,5 @@
 import type { MergeProgressEvent, Worktree } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
 
 export interface MergeControlsProps {
   readonly selected: Worktree | null;
@@ -18,6 +19,7 @@ export function MergeControls({
   progress,
   onMerge,
 }: MergeControlsProps): React.JSX.Element {
+  const { t } = useI18n();
   const canMerge = !!selected && !selected.isPrimary && !running;
   const stageMark = progress?.ok ? '' : progress?.stage === 'conflict' ? ' ⚠' : ' ✗';
   const stageLabel = progress ? `${progress.stage}${stageMark}: ${progress.message}` : '';
@@ -36,13 +38,13 @@ export function MergeControls({
         onClick={() => selected && onMerge(selected)}
         title={
           !selected
-            ? 'select a worktree first'
+            ? t('app.selectWorktreeFirst')
             : selected.isPrimary
-              ? 'cannot merge the primary worktree'
-              : 'verify, merge into main, then clean up'
+              ? t('merge.primaryTip')
+              : t('merge.mergeTip')
         }
       >
-        {running ? 'Merging…' : 'Merge → main'}
+        {running ? t('merge.merging') : t('merge.merge')}
       </button>
       {stageLabel && (
         <span data-testid="merge-stage" style={{ fontSize: 11, color: stageColor }}>

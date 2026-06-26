@@ -1,5 +1,6 @@
 import type { Worktree } from '../../../shared/types';
 import type { WorktreeRowStatus } from '../../state/app-store';
+import { useI18n } from '../../i18n/i18n-context';
 import { WorktreeItem } from './worktree-item';
 
 export interface WorktreeListProps {
@@ -22,13 +23,16 @@ export function WorktreeList({
   onSelect,
   onRemove,
 }: WorktreeListProps): React.JSX.Element {
+  const { t } = useI18n();
   return (
     <section data-testid="worktree-list">
-      <h2 style={{ fontSize: 14, margin: '8px 0' }}>Worktrees</h2>
-      {error && <pre style={{ color: 'var(--err)', fontSize: 12 }}>error: {error}</pre>}
-      {loading && <p style={{ fontSize: 12, color: 'var(--muted)' }}>loading…</p>}
+      <h2 style={{ fontSize: 14, margin: '8px 0' }}>{t('app.worktrees')}</h2>
+      {error && (
+        <pre style={{ color: 'var(--err)', fontSize: 12 }}>{t('worktree.error', { error })}</pre>
+      )}
+      {loading && <p style={{ fontSize: 12, color: 'var(--muted)' }}>{t('worktree.loading')}</p>}
       {!loading && worktrees.length === 0 && (
-        <p style={{ fontSize: 12, color: 'var(--muted)' }}>no worktrees</p>
+        <p style={{ fontSize: 12, color: 'var(--muted)' }}>{t('worktree.empty')}</p>
       )}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {worktrees.map((wt) => {

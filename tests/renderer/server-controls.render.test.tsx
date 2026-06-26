@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import { ServerControls } from '../../src/renderer/components/toolbar/server-controls';
 import type { ServerState, ServerStatus } from '../../src/shared/types';
 
@@ -15,7 +16,7 @@ function controls(over: Partial<React.ComponentProps<typeof ServerControls>> = {
     onStop: vi.fn(),
     ...over,
   };
-  return { props, ...render(<ServerControls {...props} />) };
+  return { props, ...render(wrapI18n(<ServerControls {...props} />)) };
 }
 
 const runBtn = () => screen.getByRole('button', { name: 'Run' });
