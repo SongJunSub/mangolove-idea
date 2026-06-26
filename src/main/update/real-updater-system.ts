@@ -91,8 +91,16 @@ export function createRealUpdaterSystem(deps: RealUpdaterSystemDeps): UpdaterSys
     copyApp: async (srcApp, destApp) => {
       await execFileP('ditto', [srcApp, destApp], { timeout: TOOL_TIMEOUT_MS });
     },
-    stripQuarantine: async (appPath) => {
-      await execFileP('xattr', ['-dr', 'com.apple.quarantine', appPath], {
+    clearExtendedAttributes: async (appPath) => {
+      // -cr clears EVERY ext attr recursively (quarantine + provenance + …), not just
+      // com.apple.quarantine — a manual browser-download leaves quarantine, and a swapped
+      // unsigned bundle with leftover attrs opens as "damaged".
+      await execFileP('xattr', ['-cr', appPath], { timeout: TOOL_TIMEOUT_MS });
+    },
+    resignAdHoc: async (appPath) => {
+      // Re-apply an ad-hoc signature (--deep covers Electron's nested helpers/frameworks);
+      // Apple Silicon requires a valid signature and the ditto swap can leave it unsealed.
+      await execFileP('codesign', ['--force', '--deep', '--sign', '-', appPath], {
         timeout: TOOL_TIMEOUT_MS,
       });
     },

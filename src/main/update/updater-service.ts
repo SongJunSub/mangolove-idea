@@ -6,7 +6,7 @@ import { buildSwapScript } from './swap-script';
 /**
  * Orchestrates the one-click self-update (macOS, unsigned): guard unsaved work -> require a
  * checksum -> check eligibility -> download + sha256-verify the .dmg -> stage the new bundle
- * (mount/copy/strip-quarantine) -> launch a detached swap helper -> quit. Every native side
+ * (mount/copy/clear-xattrs/ad-hoc-resign) -> launch a detached swap helper -> quit. Every native side
  * effect is behind `UpdaterSystem`, so this orchestration is unit-tested with a fake; the real
  * hdiutil/ditto/xattr/spawn impl (RealUpdaterSystem) is exercised only by a manual smoke.
  *
@@ -40,8 +40,17 @@ export interface UpdaterSystem {
   findAppInMount(mountPoint: string): Promise<string>;
   /** `ditto srcApp destApp` (preserves bundle attributes). */
   copyApp(srcApp: string, destApp: string): Promise<void>;
-  /** `xattr -dr com.apple.quarantine appPath` so the swapped app opens without a Gatekeeper prompt. */
-  stripQuarantine(appPath: string): Promise<void>;
+  /**
+   * `xattr -cr appPath` — clear ALL extended attributes (quarantine, provenance, …) so an
+   * UNSIGNED bundle is never flagged "damaged" by Gatekeeper after the swap.
+   */
+  clearExtendedAttributes(appPath: string): Promise<void>;
+  /**
+   * `codesign --force --deep --sign - appPath` — re-apply an ad-hoc signature. Apple Silicon
+   * requires a valid signature, and the mount→ditto swap of an ad-hoc bundle can leave it
+   * unsealed; re-signing guarantees the swapped app launches without a "damaged" error.
+   */
+  resignAdHoc(appPath: string): Promise<void>;
   /** Write `content` to `path` and make it executable. */
   writeExecutable(path: string, content: string): Promise<void>;
   /** Spawn a detached, unref'd `/bin/bash scriptPath` that outlives this process. */
@@ -121,7 +130,10 @@ export class UpdaterService {
       } finally {
         await this.system.unmountDmg(mountPoint).catch(() => {});
       }
-      await this.system.stripQuarantine(stagedApp);
+      // Make the swapped bundle Gatekeeper-clean: clear all ext attrs (quarantine/provenance)
+      // THEN re-apply an ad-hoc signature, so an UNSIGNED build never opens as "damaged".
+      await this.system.clearExtendedAttributes(stagedApp);
+      await this.system.resignAdHoc(stagedApp);
 
       const script = buildSwapScript({
         pid: this.system.pid(),
