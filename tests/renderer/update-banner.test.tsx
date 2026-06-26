@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { UpdateBanner } from '../../src/renderer/components/update/update-banner';
+import { wrapI18n } from './i18n-test-util';
 import type { UpdateStatus } from '../../src/shared/types';
 
 const SHA = 'f0ee74ef6337440a469f7532dd73d74eac2fc789431cc9740ed6c268b9a34abd';
@@ -22,15 +23,18 @@ function renderBanner(props: Partial<React.ComponentProps<typeof UpdateBanner>> 
   const onDismiss = vi.fn();
   const onUpdate = vi.fn();
   render(
-    <UpdateBanner
-      status={available}
-      dismissedVersion={undefined}
-      onDismiss={onDismiss}
-      onOpen={onOpen}
-      applyState={{ phase: 'idle' }}
-      onUpdate={onUpdate}
-      {...props}
-    />,
+    wrapI18n(
+      <UpdateBanner
+        status={available}
+        dismissedVersion={undefined}
+        onDismiss={onDismiss}
+        onOpen={onOpen}
+        applyState={{ phase: 'idle' }}
+        onUpdate={onUpdate}
+        {...props}
+      />,
+      'ko',
+    ),
   );
   return { onOpen, onDismiss, onUpdate };
 }

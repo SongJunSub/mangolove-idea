@@ -1,5 +1,7 @@
 import type { UpdateStatus } from '../../../shared/types';
 import type { SelfUpdateState } from '../../hooks/use-self-update';
+import { useI18n } from '../../i18n/i18n-context';
+import type { TranslateFn } from '../../i18n/messages';
 
 /** Props for the update-available notification card (bottom-right). */
 export interface UpdateBannerProps {
@@ -18,18 +20,22 @@ export interface UpdateBannerProps {
 }
 
 /** Human label for an in-flight update phase. */
-function phaseLabel(state: SelfUpdateState): string {
+function phaseLabel(state: SelfUpdateState, t: TranslateFn): string {
   switch (state.phase) {
     case 'downloading':
       return state.totalBytes
-        ? `다운로드 중 ${Math.floor(((state.receivedBytes ?? 0) / state.totalBytes) * 100)}%`
-        : `다운로드 중 ${Math.floor((state.receivedBytes ?? 0) / 1_000_000)}MB`;
+        ? t('update.phase.downloadingPct', {
+            pct: Math.floor(((state.receivedBytes ?? 0) / state.totalBytes) * 100),
+          })
+        : t('update.phase.downloadingMb', {
+            mb: Math.floor((state.receivedBytes ?? 0) / 1_000_000),
+          });
     case 'verifying':
-      return '검증 중…';
+      return t('update.phase.verifying');
     case 'staging':
-      return '설치 준비 중…';
+      return t('update.phase.staging');
     case 'applying':
-      return '설치 후 재시작합니다…';
+      return t('update.phase.applying');
     default:
       return '';
   }
@@ -69,18 +75,19 @@ export function UpdateProgressInline({
   onOpen,
   onDismiss,
 }: UpdateProgressInlineProps): React.JSX.Element | null {
+  const { t } = useI18n();
   if (applyState.phase === 'error') {
     return (
       <span className="update-inline">
         <span data-testid="update-error" className="update-bar__err">
-          업데이트 실패: {applyState.reason}
+          {t('update.failed', { reason: applyState.reason })}
         </span>
         {releaseUrl && (
           <button
             type="button"
             className="update-icon"
             data-testid="update-notes"
-            title="What's new"
+            title={t('update.whatsNew')}
             onClick={() => onOpen(releaseUrl)}
           >
             ✦
@@ -90,7 +97,7 @@ export function UpdateProgressInline({
           type="button"
           className="update-icon update-icon--ghost"
           data-testid="update-dismiss"
-          title="닫기"
+          title={t('update.dismiss')}
           onClick={onDismiss}
         >
           ✕
@@ -109,7 +116,7 @@ export function UpdateProgressInline({
           style={pct === null ? undefined : { width: `${pct}%` }}
         />
       </div>
-      <span>{phaseLabel(applyState)}</span>
+      <span>{phaseLabel(applyState, t)}</span>
     </span>
   );
 }
@@ -128,6 +135,7 @@ export function UpdateBanner({
   applyState,
   onUpdate,
 }: UpdateBannerProps): React.JSX.Element | null {
+  const { t } = useI18n();
   if (!status?.updateAvailable || !status.latestVersion) return null;
   if (inProgress(applyState) || applyState.phase === 'error') return null; // shown in the status bar
   const { latestVersion, currentVersion, dmgUrl, releaseUrl } = status;
@@ -138,12 +146,12 @@ export function UpdateBanner({
     <div className="update-card" data-testid="update-banner">
       <div className="update-card__head">
         <span className="update-dot" />
-        <span className="update-card__title">업데이트 가능</span>
+        <span className="update-card__title">{t('update.available')}</span>
         <button
           type="button"
           className="update-icon update-icon--ghost"
           data-testid="update-dismiss"
-          title="나중에"
+          title={t('update.later')}
           style={{ marginLeft: 'auto', width: 24, height: 22 }}
           onClick={() => onDismiss(latestVersion)}
         >
@@ -152,7 +160,7 @@ export function UpdateBanner({
       </div>
       <div className="update-card__msg">
         MangoLove IDEA <strong>v{latestVersion}</strong>
-        <div className="update-card__sub">현재 v{currentVersion}</div>
+        <div className="update-card__sub">{t('update.current', { version: currentVersion })}</div>
       </div>
       <div className="update-card__actions">
         {releaseUrl && (
@@ -160,7 +168,7 @@ export function UpdateBanner({
             type="button"
             className="update-icon"
             data-testid="update-notes"
-            title="What's new"
+            title={t('update.whatsNew')}
             onClick={() => onOpen(releaseUrl)}
           >
             ✦
@@ -173,7 +181,7 @@ export function UpdateBanner({
             data-testid="update-now"
             onClick={onUpdate}
           >
-            지금 업데이트
+            {t('update.now')}
           </button>
         )}
       </div>

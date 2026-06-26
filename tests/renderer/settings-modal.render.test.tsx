@@ -1,15 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsModal } from '../../src/renderer/components/settings/settings-modal';
-import { I18nContext } from '../../src/renderer/i18n/i18n-context';
-import { makeT } from '../../src/renderer/i18n/messages';
+import { renderWithI18n } from './i18n-test-util';
 
-// SettingsModal reads copy via useI18n; wrap every render in an English provider.
-const renderModal = (ui: React.ReactElement): ReturnType<typeof render> =>
-  render(
-    <I18nContext.Provider value={{ locale: 'en', t: makeT('en') }}>{ui}</I18nContext.Provider>,
-  );
+// SettingsModal reads copy via useI18n; render through the shared English provider.
+const renderModal = (ui: React.ReactElement): ReturnType<typeof renderWithI18n> =>
+  renderWithI18n(ui);
 
 // SettingsModal calls session.persistenceInfo() + codenav.capabilities() + app.ping() on
 // mount, and update.check() from the Updates section; stub the bridge.

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent } from '@testing-library/react';
+import { renderWithI18n } from './i18n-test-util';
 import { UsageWidget } from '../../src/renderer/components/usage/usage-widget';
 import type { UsageStatus } from '../../src/shared/types';
 
@@ -34,44 +35,46 @@ const usage: UsageStatus = {
 
 describe('<UsageWidget>', () => {
   it('renders the session + weekly chips, but NOT the per-model (Sonnet) chip', () => {
-    render(<UsageWidget status={usage} loading={false} onRefresh={vi.fn()} />);
+    renderWithI18n(<UsageWidget status={usage} loading={false} onRefresh={vi.fn()} />, 'ko');
     expect(screen.getByTestId('usage-session')).toHaveTextContent('세션 3%');
     expect(screen.getByTestId('usage-weekly_all')).toHaveTextContent('주간 51%');
     expect(screen.queryByTestId('usage-weekly_scoped')).toBeNull();
   });
 
   it('shows a Claude mark', () => {
-    const { container } = render(
+    const { container } = renderWithI18n(
       <UsageWidget status={usage} loading={false} onRefresh={vi.fn()} />,
+      'ko',
     );
     expect(container.querySelector('.usage-claude')).not.toBeNull();
   });
 
   it('puts the reset time in the chip tooltip', () => {
-    render(<UsageWidget status={usage} loading={false} onRefresh={vi.fn()} />);
-    expect(screen.getByTestId('usage-session').getAttribute('title')).toMatch(/리셋/);
+    renderWithI18n(<UsageWidget status={usage} loading={false} onRefresh={vi.fn()} />, 'ko');
+    expect(screen.getByTestId('usage-session').getAttribute('title')).toMatch(/초기화/);
   });
 
   it('shows a loading placeholder before the first fetch', () => {
-    render(<UsageWidget status={null} loading={true} onRefresh={vi.fn()} />);
+    renderWithI18n(<UsageWidget status={null} loading={true} onRefresh={vi.fn()} />, 'ko');
     expect(screen.getByTestId('usage-widget')).toHaveTextContent('Claude 사용량');
     expect(screen.getByTestId('usage-refresh').className).toContain('spin');
   });
 
   it('shows a friendly message when not logged in', () => {
-    render(
+    renderWithI18n(
       <UsageWidget
         status={{ limits: [], error: 'no-login' }}
         loading={false}
         onRefresh={vi.fn()}
       />,
+      'ko',
     );
-    expect(screen.getByTestId('usage-error')).toHaveTextContent('Claude 미연결');
+    expect(screen.getByTestId('usage-error')).toHaveTextContent('Claude 연결이 필요해요');
   });
 
   it('refresh button calls onRefresh', () => {
     const onRefresh = vi.fn();
-    render(<UsageWidget status={usage} loading={false} onRefresh={onRefresh} />);
+    renderWithI18n(<UsageWidget status={usage} loading={false} onRefresh={onRefresh} />, 'ko');
     fireEvent.click(screen.getByTestId('usage-refresh'));
     expect(onRefresh).toHaveBeenCalledOnce();
   });

@@ -1,4 +1,6 @@
 import type { UsageStatus, UsageLimit } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
+import type { Locale, MessageKey, TranslateFn } from '../../i18n/messages';
 
 export interface UsageWidgetProps {
   /** Latest usage, or null before the first fetch. */
@@ -9,35 +11,39 @@ export interface UsageWidgetProps {
   readonly onRefresh: () => void;
 }
 
-/** A short chip label for a limit (the long label + reset go in the tooltip). */
-function shortLabel(l: UsageLimit): string {
+/** A localized short label for a limit's chip; the chip tooltip adds percent + reset time. */
+function shortLabel(l: UsageLimit, t: TranslateFn): string {
   switch (l.kind) {
     case 'session':
-      return '세션';
+      return t('usage.session');
     case 'weekly_all':
-      return '주간';
+      return t('usage.weekly');
     case 'weekly_scoped':
-      return l.model ?? '모델';
+      return l.model ?? t('usage.model');
     default:
       return l.label;
   }
 }
 
 /** Human "time until reset" for the tooltip. */
-function untilReset(resetsAt: string | null): string {
+function untilReset(resetsAt: string | null, t: TranslateFn): string {
   if (!resetsAt) return '';
   const ms = new Date(resetsAt).getTime() - Date.now();
   if (Number.isNaN(ms)) return '';
-  if (ms <= 0) return '곧 리셋';
+  if (ms <= 0) return t('usage.resetSoon');
   const h = Math.floor(ms / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
-  return h > 0 ? `${h}시간 ${m}분 후 리셋` : `${m}분 후 리셋`;
+  return h > 0 ? t('usage.resetInHM', { h, m }) : t('usage.resetInM', { m });
 }
 
-function chipTitle(l: UsageLimit): string {
-  const until = untilReset(l.resetsAt);
-  const at = l.resetsAt ? new Date(l.resetsAt).toLocaleString() : '';
-  return [`${l.label} ${l.percent}%`, at && `리셋: ${at}`, until].filter(Boolean).join('\n');
+function chipTitle(l: UsageLimit, t: TranslateFn, locale: Locale): string {
+  const until = untilReset(l.resetsAt, t);
+  const at = l.resetsAt
+    ? new Date(l.resetsAt).toLocaleString(locale === 'ko' ? 'ko-KR' : 'en-US')
+    : '';
+  return [`${shortLabel(l, t)} ${l.percent}%`, at && t('usage.resetAt', { at }), until]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** maps the API severity to a color class. */
@@ -47,12 +53,13 @@ function severityClass(severity: string): string {
   return '';
 }
 
-const ERROR_TEXT: Record<NonNullable<UsageStatus['error']>, string> = {
-  'no-login': 'Claude 미연결',
-  denied: '키체인 접근 거부',
-  rate_limited: '사용량 잠시 후 다시',
-  offline: '사용량 불러오기 실패',
-  failed: '사용량 불러오기 실패',
+/** API error code -> message key for the localized one-line error. */
+const ERROR_KEY: Record<NonNullable<UsageStatus['error']>, MessageKey> = {
+  'no-login': 'usage.error.noLogin',
+  denied: 'usage.error.denied',
+  rate_limited: 'usage.error.rateLimited',
+  offline: 'usage.error.failed',
+  failed: 'usage.error.failed',
 };
 
 /** Radiating rays for the Claude mark (a small sunburst), computed once. */
@@ -88,15 +95,16 @@ function ClaudeMark(): React.JSX.Element {
 
 /**
  * Bottom-left status item: the user's Claude usage (5h session + weekly), with a Claude mark +
- * refresh. Read-only, no token cost. The reset time + full label live in each chip's tooltip.
+ * refresh. Read-only, no token cost. Each chip's tooltip adds the percent + reset time.
  */
 export function UsageWidget({ status, loading, onRefresh }: UsageWidgetProps): React.JSX.Element {
+  const { t, locale } = useI18n();
   const refresh = (
     <button
       type="button"
       className={`usage-refresh${loading ? ' usage-refresh--spin' : ''}`}
       data-testid="usage-refresh"
-      title="새로고침"
+      title={t('usage.refresh')}
       onClick={onRefresh}
     >
       ↻
@@ -105,11 +113,11 @@ export function UsageWidget({ status, loading, onRefresh }: UsageWidgetProps): R
 
   let body: React.JSX.Element;
   if (!status) {
-    body = <span className="usage-muted">Claude 사용량…</span>;
+    body = <span className="usage-muted">{t('usage.loading')}</span>;
   } else if (status.error) {
     body = (
       <span className="usage-muted" data-testid="usage-error">
-        {ERROR_TEXT[status.error]}
+        {t(ERROR_KEY[status.error])}
       </span>
     );
   } else {
@@ -117,7 +125,7 @@ export function UsageWidget({ status, loading, onRefresh }: UsageWidgetProps): R
     const shown = status.limits.filter((l) => l.kind === 'session' || l.kind === 'weekly_all');
     body =
       shown.length === 0 ? (
-        <span className="usage-muted">사용량 없음</span>
+        <span className="usage-muted">{t('usage.none')}</span>
       ) : (
         <span className="usage-chips" data-testid="usage-chips">
           {shown.map((l, i) => (
@@ -126,9 +134,9 @@ export function UsageWidget({ status, loading, onRefresh }: UsageWidgetProps): R
               <span
                 className={`usage-chip ${severityClass(l.severity)}`}
                 data-testid={`usage-${l.kind}`}
-                title={chipTitle(l)}
+                title={chipTitle(l, t, locale)}
               >
-                {shortLabel(l)} <strong>{l.percent}%</strong>
+                {shortLabel(l, t)} <strong>{l.percent}%</strong>
               </span>
             </span>
           ))}
