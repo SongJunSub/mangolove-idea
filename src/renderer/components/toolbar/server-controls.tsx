@@ -1,4 +1,6 @@
 import type { ServerStatus } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
+import { SERVER_STATE_KEY } from '../../i18n/status-keys';
 
 export interface ServerControlsProps {
   readonly selectedId: string | null;
@@ -26,6 +28,7 @@ export function ServerControls({
   onStop,
   onOpen,
 }: ServerControlsProps): React.JSX.Element {
+  const { t } = useI18n();
   const state = status?.process.state ?? 'stopped';
   const isBusy = state === 'starting' || state === 'stopping';
   const isRunning = state === 'running';
@@ -41,24 +44,26 @@ export function ServerControls({
         type="button"
         disabled={!selectedId || isRunning || isBusy}
         onClick={() => selectedId && onStart(selectedId)}
-        title={selectedId ? 'start the detected server' : 'select a worktree first'}
+        title={selectedId ? t('server.startTip') : t('app.selectWorktreeFirst')}
       >
-        Run
+        {t('server.run')}
       </button>
       <button
         type="button"
         disabled={!selectedId || (!isRunning && !isBusy)}
         onClick={() => selectedId && onStop(selectedId)}
       >
-        Stop
+        {t('server.stop')}
       </button>
-      <span style={{ fontSize: 11, color: 'var(--muted)' }}>server: {state}</span>
+      <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+        {t('server.line', { state: t(SERVER_STATE_KEY[state]) })}
+      </span>
       {canOpen && (
         <button
           type="button"
           data-testid="server-open"
           className="server-open-chip"
-          title={`open ${serverUrl} in the Browser tab`}
+          title={t('server.openTip', { url: serverUrl ?? '' })}
           onClick={() => onOpen?.()}
         >
           ↗ {serverUrl}

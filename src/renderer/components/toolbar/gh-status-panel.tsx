@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import type { GhBucket, GhStatus } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
+import type { TranslateFn } from '../../i18n/messages';
+import { GH_BUCKET_KEY } from '../../i18n/status-keys';
 
 /** Per-bucket glyph + color for a check row (mirrors the summary-line idiom). */
 const BUCKET_MARK: Record<GhBucket, string> = {
@@ -26,25 +29,25 @@ export interface GhStatusPanelProps {
   onOpen(url: string): void;
 }
 
-/** Maps a GhStatus to a calm one-line label + a severity color. */
-function describe(status: GhStatus): { label: string; color: string } {
+/** Maps a GhStatus to a calm localized one-line label + a severity color. */
+function describe(status: GhStatus, t: TranslateFn): { label: string; color: string } {
   switch (status.kind) {
     case 'gh-missing':
-      return { label: 'PR: gh CLI not installed', color: 'var(--muted)' };
+      return { label: t('gh.ghMissing'), color: 'var(--muted)' };
     case 'not-authed':
-      return { label: 'PR: gh not signed in (run gh auth login)', color: 'var(--muted)' };
+      return { label: t('gh.notAuthed'), color: 'var(--muted)' };
     case 'no-remote':
-      return { label: 'PR: not a GitHub repo', color: 'var(--muted)' };
+      return { label: t('gh.noRemote'), color: 'var(--muted)' };
     case 'not-pushed':
-      return { label: 'PR: branch not pushed', color: 'var(--muted)' };
+      return { label: t('gh.notPushed'), color: 'var(--muted)' };
     case 'no-pr':
-      return { label: 'PR: none yet', color: 'var(--muted)' };
+      return { label: t('gh.noPr'), color: 'var(--muted)' };
     case 'rate-limited':
-      return { label: 'PR: GitHub rate limit — try again later', color: 'var(--warn)' };
+      return { label: t('gh.rateLimited'), color: 'var(--warn)' };
     case 'error':
-      return { label: `PR: ${status.message}`, color: 'var(--err)' };
+      return { label: t('gh.errorLine', { error: status.message }), color: 'var(--err)' };
     case 'open-pr': {
-      const draft = status.pr.isDraft ? ' (draft)' : '';
+      const draft = status.pr.isDraft ? t('gh.draft') : '';
       const ci =
         status.ci.summary === 'failing'
           ? 'CI ✗'
@@ -60,7 +63,13 @@ function describe(status: GhStatus): { label: string; color: string } {
             ? 'var(--warn)'
             : 'var(--muted)';
       return {
-        label: `PR #${status.pr.number} ${status.pr.state}${draft} · ${ci} · ${status.pr.title}`,
+        label: t('gh.openPr', {
+          number: status.pr.number,
+          state: status.pr.state,
+          draft,
+          ci,
+          title: status.pr.title,
+        }),
         color,
       };
     }
@@ -81,19 +90,20 @@ export function GhStatusPanel({
   onRefresh,
   onOpen,
 }: GhStatusPanelProps): React.JSX.Element {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   if (!selectedId) {
     return (
       <div data-testid="gh-status" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>PR: select a worktree</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{t('gh.selectWorktree')}</span>
       </div>
     );
   }
   const line = error
-    ? { label: `PR: ${error}`, color: 'var(--err)' }
+    ? { label: t('gh.errorLine', { error }), color: 'var(--err)' }
     : loading || !status
-      ? { label: 'PR: loading…', color: 'var(--muted)' }
-      : describe(status);
+      ? { label: t('gh.loading'), color: 'var(--muted)' }
+      : describe(status, t);
   const openPr = status && status.kind === 'open-pr' ? status.pr : null;
   const checks = status && status.kind === 'open-pr' ? status.ci.checks : [];
 
@@ -105,7 +115,7 @@ export function GhStatusPanel({
         </span>
         {openPr && (
           <button type="button" data-testid="gh-open" onClick={() => onOpen(openPr.url)}>
-            Open in browser
+            {t('gh.openInBrowser')}
           </button>
         )}
         {checks.length > 0 && (
@@ -115,7 +125,7 @@ export function GhStatusPanel({
             aria-expanded={expanded}
             onClick={() => setExpanded((v) => !v)}
           >
-            {expanded ? '▾' : '▸'} Checks ({checks.length})
+            {expanded ? '▾' : '▸'} {t('gh.checks', { count: checks.length })}
           </button>
         )}
         <button
@@ -124,7 +134,7 @@ export function GhStatusPanel({
           disabled={loading}
           onClick={() => onRefresh()}
         >
-          Refresh
+          {t('gh.refresh')}
         </button>
       </div>
       {expanded && checks.length > 0 && (
@@ -134,7 +144,7 @@ export function GhStatusPanel({
         >
           {checks.map((c, i) => (
             <li key={`${c.name}-${i}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: BUCKET_COLOR[c.bucket] }} title={c.bucket}>
+              <span style={{ color: BUCKET_COLOR[c.bucket] }} title={t(GH_BUCKET_KEY[c.bucket])}>
                 {BUCKET_MARK[c.bucket]}
               </span>
               <span style={{ flex: 1 }}>{c.name}</span>
@@ -144,7 +154,7 @@ export function GhStatusPanel({
                   data-testid={`gh-check-open-${c.name}`}
                   onClick={() => onOpen(c.link)}
                 >
-                  open
+                  {t('gh.open')}
                 </button>
               )}
             </li>

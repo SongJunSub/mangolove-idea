@@ -1,4 +1,6 @@
 import type { AgentStatus, ServerState, Worktree } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
+import { AGENT_STATUS_KEY } from '../../i18n/status-keys';
 import { ServerDot } from './server-dot';
 
 /** Props for one worktree row. */
@@ -30,6 +32,8 @@ export function WorktreeItem({
   onSelect,
   onRemove,
 }: WorktreeItemProps): React.JSX.Element {
+  const { t } = useI18n();
+  const agentLabel = t('worktree.agentDot', { status: t(AGENT_STATUS_KEY[agentStatus]) });
   return (
     <li
       data-testid="worktree-item"
@@ -48,8 +52,8 @@ export function WorktreeItem({
       {/* line 1: status dot + branch (gets the full column width) + badges */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span
-          aria-label={`agent ${agentStatus}`}
-          title={`agent ${agentStatus}`}
+          aria-label={agentLabel}
+          title={agentLabel}
           style={{
             width: 8,
             height: 8,
@@ -73,10 +77,14 @@ export function WorktreeItem({
           {worktree.branch}
         </span>
         {worktree.isPrimary && (
-          <span style={{ fontSize: 11, color: 'var(--muted)', flex: '0 0 auto' }}>primary</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)', flex: '0 0 auto' }}>
+            {t('worktree.primary')}
+          </span>
         )}
         {worktree.isLocked && (
-          <span style={{ fontSize: 11, color: 'var(--warn)', flex: '0 0 auto' }}>locked</span>
+          <span style={{ fontSize: 11, color: 'var(--warn)', flex: '0 0 auto' }}>
+            {t('worktree.locked')}
+          </span>
         )}
       </div>
       {/* line 2: short HEAD + Remove (pushed right) */}
@@ -97,14 +105,14 @@ export function WorktreeItem({
           }}
           title={
             worktree.isPrimary
-              ? 'cannot remove the primary worktree'
+              ? t('worktree.removeTip.primary')
               : worktree.isLocked
-                ? 'worktree is locked; unlock it first'
-                : 'remove worktree'
+                ? t('worktree.removeTip.locked')
+                : t('worktree.removeTip.default')
           }
           style={{ marginLeft: 'auto', flex: '0 0 auto', fontSize: 11, padding: '1px 8px' }}
         >
-          Remove
+          {t('worktree.remove')}
         </button>
       </div>
     </li>

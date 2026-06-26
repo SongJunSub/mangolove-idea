@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import { MergeControls } from '../../src/renderer/components/toolbar/merge-controls';
 import type { MergeProgressEvent, Worktree } from '../../src/shared/types';
 
@@ -20,7 +21,7 @@ function controls(over: Partial<React.ComponentProps<typeof MergeControls>> = {}
     onMerge: vi.fn(),
     ...over,
   };
-  return { props, ...render(<MergeControls {...props} />) };
+  return { props, ...render(wrapI18n(<MergeControls {...props} />)) };
 }
 
 const mergeButton = () => screen.getByRole('button', { name: /Merge|Merging/ });

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import { GhStatusPanel } from '../../src/renderer/components/toolbar/gh-status-panel';
 import type { GhStatus } from '../../src/shared/types';
 
@@ -34,7 +35,7 @@ function panel(over: Partial<React.ComponentProps<typeof GhStatusPanel>> = {}) {
     onOpen: vi.fn(),
     ...over,
   };
-  return { props, ...render(<GhStatusPanel {...props} />) };
+  return { props, ...render(wrapI18n(<GhStatusPanel {...props} />)) };
 }
 
 describe('<GhStatusPanel>', () => {
