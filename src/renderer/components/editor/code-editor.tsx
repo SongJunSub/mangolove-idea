@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { encodeMango } from '../../lib/mango-uri';
 import { languageForPath } from '../../lib/language-for-path';
 import { collectUsages, type UsageLocation } from '../../lib/code-nav/find-usages';
+import { useI18n } from '../../i18n/i18n-context';
 
 export interface CodeEditorProps {
   readonly worktreeId: string;
@@ -46,6 +47,11 @@ export function CodeEditor({
   onCursor,
   onUsages,
 }: CodeEditorProps): React.JSX.Element {
+  const { t } = useI18n();
+  // Read t at mount-time inside the create-once effect without making it a dep (which would
+  // recreate the whole editor on locale change). The context-menu label is captured on mount.
+  const tRef = useRef(t);
+  tRef.current = t;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   // The model THIS editor created (to dispose on swap/unmount). null while borrowing a
@@ -85,7 +91,7 @@ export function CodeEditor({
     // monaco's built-in Shift+F12 inline references peek, which is kept.
     const usagesAction = editor.addAction({
       id: 'mango.findUsagesPanel',
-      label: 'Find All Usages',
+      label: tRef.current('editor.findAllUsages'),
       contextMenuGroupId: 'navigation',
       contextMenuOrder: 1.6,
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.F12],
@@ -156,7 +162,7 @@ export function CodeEditor({
           <span
             className="code-editor-dot"
             data-testid="editor-dirty-dot"
-            title="unsaved changes"
+            title={t('editor.unsavedChanges')}
           />
         )}
       </div>

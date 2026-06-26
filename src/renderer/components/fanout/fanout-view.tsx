@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState } from 'react';
 import type { FanoutLane, MergeResult } from '../../../shared/types';
 import { useFanout } from '../../hooks/use-fanout';
+import { useI18n } from '../../i18n/i18n-context';
+import { FANOUT_STATUS_KEY } from '../../i18n/status-keys';
 
 // Reuse the existing Monaco diff view per-lane (a lane is a real worktree).
 const DiffView = lazy(() => import('../diff/diff-view').then((m) => ({ default: m.DiffView })));
@@ -32,6 +34,7 @@ const STATUS_COLOR: Record<FanoutLane['status'], string> = {
  * per-worktree pane — it CREATES N worktrees, so it lives at the app top level.
  */
 export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JSX.Element {
+  const { t } = useI18n();
   const { run, busy, error, start, select, abort } = useFanout();
   const [prompt, setPrompt] = useState('');
   const [models, setModels] = useState<string[]>(['opus', 'haiku']);
@@ -70,8 +73,10 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
       data-testid="fanout-view"
       style={{ border: '1px solid #333', borderRadius: 8, padding: 16, marginTop: 12 }}
     >
-      <h2 style={{ marginTop: 0, fontSize: 16 }}>Multimodel Fan-out</h2>
-      {error && <pre style={{ color: 'var(--err)', fontSize: 13 }}>error: {error}</pre>}
+      <h2 style={{ marginTop: 0, fontSize: 16 }}>{t('fanout.title')}</h2>
+      {error && (
+        <pre style={{ color: 'var(--err)', fontSize: 13 }}>{t('worktree.error', { error })}</pre>
+      )}
 
       {!run ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -79,12 +84,12 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
             data-testid="fanout-prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="One prompt, sent to every selected model in its own worktree…"
+            placeholder={t('fanout.promptPlaceholder')}
             rows={4}
             style={{ width: '100%', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13 }}
           />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: 'var(--faint)' }}>Models (1–4):</span>
+            <span style={{ fontSize: 13, color: 'var(--faint)' }}>{t('fanout.modelsLabel')}</span>
             {PRESET_MODELS.map((m) => (
               <label
                 key={m}
@@ -115,8 +120,7 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
               checked={skipPermissions}
               onChange={(e) => setSkipPermissions(e.target.checked)}
             />
-            Skip permissions (--dangerously-skip-permissions) — bypasses ALL permission checks,
-            incl. bash. Use only for bash-heavy tasks you trust.
+            {t('fanout.skipPermissions')}
           </label>
           <button
             type="button"
@@ -124,14 +128,14 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
             disabled={!canStart}
             onClick={() => void onStart()}
           >
-            Start fan-out
+            {t('fanout.start')}
           </button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <code style={{ fontSize: 12, color: 'var(--muted)' }}>
-              run {run.id} · base {run.base}
+              {t('fanout.runLine', { id: run.id, base: run.base })}
             </code>
             <button
               type="button"
@@ -139,7 +143,7 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
               onClick={() => void abort()}
               disabled={busy}
             >
-              Abort
+              {t('fanout.abort')}
             </button>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -162,7 +166,9 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
                 }}
               >
                 <div style={{ fontWeight: 600 }}>{lane.model}</div>
-                <div style={{ fontSize: 12, color: STATUS_COLOR[lane.status] }}>{lane.status}</div>
+                <div style={{ fontSize: 12, color: STATUS_COLOR[lane.status] }}>
+                  {t(FANOUT_STATUS_KEY[lane.status])}
+                </div>
                 {lane.error && (
                   <div style={{ fontSize: 11, color: 'var(--err)' }}>{lane.error}</div>
                 )}
@@ -173,15 +179,19 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
           {selectResult && selectResult.status !== 'merged' && (
             <pre style={{ color: 'var(--warn)', fontSize: 12 }}>
               {selectResult.status === 'conflict'
-                ? `merge conflict: ${(selectResult.conflicted ?? []).join(', ')}`
-                : `merge failed: ${selectResult.error ?? 'unknown'}`}
+                ? t('fanout.mergeConflict', { files: (selectResult.conflicted ?? []).join(', ') })
+                : t('fanout.mergeFailed', {
+                    error: selectResult.error ?? t('fanout.unknownError'),
+                  })}
             </pre>
           )}
 
           {selectedLane && selectedLane.status === 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Suspense
-                fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>}
+                fallback={
+                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>{t('app.loadingDiff')}</p>
+                }
               >
                 <DiffView
                   key={`fanout-diff-${selectedLane.laneId}`}
@@ -196,7 +206,7 @@ export function FanoutView({ base, theme, onMerged }: FanoutViewProps): React.JS
                 disabled={busy}
                 onClick={() => void onUseLane(selectedLane.laneId)}
               >
-                Use this lane ({selectedLane.model})
+                {t('fanout.useLane', { model: selectedLane.model })}
               </button>
             </div>
           )}

@@ -1,3 +1,5 @@
+import { useI18n } from '../../i18n/i18n-context';
+
 export interface NavBackProps {
   /** True when there is a previous location to return to. */
   readonly canGoBack: boolean;
@@ -10,13 +12,14 @@ export interface NavBackProps {
  * when the history is empty.
  */
 export function NavBack({ canGoBack, onBack }: NavBackProps): React.JSX.Element {
+  const { t } = useI18n();
   return (
     <button
       type="button"
       data-testid="nav-back"
       className="nav-back-btn"
       disabled={!canGoBack}
-      title="Back (⌘[)"
+      title={t('editor.navBack')}
       onClick={onBack}
     >
       ←

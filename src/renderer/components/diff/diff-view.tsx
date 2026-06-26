@@ -3,6 +3,7 @@ import * as monaco from 'monaco-editor';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangedFile, FileDiff } from '../../../shared/types';
 import { useDiff } from '../../hooks/use-diff';
+import { useI18n } from '../../i18n/i18n-context';
 
 export interface DiffViewProps {
   readonly worktreeId: string;
@@ -25,6 +26,9 @@ const STATUS_LABEL: Record<ChangedFile['status'], string> = {
  * its models are created on mount and disposed on unmount (mirrors AgentTerminal).
  */
 export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.Element {
+  const { t } = useI18n();
+  const tRef = useRef(t); // read t inside the file-load effect without making it a dep
+  tRef.current = t;
   const { files, loading, error, loadFile } = useDiff(worktreeId, base);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
@@ -73,11 +77,11 @@ export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.
         // Per-extension syntax highlighting is a future enhancement.
         const lang = 'plaintext';
         const original = monaco.editor.createModel(
-          d.binary ? '[binary file — diff not shown]' : d.original,
+          d.binary ? tRef.current('diff.binaryNotShown') : d.original,
           lang,
         );
         const modified = monaco.editor.createModel(
-          d.binary ? '[binary file — diff not shown]' : d.modified,
+          d.binary ? tRef.current('diff.binaryNotShown') : d.modified,
           lang,
         );
         editor.setModel({ original, modified });
@@ -105,10 +109,10 @@ export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.
           borderRight: '1px solid var(--border)',
         }}
       >
-        {loading && <li style={{ color: 'var(--muted)' }}>Loading changes…</li>}
-        {error && <li style={{ color: 'var(--err)' }}>error: {error}</li>}
+        {loading && <li style={{ color: 'var(--muted)' }}>{t('diff.loadingChanges')}</li>}
+        {error && <li style={{ color: 'var(--err)' }}>{t('worktree.error', { error })}</li>}
         {!loading && !error && files.length === 0 && (
-          <li style={{ color: 'var(--muted)' }}>No changes vs base.</li>
+          <li style={{ color: 'var(--muted)' }}>{t('diff.noChanges')}</li>
         )}
         {files.map((f) => (
           <li key={f.path}>
@@ -129,15 +133,19 @@ export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.
             >
               <span style={{ opacity: 0.7, marginRight: 6 }}>{STATUS_LABEL[f.status]}</span>
               {f.path}
-              {f.binary && <span style={{ opacity: 0.5 }}> (binary)</span>}
+              {f.binary && <span style={{ opacity: 0.5 }}>{t('diff.binaryTag')}</span>}
             </button>
           </li>
         ))}
       </ul>
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-        {fileError && <p style={{ color: 'var(--err)', fontSize: 13 }}>error: {fileError}</p>}
+        {fileError && (
+          <p style={{ color: 'var(--err)', fontSize: 13 }}>
+            {t('worktree.error', { error: fileError })}
+          </p>
+        )}
         {!selectedPath && !fileError && (
-          <p style={{ color: 'var(--muted)', fontSize: 13 }}>Select a file to view its diff.</p>
+          <p style={{ color: 'var(--muted)', fontSize: 13 }}>{t('diff.selectFile')}</p>
         )}
         <div ref={hostRef} style={{ width: '100%', height: 460, borderRadius: 4 }} />
       </div>

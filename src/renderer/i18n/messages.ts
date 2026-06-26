@@ -213,6 +213,102 @@ export const en = {
   'gh.bucket.pending': 'pending',
   'gh.bucket.skipping': 'skipping',
   'gh.bucket.cancel': 'cancel',
+
+  // browser-pane
+  'browser.go': 'Go',
+  'browser.reload': 'Reload',
+  'browser.empty': 'Start your dev server, or type a URL above and press Go.',
+  // cross-machine-panel
+  'crossMachine.refreshing': 'Refreshing…',
+  'crossMachine.disabled':
+    'Turn on “Share this machine’s sessions” in Settings to see sessions from your other machines.',
+  'crossMachine.empty': 'No sessions published from any machine yet.',
+  'crossMachine.thisMachine': ' (this machine)',
+  'crossMachine.activeTurn': 'active turn',
+  'crossMachine.startHereTip': 'Check out this branch here and start a fresh session',
+  'crossMachine.startHere': 'Start here',
+  'crossMachine.close': 'Close',
+  'crossMachine.status.ended': 'ended',
+  // diff-view
+  'diff.binaryNotShown': '[binary file — diff not shown]',
+  'diff.loadingChanges': 'Loading changes…',
+  'diff.noChanges': 'No changes vs base.',
+  'diff.binaryTag': ' (binary)',
+  'diff.selectFile': 'Select a file to view its diff.',
+  // conflict-view
+  'conflict.header': 'Merge conflict — {count} file(s) to resolve',
+  'conflict.continue.tipBlocked': 'resolve all conflicts first',
+  'conflict.continue.tipReady': 'create the merge commit',
+  'conflict.continue': 'Continue merge',
+  'conflict.abort': 'Abort merge',
+  'conflict.none': 'No conflicts remaining — Continue merge.',
+  'conflict.ours.tipAvailable': 'use the target (main) version',
+  'conflict.ours.tipMissing': 'no target version (missing stage)',
+  'conflict.ours': 'Use ours (target)',
+  'conflict.theirs.tipAvailable': 'use the feature version',
+  'conflict.theirs.tipMissing': 'no feature version (missing stage)',
+  'conflict.theirs': 'Use theirs (feature)',
+  'conflict.manual.tip': 'stage the edited buffer as the resolution',
+  'conflict.manual': 'Mark resolved (manual)',
+  'conflict.keep.tip': 'keep the file (git add)',
+  'conflict.keep': 'Keep file',
+  'conflict.remove.tip': 'remove the file (git rm)',
+  'conflict.remove': 'Remove file',
+  'conflict.selectPrompt':
+    'Select a conflicted file to edit its markers, or use the per-file buttons.',
+  'conflict.missingStage':
+    'Missing index stage ({code}) — content ours/theirs unavailable; edit manually or keep/remove the file.',
+  // code-editor
+  'editor.findAllUsages': 'Find All Usages',
+  'editor.unsavedChanges': 'unsaved changes',
+  // confirm-discard-modal
+  'app.discard.title': 'Unsaved changes',
+  'app.discard.body': '{name} has unsaved changes. Save before switching?',
+  'app.discard.saveError': 'save failed: {error}',
+  'app.discard.action': 'Discard',
+  // nav-back
+  'editor.navBack': 'Back (⌘[)',
+  // usages-panel
+  'usages.loading': 'Finding usages…',
+  'usages.empty': 'No usages found. Place the cursor on a symbol and run “Find All Usages”.',
+  'usages.count': '{count} usage(s) in {files} file(s)',
+  // fanout-view
+  'fanout.title': 'Multimodel Fan-out',
+  'fanout.promptPlaceholder': 'One prompt, sent to every selected model in its own worktree…',
+  'fanout.modelsLabel': 'Models (1–4):',
+  'fanout.skipPermissions':
+    'Skip permissions (--dangerously-skip-permissions) — bypasses ALL permission checks, incl. bash. Use only for bash-heavy tasks you trust.',
+  'fanout.start': 'Start fan-out',
+  'fanout.runLine': 'run {id} · base {base}',
+  'fanout.abort': 'Abort',
+  'fanout.status.queued': 'queued',
+  'fanout.status.running': 'running',
+  'fanout.status.done': 'done',
+  'fanout.status.failed': 'failed',
+  'fanout.mergeConflict': 'merge conflict: {files}',
+  'fanout.mergeFailed': 'merge failed: {error}',
+  'fanout.unknownError': 'unknown',
+  'fanout.useLane': 'Use this lane ({model})',
+  // log-panel
+  'logs.title': 'Server logs',
+  'logs.grepAria': 'log grep',
+  'logs.filterPlaceholder': 'filter…',
+  'logs.levelLabel': 'level',
+  'logs.minLevelAria': 'min level',
+  'logs.level.raw': 'raw',
+  'logs.level.debug': 'debug',
+  'logs.level.info': 'info',
+  'logs.level.warn': 'warn',
+  'logs.level.error': 'error',
+  'logs.shown': '{count} shown',
+  'logs.empty': 'no log lines',
+  // file-tree
+  'tree.selectWorktree': 'Select a worktree',
+  'tree.loadError': 'Failed to load tree: {error}',
+  'tree.loading': 'Loading…',
+  'tree.empty': 'Empty directory',
+  // agent terminal
+  'terminal.claudeExited': 'claude exited: code {code}',
 } as const;
 
 /** Every message key, derived from the English catalog (the single source of truth). */
@@ -407,6 +503,100 @@ export const ko: Record<MessageKey, string> = {
   'gh.bucket.pending': '대기 중',
   'gh.bucket.skipping': '건너뜀',
   'gh.bucket.cancel': '취소됨',
+
+  // browser-pane
+  'browser.go': '이동',
+  'browser.reload': '새로고침',
+  'browser.empty': '개발 서버를 켜거나, 위에 주소를 입력하고 이동 버튼을 눌러요.',
+  // cross-machine-panel
+  'crossMachine.refreshing': '새로고침 중…',
+  'crossMachine.disabled':
+    '설정에서 “이 컴퓨터의 세션 공유”를 켜면 다른 컴퓨터의 세션을 볼 수 있어요.',
+  'crossMachine.empty': '아직 어떤 컴퓨터에서도 올라온 세션이 없어요.',
+  'crossMachine.thisMachine': ' (이 컴퓨터)',
+  'crossMachine.activeTurn': '응답 중',
+  'crossMachine.startHereTip': '이 브랜치를 여기로 가져와 새 세션을 시작해요',
+  'crossMachine.startHere': '여기서 시작',
+  'crossMachine.close': '닫기',
+  'crossMachine.status.ended': '종료됨',
+  // diff-view
+  'diff.binaryNotShown': '[바이너리 파일 — diff를 보여줄 수 없어요]',
+  'diff.loadingChanges': '바뀐 파일 불러오는 중…',
+  'diff.noChanges': '기준 브랜치와 비교해 바뀐 게 없어요.',
+  'diff.binaryTag': ' (바이너리)',
+  'diff.selectFile': '파일을 선택하면 diff를 볼 수 있어요.',
+  // conflict-view
+  'conflict.header': '병합 충돌 — 해결할 파일 {count}개',
+  'conflict.continue.tipBlocked': '먼저 모든 충돌을 해결해 주세요',
+  'conflict.continue.tipReady': '병합 커밋을 만들어요',
+  'conflict.continue': '병합 계속하기',
+  'conflict.abort': '병합 중단하기',
+  'conflict.none': '남은 충돌이 없어요 — 병합을 계속할 수 있어요.',
+  'conflict.ours.tipAvailable': '대상(main) 버전을 써요',
+  'conflict.ours.tipMissing': '대상 버전이 없어요 (스테이지 없음)',
+  'conflict.ours': '대상 버전 쓰기 (ours)',
+  'conflict.theirs.tipAvailable': '피처 버전을 써요',
+  'conflict.theirs.tipMissing': '피처 버전이 없어요 (스테이지 없음)',
+  'conflict.theirs': '피처 버전 쓰기 (theirs)',
+  'conflict.manual.tip': '편집한 내용을 해결 결과로 스테이징해요',
+  'conflict.manual': '직접 해결로 표시',
+  'conflict.keep.tip': '파일을 유지해요 (git add)',
+  'conflict.keep': '파일 유지',
+  'conflict.remove.tip': '파일을 삭제해요 (git rm)',
+  'conflict.remove': '파일 삭제',
+  'conflict.selectPrompt': '충돌이 난 파일을 골라서 마커를 고치거나, 파일별 버튼을 눌러 보세요.',
+  'conflict.missingStage':
+    '인덱스 스테이지가 없어요 ({code}) — ours/theirs 내용을 가져올 수 없어요. 직접 편집하거나 파일을 유지/삭제해 주세요.',
+  // code-editor
+  'editor.findAllUsages': '사용처 모두 찾기',
+  'editor.unsavedChanges': '저장 안 한 변경사항',
+  // confirm-discard-modal
+  'app.discard.title': '저장 안 한 변경사항이 있어요',
+  'app.discard.body': '{name} 파일에 저장 안 한 변경사항이 있어요. 넘어가기 전에 저장할까요?',
+  'app.discard.saveError': '저장하지 못했어요: {error}',
+  'app.discard.action': '저장 안 하기',
+  // nav-back
+  'editor.navBack': '뒤로 (⌘[)',
+  // usages-panel
+  'usages.loading': '사용처를 찾고 있어요…',
+  'usages.empty': '사용처를 찾지 못했어요. 심볼에 커서를 두고 “사용처 모두 찾기”를 실행해 주세요.',
+  'usages.count': '파일 {files}개에서 사용처 {count}개',
+  // fanout-view
+  'fanout.title': '멀티모델 Fan-out',
+  'fanout.promptPlaceholder': '선택한 모델마다 각자 워크트리에서 이 프롬프트 하나를 실행해요…',
+  'fanout.modelsLabel': '모델 (1~4개):',
+  'fanout.skipPermissions':
+    '권한 검사 건너뛰기 (--dangerously-skip-permissions) — bash를 포함한 모든 권한 검사를 건너뛰어요. 믿을 수 있는 bash 작업에만 쓰세요.',
+  'fanout.start': 'Fan-out 시작',
+  'fanout.runLine': '실행 {id} · 기준 {base}',
+  'fanout.abort': '중단',
+  'fanout.status.queued': '대기 중',
+  'fanout.status.running': '실행 중',
+  'fanout.status.done': '완료',
+  'fanout.status.failed': '실패',
+  'fanout.mergeConflict': '병합 충돌이 났어요: {files}',
+  'fanout.mergeFailed': '병합하지 못했어요: {error}',
+  'fanout.unknownError': '알 수 없음',
+  'fanout.useLane': '이 레인 사용하기 ({model})',
+  // log-panel
+  'logs.title': '서버 로그',
+  'logs.grepAria': '로그 검색',
+  'logs.filterPlaceholder': '검색…',
+  'logs.levelLabel': '레벨',
+  'logs.minLevelAria': '최소 레벨',
+  'logs.level.raw': '원본',
+  'logs.level.debug': '디버그',
+  'logs.level.info': '정보',
+  'logs.level.warn': '경고',
+  'logs.level.error': '오류',
+  'logs.shown': '{count}개 표시 중',
+  'logs.empty': '로그가 없어요',
+  // file-tree
+  'tree.selectWorktree': '워크트리를 선택해 주세요',
+  'tree.loadError': '트리를 못 불러왔어요: {error}',
+  'tree.loading': '불러오는 중…',
+  'tree.empty': '폴더가 비어 있어요',
+  'terminal.claudeExited': 'claude가 종료됐어요 (코드 {code})',
 };
 
 /** The two catalogs, keyed by resolved locale. */

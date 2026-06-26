@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../../i18n/i18n-context';
 // NB: no import for the webview element type — `HTMLWebViewElement` is a GLOBAL ambient
 // type (defined in src/renderer/webview.d.ts), so it is referenced directly.
 
@@ -24,6 +25,7 @@ export interface BrowserPaneProps {
  * the app's IPC. No back/forward in the MVP — URL bar + Reload is the whole surface.
  */
 export function BrowserPane({ detectedUrl }: BrowserPaneProps): React.JSX.Element {
+  const { t } = useI18n();
   const webviewRef = useRef<HTMLWebViewElement | null>(null);
   // The address-bar text (what the user is editing).
   const [draft, setDraft] = useState<string>(detectedUrl ?? '');
@@ -81,10 +83,10 @@ export function BrowserPane({ detectedUrl }: BrowserPaneProps): React.JSX.Elemen
           }}
         />
         <button type="button" data-testid="browser-go" onClick={go} disabled={!draft.trim()}>
-          Go
+          {t('browser.go')}
         </button>
         <button type="button" data-testid="browser-reload" onClick={reload} disabled={!url}>
-          Reload
+          {t('browser.reload')}
         </button>
       </div>
       {url ? (
@@ -110,7 +112,7 @@ export function BrowserPane({ detectedUrl }: BrowserPaneProps): React.JSX.Elemen
             fontSize: 13,
           }}
         >
-          Start your dev server, or type a URL above and press Go.
+          {t('browser.empty')}
         </div>
       )}
     </div>

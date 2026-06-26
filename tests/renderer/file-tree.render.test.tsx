@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { wrapI18n } from './i18n-test-util';
 import { FileTree } from '../../src/renderer/components/tree/file-tree';
 import type { TreeEntry } from '../../src/shared/types';
 
@@ -22,25 +23,27 @@ beforeEach(() => {
 
 describe('<FileTree>', () => {
   it('prompts when no worktree is selected', () => {
-    render(<FileTree worktreeId={null} selectedFile={null} onOpenFile={vi.fn()} />);
-    expect(screen.getByText(/worktree를 선택/)).toBeInTheDocument();
+    render(wrapI18n(<FileTree worktreeId={null} selectedFile={null} onOpenFile={vi.fn()} />));
+    expect(screen.getByText(/Select a worktree/)).toBeInTheDocument();
   });
 
   it('loads + renders the root entries (dirs + files) for the selected worktree', async () => {
-    render(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={vi.fn()} />);
+    render(wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={vi.fn()} />));
     expect(await screen.findByTestId('tree-node-src')).toBeInTheDocument();
     expect(screen.getByTestId('tree-node-README.md')).toBeInTheDocument();
   });
 
   it('expands a folder on click and shows its children', async () => {
-    render(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={vi.fn()} />);
+    render(wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={vi.fn()} />));
     fireEvent.click(await screen.findByTestId('tree-node-src'));
     expect(await screen.findByTestId('tree-node-src/App.tsx')).toBeInTheDocument();
   });
 
   it('clicking a FILE calls onOpenFile with its relPath (folders do not)', async () => {
     const onOpenFile = vi.fn();
-    render(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />);
+    render(
+      wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />),
+    );
     fireEvent.click(await screen.findByTestId('tree-node-README.md'));
     expect(onOpenFile).toHaveBeenCalledWith('README.md');
 

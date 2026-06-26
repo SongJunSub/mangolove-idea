@@ -1,4 +1,6 @@
 import type { CrossMachineSessionPointer } from '../../../shared/types';
+import { useI18n } from '../../i18n/i18n-context';
+import { CM_SESSION_STATUS_KEY } from '../../i18n/status-keys';
 
 /** Props for the cross-machine sessions panel (modal overlay). */
 export interface CrossMachinePanelProps {
@@ -58,6 +60,7 @@ export function CrossMachinePanel({
   onStartHere,
   onClose,
 }: CrossMachinePanelProps): React.JSX.Element {
+  const { t } = useI18n();
   const groups = groupByMachine(pointers, selfMachineId);
 
   return (
@@ -85,22 +88,21 @@ export function CrossMachinePanel({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Cross-machine sessions</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}>{t('app.machinesTip')}</h2>
           <button
             type="button"
             data-testid="cross-machine-refresh"
             onClick={onRefresh}
             disabled={loading}
-            title="Refresh"
+            title={t('usage.refresh')}
           >
-            {loading ? 'Refreshing…' : '↻ Refresh'}
+            {loading ? t('crossMachine.refreshing') : `↻ ${t('usage.refresh')}`}
           </button>
         </div>
 
         {!enabled && (
           <p data-testid="cross-machine-disabled" style={{ fontSize: 12, color: 'var(--muted)' }}>
-            Turn on “Share this machine’s sessions” in Settings to see sessions from your other
-            machines.
+            {t('crossMachine.disabled')}
           </p>
         )}
         {error && (
@@ -110,7 +112,7 @@ export function CrossMachinePanel({
         )}
         {enabled && !loading && groups.length === 0 && (
           <p data-testid="cross-machine-empty" style={{ fontSize: 12, color: 'var(--muted)' }}>
-            No sessions published from any machine yet.
+            {t('crossMachine.empty')}
           </p>
         )}
 
@@ -126,7 +128,9 @@ export function CrossMachinePanel({
               <h4 style={{ margin: '0 0 4px', fontSize: 13 }}>
                 {g.label}
                 {g.isSelf && (
-                  <span style={{ color: 'var(--muted)', fontWeight: 400 }}> (this machine)</span>
+                  <span style={{ color: 'var(--muted)', fontWeight: 400 }}>
+                    {t('crossMachine.thisMachine')}
+                  </span>
                 )}
               </h4>
               <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12 }}>
@@ -137,17 +141,17 @@ export function CrossMachinePanel({
                   >
                     <code>{s.branch}</code>
                     <span style={{ color: 'var(--muted)' }}>
-                      {s.status}
-                      {s.hasActiveTurn ? ' · active turn' : ''}
+                      {t(CM_SESSION_STATUS_KEY[s.status])}
+                      {s.hasActiveTurn ? ` · ${t('crossMachine.activeTurn')}` : ''}
                     </span>
                     {!g.isSelf && (
                       <button
                         type="button"
                         data-testid={`cm-start-${s.branch}`}
-                        title="Check out this branch here and start a fresh session"
+                        title={t('crossMachine.startHereTip')}
                         onClick={() => onStartHere(s.branch)}
                       >
-                        Start here
+                        {t('crossMachine.startHere')}
                       </button>
                     )}
                   </li>
@@ -158,7 +162,7 @@ export function CrossMachinePanel({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" data-testid="cross-machine-close" onClick={onClose}>
-            Close
+            {t('crossMachine.close')}
           </button>
         </div>
       </div>

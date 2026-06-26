@@ -3,6 +3,7 @@ import * as monaco from 'monaco-editor';
 import { useEffect, useRef, useState } from 'react';
 import type { ConflictFileVersions } from '../../../shared/types';
 import { useConflicts } from '../../hooks/use-conflicts';
+import { useI18n } from '../../i18n/i18n-context';
 
 export interface ConflictViewProps {
   readonly worktreeId: string;
@@ -32,6 +33,7 @@ export function ConflictView({
   theme,
   onResolved,
 }: ConflictViewProps): React.JSX.Element {
+  const { t } = useI18n();
   const { files, loading, error, resolve, continueMerge, abort, refresh } =
     useConflicts(worktreeId);
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -149,16 +151,16 @@ export function ConflictView({
     <div data-testid="conflict-view" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <strong style={{ color: 'var(--warn)', fontSize: 13 }}>
-          Merge conflict — {files.length} file(s) to resolve
+          {t('conflict.header', { count: files.length })}
         </strong>
         <button
           type="button"
           data-testid="conflict-continue"
           disabled={hasConflicts || busy}
           onClick={() => void onContinue()}
-          title={hasConflicts ? 'resolve all conflicts first' : 'create the merge commit'}
+          title={hasConflicts ? t('conflict.continue.tipBlocked') : t('conflict.continue.tipReady')}
         >
-          Continue merge
+          {t('conflict.continue')}
         </button>
         <button
           type="button"
@@ -166,7 +168,7 @@ export function ConflictView({
           disabled={busy}
           onClick={() => void onAbort()}
         >
-          Abort merge
+          {t('conflict.abort')}
         </button>
       </div>
 
@@ -182,10 +184,10 @@ export function ConflictView({
             borderRight: '1px solid var(--border)',
           }}
         >
-          {loading && <li style={{ color: 'var(--muted)' }}>Loading conflicts…</li>}
-          {error && <li style={{ color: 'var(--err)' }}>error: {error}</li>}
+          {loading && <li style={{ color: 'var(--muted)' }}>{t('app.loadingConflicts')}</li>}
+          {error && <li style={{ color: 'var(--err)' }}>{t('worktree.error', { error })}</li>}
           {!loading && !error && files.length === 0 && (
-            <li style={{ color: 'var(--muted)' }}>No conflicts remaining — Continue merge.</li>
+            <li style={{ color: 'var(--muted)' }}>{t('conflict.none')}</li>
           )}
           {files.map((f) => (
             <li key={f.path} style={{ marginBottom: 6 }}>
@@ -213,33 +215,33 @@ export function ConflictView({
                   data-testid="conflict-ours"
                   disabled={busy || !f.hasOurs}
                   title={
-                    f.hasOurs
-                      ? 'use the target (main) version'
-                      : 'no target version (missing stage)'
+                    f.hasOurs ? t('conflict.ours.tipAvailable') : t('conflict.ours.tipMissing')
                   }
                   onClick={() => void onResolveChoice(f.path, 'ours')}
                 >
-                  Use ours (target)
+                  {t('conflict.ours')}
                 </button>
                 <button
                   type="button"
                   data-testid="conflict-theirs"
                   disabled={busy || !f.hasTheirs}
                   title={
-                    f.hasTheirs ? 'use the feature version' : 'no feature version (missing stage)'
+                    f.hasTheirs
+                      ? t('conflict.theirs.tipAvailable')
+                      : t('conflict.theirs.tipMissing')
                   }
                   onClick={() => void onResolveChoice(f.path, 'theirs')}
                 >
-                  Use theirs (feature)
+                  {t('conflict.theirs')}
                 </button>
                 <button
                   type="button"
                   data-testid="conflict-manual"
                   disabled={busy || selectedPath !== f.path}
-                  title="stage the edited buffer as the resolution"
+                  title={t('conflict.manual.tip')}
                   onClick={() => void onResolveChoice(f.path, 'manual')}
                 >
-                  Mark resolved (manual)
+                  {t('conflict.manual')}
                 </button>
                 {(!f.hasOurs || !f.hasTheirs) && (
                   <>
@@ -247,19 +249,19 @@ export function ConflictView({
                       type="button"
                       data-testid="conflict-keep"
                       disabled={busy}
-                      title="keep the file (git add)"
+                      title={t('conflict.keep.tip')}
                       onClick={() => void onResolveChoice(f.path, 'keep')}
                     >
-                      Keep file
+                      {t('conflict.keep')}
                     </button>
                     <button
                       type="button"
                       data-testid="conflict-remove"
                       disabled={busy}
-                      title="remove the file (git rm)"
+                      title={t('conflict.remove.tip')}
                       onClick={() => void onResolveChoice(f.path, 'remove')}
                     >
-                      Remove file
+                      {t('conflict.remove')}
                     </button>
                   </>
                 )}
@@ -269,16 +271,17 @@ export function ConflictView({
         </ul>
 
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-          {fileError && <p style={{ color: 'var(--err)', fontSize: 13 }}>error: {fileError}</p>}
-          {!selectedPath && !fileError && (
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-              Select a conflicted file to edit its markers, or use the per-file buttons.
+          {fileError && (
+            <p style={{ color: 'var(--err)', fontSize: 13 }}>
+              {t('worktree.error', { error: fileError })}
             </p>
+          )}
+          {!selectedPath && !fileError && (
+            <p style={{ color: 'var(--muted)', fontSize: 13 }}>{t('conflict.selectPrompt')}</p>
           )}
           {versions && !versions.hasOurs !== !versions.hasTheirs && (
             <p style={{ color: 'var(--warn)', fontSize: 12 }}>
-              Missing index stage ({versions.code}) — content ours/theirs unavailable; edit manually
-              or keep/remove the file.
+              {t('conflict.missingStage', { code: versions.code })}
             </p>
           )}
           <div ref={hostRef} style={{ width: '100%', height: 420, borderRadius: 4 }} />

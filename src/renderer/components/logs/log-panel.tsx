@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { LogLine } from '../../../shared/types';
 import { filterLogs } from '../../lib/log-filter';
+import { useI18n } from '../../i18n/i18n-context';
+import { LOG_LEVEL_KEY } from '../../i18n/status-keys';
 
 const LEVEL_OPTIONS: LogLine['level'][] = ['raw', 'debug', 'info', 'warn', 'error'];
 const LEVEL_COLOR: Record<LogLine['level'], string> = {
@@ -19,6 +21,7 @@ export interface LogPanelProps {
 
 /** Live server log list with a case-insensitive grep + a min-level select. */
 export function LogPanel({ lines }: LogPanelProps): React.JSX.Element {
+  const { t } = useI18n();
   const [grep, setGrep] = useState<string>('');
   const [minLevel, setMinLevel] = useState<LogLine['level']>('raw');
 
@@ -30,30 +33,32 @@ export function LogPanel({ lines }: LogPanelProps): React.JSX.Element {
   return (
     <section data-testid="log-panel" style={{ marginTop: 16 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-        <strong style={{ fontSize: 13 }}>Server logs</strong>
+        <strong style={{ fontSize: 13 }}>{t('logs.title')}</strong>
         <input
-          aria-label="log grep"
-          placeholder="filter…"
+          aria-label={t('logs.grepAria')}
+          placeholder={t('logs.filterPlaceholder')}
           value={grep}
           onChange={(e) => setGrep(e.target.value)}
           style={{ flex: 1, fontSize: 12 }}
         />
         <label style={{ fontSize: 12 }}>
-          level
+          {t('logs.levelLabel')}
           <select
-            aria-label="min level"
+            aria-label={t('logs.minLevelAria')}
             value={minLevel}
             onChange={(e) => setMinLevel(e.target.value as LogLine['level'])}
             style={{ marginLeft: 4 }}
           >
             {LEVEL_OPTIONS.map((lvl) => (
               <option key={lvl} value={lvl}>
-                {lvl}
+                {t(LOG_LEVEL_KEY[lvl])}
               </option>
             ))}
           </select>
         </label>
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{visible.length} shown</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          {t('logs.shown', { count: visible.length })}
+        </span>
       </div>
       <div
         style={{
@@ -68,7 +73,7 @@ export function LogPanel({ lines }: LogPanelProps): React.JSX.Element {
         }}
       >
         {visible.length === 0 ? (
-          <div style={{ color: 'var(--muted)' }}>no log lines</div>
+          <div style={{ color: 'var(--muted)' }}>{t('logs.empty')}</div>
         ) : (
           visible.map((l) => (
             <div
