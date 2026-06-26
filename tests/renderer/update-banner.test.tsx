@@ -3,6 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { UpdateBanner } from '../../src/renderer/components/update/update-banner';
 import type { UpdateStatus } from '../../src/shared/types';
 
+const SHA = 'f0ee74ef6337440a469f7532dd73d74eac2fc789431cc9740ed6c268b9a34abd';
+
 const available: UpdateStatus = {
   currentVersion: '0.1.1',
   latestVersion: '0.2.0',
@@ -10,24 +12,26 @@ const available: UpdateStatus = {
   releaseUrl: 'https://github.com/SongJunSub/mangolove-idea/releases/tag/v0.2.0',
   dmgUrl:
     'https://github.com/SongJunSub/mangolove-idea/releases/download/v0.2.0/MangoLove.IDEA-0.2.0-arm64.dmg',
-  sha256: null,
+  sha256: SHA,
   publishedAt: '2026-06-26T00:00:00Z',
 };
 
-/** Render with sensible default callbacks; override per test. */
 function renderBanner(props: Partial<React.ComponentProps<typeof UpdateBanner>> = {}) {
   const onOpen = vi.fn();
   const onDismiss = vi.fn();
+  const onUpdate = vi.fn();
   render(
     <UpdateBanner
       status={available}
       dismissedVersion={undefined}
       onDismiss={onDismiss}
       onOpen={onOpen}
+      applyState={{ phase: 'idle' }}
+      onUpdate={onUpdate}
       {...props}
     />,
   );
-  return { onOpen, onDismiss };
+  return { onOpen, onDismiss, onUpdate };
 }
 
 describe('<UpdateBanner>', () => {
@@ -53,31 +57,53 @@ describe('<UpdateBanner>', () => {
     expect(screen.queryByTestId('update-banner')).toBeNull();
   });
 
-  it('reappears for a newer version than the dismissed one', () => {
-    renderBanner({ dismissedVersion: '0.1.5' });
-    expect(screen.getByTestId('update-banner')).toBeInTheDocument();
+  it('offers one-click update when there is a .dmg AND a checksum', () => {
+    renderBanner();
+    expect(screen.getByTestId('update-now')).toBeInTheDocument();
   });
 
-  it('Download opens the .dmg url', () => {
-    const { onOpen } = renderBanner();
+  it('hides one-click update when there is no checksum to verify', () => {
+    renderBanner({ status: { ...available, sha256: null } });
+    expect(screen.queryByTestId('update-now')).toBeNull();
+    expect(screen.getByTestId('update-download')).toBeInTheDocument(); // manual fallback remains
+  });
+
+  it('hides one-click update when there is no .dmg asset', () => {
+    renderBanner({ status: { ...available, dmgUrl: null } });
+    expect(screen.queryByTestId('update-now')).toBeNull();
+  });
+
+  it('clicking 지금 업데이트 starts the one-click flow', () => {
+    const { onUpdate } = renderBanner();
+    fireEvent.click(screen.getByTestId('update-now'));
+    expect(onUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('shows live progress and hides the action buttons while updating', () => {
+    renderBanner({ applyState: { phase: 'downloading', receivedBytes: 50, totalBytes: 100 } });
+    expect(screen.getByTestId('update-progress')).toHaveTextContent('50%');
+    expect(screen.queryByTestId('update-now')).toBeNull();
+    expect(screen.queryByTestId('update-dismiss')).toBeNull();
+  });
+
+  it('shows the verifying / applying phases', () => {
+    renderBanner({ applyState: { phase: 'applying' } });
+    expect(screen.getByTestId('update-progress')).toHaveTextContent('재시작');
+  });
+
+  it('shows an error + keeps the manual download fallback when the update fails', () => {
+    renderBanner({ applyState: { phase: 'error', reason: 'Checksum mismatch' } });
+    expect(screen.getByTestId('update-error')).toHaveTextContent('Checksum mismatch');
+    expect(screen.getByTestId('update-download')).toBeInTheDocument();
+    expect(screen.queryByTestId('update-now')).toBeNull(); // no retry-as-one-click in the error state
+  });
+
+  it('Download opens the dmg, What is new opens the release page, Later dismisses', () => {
+    const { onOpen, onDismiss } = renderBanner();
     fireEvent.click(screen.getByTestId('update-download'));
     expect(onOpen).toHaveBeenCalledWith(available.dmgUrl);
-  });
-
-  it('Download falls back to the release page when there is no .dmg asset', () => {
-    const { onOpen } = renderBanner({ status: { ...available, dmgUrl: null } });
-    fireEvent.click(screen.getByTestId('update-download'));
-    expect(onOpen).toHaveBeenCalledWith(available.releaseUrl);
-  });
-
-  it("What's new opens the release notes page", () => {
-    const { onOpen } = renderBanner();
     fireEvent.click(screen.getByTestId('update-notes'));
     expect(onOpen).toHaveBeenCalledWith(available.releaseUrl);
-  });
-
-  it('Later dismisses the current latest version', () => {
-    const { onDismiss } = renderBanner();
     fireEvent.click(screen.getByTestId('update-dismiss'));
     expect(onDismiss).toHaveBeenCalledWith('0.2.0');
   });

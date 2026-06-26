@@ -93,6 +93,8 @@ export const IPC = {
 
   // in-app update check (renderer -> main, invoke; read-only GitHub Releases query)
   UPDATE_CHECK: 'update:check', // invoke (-> UpdateStatus)
+  UPDATE_PERFORM: 'update:perform', // invoke (UpdatePerformRequest -> UpdateApplyResult; success quits)
+  UPDATE_PROGRESS: 'update:progress', // main -> renderer, event (UpdateProgress)
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

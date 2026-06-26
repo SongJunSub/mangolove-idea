@@ -25,6 +25,7 @@ import { FileTree } from './components/tree/file-tree';
 import { SettingsModal } from './components/settings/settings-modal';
 import { UpdateBanner } from './components/update/update-banner';
 import { useUpdateCheck } from './hooks/use-update-check';
+import { useSelfUpdate } from './hooks/use-self-update';
 import { openExternal } from './lib/open-external';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
@@ -100,6 +101,7 @@ export function App(): React.JSX.Element {
   // failed check yields a status with `error` set, which the banner predicate excludes (so it
   // stays hidden). The app never auto-installs — the banner just links the download.
   const { status: update } = useUpdateCheck(true);
+  const selfUpdate = useSelfUpdate();
   // Effective session-persistence mode (b-full). Drives the quit dialog's wording:
   // under 'full' a quit does NOT lose the turn — it keeps running in the background.
   const [persistenceInfo, setPersistenceInfo] = useState<SessionPersistenceInfo | null>(null);
@@ -490,6 +492,12 @@ export function App(): React.JSX.Element {
         dismissedVersion={settings.lastDismissedUpdateVersion}
         onDismiss={(version) => void saveSettings({ lastDismissedUpdateVersion: version })}
         onOpen={openExternal}
+        applyState={selfUpdate.state}
+        onUpdate={() => {
+          if (update?.dmgUrl && update.latestVersion) {
+            selfUpdate.start({ dmgUrl: update.dmgUrl, sha256: update.sha256 });
+          }
+        }}
       />
       <main className="app-body">
         <div className="workspace">

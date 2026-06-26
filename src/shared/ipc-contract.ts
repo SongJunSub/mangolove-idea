@@ -55,6 +55,9 @@ import type {
   FanoutSelectRequest,
   FanoutLaneStatusEvent,
   UpdateStatus,
+  UpdatePerformRequest,
+  UpdateApplyResult,
+  UpdateProgress,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -198,6 +201,14 @@ export interface MangoApi {
      * the app is unsigned). Never rejects: a failed check returns a status with `error` set.
      */
     check(): Promise<UpdateStatus>;
+    /**
+     * One-click self-update: download + sha256-verify + swap the .app bundle + restart. On
+     * SUCCESS the app quits (the invoke never resolves); a non-success result is returned and
+     * nothing is changed. Progress arrives via onProgress.
+     */
+    perform(req: UpdatePerformRequest): Promise<UpdateApplyResult>;
+    /** Live progress of an in-flight perform() (download %, verify, stage, apply). */
+    onProgress(cb: (e: UpdateProgress) => void): Unsubscribe;
   };
   fanout: {
     /** Start ONE fan-out: N worktrees + N headless claude -p lanes. Rejects if a run is active or models out of [1,4]. */

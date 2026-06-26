@@ -96,6 +96,8 @@ const api: MangoApi = {
   },
   update: {
     check: () => ipcRenderer.invoke(IPC.UPDATE_CHECK),
+    perform: (req) => ipcRenderer.invoke(IPC.UPDATE_PERFORM, req),
+    onProgress: (cb) => subscribe(IPC.UPDATE_PROGRESS, cb),
   },
   fanout: {
     start: (req) => ipcRenderer.invoke(IPC.FANOUT_START, req),
