@@ -1,17 +1,17 @@
 import type { UpdateStatus } from '../../../shared/types';
 import type { SelfUpdateState } from '../../hooks/use-self-update';
 
-/** Props for the update-available banner. */
+/** Props for the update-available notification card (bottom-right). */
 export interface UpdateBannerProps {
   /** The latest update-check result, or null before the launch check resolves. */
   readonly status: UpdateStatus | null;
   /** The version the user already dismissed (settings.lastDismissedUpdateVersion). */
   readonly dismissedVersion: string | undefined;
-  /** Persist a dismissal of `version` (the banner stays hidden until a newer release). */
+  /** Persist a dismissal of `version` (the card stays hidden until a newer release). */
   readonly onDismiss: (version: string) => void;
   /** Open a URL in the browser (App injects the github.com-pinned openExternal). */
   readonly onOpen: (url: string | null) => void;
-  /** Live state of an in-flight one-click update (idle / progress / error). */
+  /** Live state of an in-flight one-click update (the card hides while it runs). */
   readonly applyState: SelfUpdateState;
   /** Begin the one-click "Update & Restart" flow. */
   readonly onUpdate: () => void;
@@ -41,11 +41,84 @@ const inProgress = (s: SelfUpdateState): boolean =>
   s.phase === 'staging' ||
   s.phase === 'applying';
 
+/** Determinate download percent (0–100), or null for the indeterminate phases. */
+function downloadPercent(s: SelfUpdateState): number | null {
+  if (s.phase !== 'downloading' || !s.totalBytes) return null;
+  return Math.min(100, Math.floor(((s.receivedBytes ?? 0) / s.totalBytes) * 100));
+}
+
+/** Props for the inline update progress/error shown on the RIGHT of the status bar. */
+export interface UpdateProgressInlineProps {
+  readonly applyState: SelfUpdateState;
+  readonly latestVersion: string | null;
+  readonly releaseUrl: string | null;
+  readonly onOpen: (url: string | null) => void;
+  /** Dismiss after an error (clears the bar). */
+  readonly onDismiss: () => void;
+}
+
 /**
- * A thin top bar shown ONLY when a strictly-newer stable release exists and the user has not
- * dismissed that exact version. The app is unsigned: [지금 업데이트] runs the one-click
- * download + sha256-verify + bundle-swap + restart; [다운로드] is the manual fallback (opens
- * the .dmg). Presentational — all side-effects are injected by App.
+ * The active-update display that lives on the RIGHT of the bottom status bar: a mango loading
+ * bar + phase text while downloading/verifying/installing, or an error with a What's-new /
+ * dismiss. Renders nothing when idle (the status bar's right side is then empty).
+ */
+export function UpdateProgressInline({
+  applyState,
+  latestVersion,
+  releaseUrl,
+  onOpen,
+  onDismiss,
+}: UpdateProgressInlineProps): React.JSX.Element | null {
+  if (applyState.phase === 'error') {
+    return (
+      <span className="update-inline">
+        <span data-testid="update-error" className="update-bar__err">
+          업데이트 실패: {applyState.reason}
+        </span>
+        {releaseUrl && (
+          <button
+            type="button"
+            className="update-icon"
+            data-testid="update-notes"
+            title="What's new"
+            onClick={() => onOpen(releaseUrl)}
+          >
+            ✦
+          </button>
+        )}
+        <button
+          type="button"
+          className="update-icon update-icon--ghost"
+          data-testid="update-dismiss"
+          title="닫기"
+          onClick={onDismiss}
+        >
+          ✕
+        </button>
+      </span>
+    );
+  }
+  if (!inProgress(applyState)) return null;
+  const pct = downloadPercent(applyState);
+  return (
+    <span className="update-inline" data-testid="update-progress">
+      {latestVersion && <span className="update-bar__muted">v{latestVersion}</span>}
+      <div className="update-bar__track">
+        <div
+          className={`update-bar__fill${pct === null ? ' update-bar__fill--indeterminate' : ''}`}
+          style={pct === null ? undefined : { width: `${pct}%` }}
+        />
+      </div>
+      <span>{phaseLabel(applyState)}</span>
+    </span>
+  );
+}
+
+/**
+ * The bottom-right notification CARD shown when a strictly-newer stable release is available
+ * and not dismissed (and no update is in flight — once started, the progress shows in the
+ * status bar). A single primary [지금 업데이트] (one-click download + verify + swap + restart)
+ * plus a small What's-new icon. Presentational — side-effects are injected by App.
  */
 export function UpdateBanner({
   status,
@@ -56,69 +129,54 @@ export function UpdateBanner({
   onUpdate,
 }: UpdateBannerProps): React.JSX.Element | null {
   if (!status?.updateAvailable || !status.latestVersion) return null;
-  if (status.latestVersion === dismissedVersion) return null;
-
+  if (inProgress(applyState) || applyState.phase === 'error') return null; // shown in the status bar
   const { latestVersion, currentVersion, dmgUrl, releaseUrl } = status;
-  const downloadUrl = dmgUrl ?? releaseUrl; // fall back to the release page if no .dmg asset
-  // One-click is possible only with a .dmg AND a checksum to verify (unsigned => verify-or-bust).
+  if (latestVersion === dismissedVersion) return null;
   const canOneClick = Boolean(dmgUrl && status.sha256);
 
   return (
-    <div
-      data-testid="update-banner"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 12,
-        padding: '6px 12px',
-        fontSize: 12,
-        background: 'var(--accent-soft, var(--surface))',
-        color: 'var(--text)',
-        borderBottom: '1px solid var(--border)',
-      }}
-    >
-      {inProgress(applyState) ? (
-        <span data-testid="update-progress">
-          MangoLove IDEA <strong>v{latestVersion}</strong> — {phaseLabel(applyState)}
-        </span>
-      ) : applyState.phase === 'error' ? (
-        <span data-testid="update-error" style={{ color: 'var(--warn, var(--text))' }}>
-          업데이트 실패: {applyState.reason}
-        </span>
-      ) : (
-        <span>
-          MangoLove IDEA <strong>v{latestVersion}</strong> 사용 가능{' '}
-          <span style={{ color: 'var(--muted)' }}>(현재 v{currentVersion})</span>
-        </span>
-      )}
-
-      {!inProgress(applyState) && (
-        <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-          {applyState.phase !== 'error' && canOneClick && (
-            <button type="button" data-testid="update-now" onClick={onUpdate}>
-              지금 업데이트
-            </button>
-          )}
-          {releaseUrl && (
-            <button type="button" data-testid="update-notes" onClick={() => onOpen(releaseUrl)}>
-              What's new
-            </button>
-          )}
-          {downloadUrl && (
-            <button type="button" data-testid="update-download" onClick={() => onOpen(downloadUrl)}>
-              다운로드
-            </button>
-          )}
+    <div className="update-card" data-testid="update-banner">
+      <div className="update-card__head">
+        <span className="update-dot" />
+        <span className="update-card__title">업데이트 가능</span>
+        <button
+          type="button"
+          className="update-icon update-icon--ghost"
+          data-testid="update-dismiss"
+          title="나중에"
+          style={{ marginLeft: 'auto', width: 24, height: 22 }}
+          onClick={() => onDismiss(latestVersion)}
+        >
+          ✕
+        </button>
+      </div>
+      <div className="update-card__msg">
+        MangoLove IDEA <strong>v{latestVersion}</strong>
+        <div className="update-card__sub">현재 v{currentVersion}</div>
+      </div>
+      <div className="update-card__actions">
+        {releaseUrl && (
           <button
             type="button"
-            data-testid="update-dismiss"
-            onClick={() => onDismiss(latestVersion)}
+            className="update-icon"
+            data-testid="update-notes"
+            title="What's new"
+            onClick={() => onOpen(releaseUrl)}
           >
-            나중에
+            ✦
           </button>
-        </span>
-      )}
+        )}
+        {canOneClick && (
+          <button
+            type="button"
+            className="update-primary"
+            data-testid="update-now"
+            onClick={onUpdate}
+          >
+            지금 업데이트
+          </button>
+        )}
+      </div>
     </div>
   );
 }

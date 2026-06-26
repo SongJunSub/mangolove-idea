@@ -7,6 +7,7 @@ import type {
   UpdatePerformRequest,
   UpdateApplyResult,
   UpdateProgress,
+  UsageStatus,
   CreateWorktreeRequest,
   RemoveWorktreeRequest,
   Worktree,
@@ -106,6 +107,31 @@ import { LspManager } from '../lsp/lsp-manager';
 import { checkForUpdate } from '../update/update-checker';
 import { UpdaterService } from '../update/updater-service';
 import { createRealUpdaterSystem } from '../update/real-updater-system';
+import { getUsage, createRealUsageDeps, type UsageDeps } from '../usage/usage-service';
+import { execFile } from 'node:child_process';
+
+/** Resolves the installed `claude` version once (for the usage endpoint User-Agent). */
+let claudeVersionPromise: Promise<string> | null = null;
+function resolveClaudeVersion(): Promise<string> {
+  if (!claudeVersionPromise) {
+    claudeVersionPromise = new Promise((resolve) => {
+      execFile('claude', ['--version'], { timeout: 5000 }, (_err, stdout) => {
+        const m = /(\d+\.\d+\.\d+)/.exec(stdout ?? '');
+        resolve(m?.[1] ?? '2.1.0');
+      });
+    });
+  }
+  return claudeVersionPromise;
+}
+
+/** Lazily builds the usage deps (claude version + real Keychain/HTTPS), cached for the process. */
+let usageDepsPromise: Promise<UsageDeps> | null = null;
+function getUsageDeps(): Promise<UsageDeps> {
+  if (!usageDepsPromise) {
+    usageDepsPromise = resolveClaudeVersion().then((v) => createRealUsageDeps(v));
+  }
+  return usageDepsPromise;
+}
 import { resolveLspServerPath, unavailableReason, type NavServerLanguage } from '../lsp/lsp-detect';
 import { join } from 'node:path';
 
@@ -1031,6 +1057,11 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       return (await getUpdaterService(ctx, contexts)).perform(req);
     },
   );
+
+  ipcMain.handle(IPC.USAGE_GET, async (): Promise<UsageStatus> => {
+    // Read-only Claude subscription usage (no ctx, no token cost). getUsage NEVER throws.
+    return getUsage(await getUsageDeps());
+  });
 
   ipcMain.handle(
     IPC.MERGE_CONFLICTS,

@@ -1,5 +1,3 @@
-import { Logo } from './logo';
-
 export interface TitlebarProps {
   /** Optional right-aligned slot for the global toolbar actions (A2b). */
   readonly right?: React.ReactNode;
@@ -15,7 +13,6 @@ export interface TitlebarProps {
 export function Titlebar({ right }: TitlebarProps): React.JSX.Element {
   return (
     <div className="titlebar" data-testid="titlebar">
-      <Logo size={22} />
       <span className="titlebar-brand">
         <span className="brand-mango">Mango</span>
         <span className="brand-love">Love</span> IDEA

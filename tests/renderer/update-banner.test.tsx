@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { UpdateBanner } from '../../src/renderer/components/update/update-banner';
 import type { UpdateStatus } from '../../src/shared/types';
 
@@ -17,6 +17,7 @@ const available: UpdateStatus = {
 };
 
 function renderBanner(props: Partial<React.ComponentProps<typeof UpdateBanner>> = {}) {
+  cleanup(); // allow several renders within one test (afterEach also cleans up)
   const onOpen = vi.fn();
   const onDismiss = vi.fn();
   const onUpdate = vi.fn();
@@ -34,74 +35,43 @@ function renderBanner(props: Partial<React.ComponentProps<typeof UpdateBanner>> 
   return { onOpen, onDismiss, onUpdate };
 }
 
-describe('<UpdateBanner>', () => {
-  it('shows the new + current version when an update is available and not dismissed', () => {
+describe('<UpdateBanner> (available card)', () => {
+  it('shows the new + current version', () => {
     renderBanner();
-    const banner = screen.getByTestId('update-banner');
-    expect(banner).toHaveTextContent('v0.2.0');
-    expect(banner).toHaveTextContent('0.1.1');
+    const card = screen.getByTestId('update-banner');
+    expect(card).toHaveTextContent('v0.2.0');
+    expect(card).toHaveTextContent('0.1.1');
   });
 
-  it('renders nothing before the check resolves (null status)', () => {
+  it('renders nothing before the check resolves / when no update / when dismissed', () => {
     renderBanner({ status: null });
     expect(screen.queryByTestId('update-banner')).toBeNull();
-  });
-
-  it('renders nothing when no update is available', () => {
     renderBanner({ status: { ...available, updateAvailable: false } });
     expect(screen.queryByTestId('update-banner')).toBeNull();
-  });
-
-  it('stays hidden once the user dismissed that exact version', () => {
     renderBanner({ dismissedVersion: '0.2.0' });
     expect(screen.queryByTestId('update-banner')).toBeNull();
   });
 
-  it('offers one-click update when there is a .dmg AND a checksum', () => {
+  it('hides while an update is in progress or errored (that shows in the status bar)', () => {
+    renderBanner({ applyState: { phase: 'downloading', receivedBytes: 1, totalBytes: 2 } });
+    expect(screen.queryByTestId('update-banner')).toBeNull();
+    renderBanner({ applyState: { phase: 'error', reason: 'x' } });
+    expect(screen.queryByTestId('update-banner')).toBeNull();
+  });
+
+  it('offers one-click only with a .dmg AND a checksum', () => {
     renderBanner();
     expect(screen.getByTestId('update-now')).toBeInTheDocument();
-  });
-
-  it('hides one-click update when there is no checksum to verify', () => {
     renderBanner({ status: { ...available, sha256: null } });
     expect(screen.queryByTestId('update-now')).toBeNull();
-    expect(screen.getByTestId('update-download')).toBeInTheDocument(); // manual fallback remains
-  });
-
-  it('hides one-click update when there is no .dmg asset', () => {
     renderBanner({ status: { ...available, dmgUrl: null } });
     expect(screen.queryByTestId('update-now')).toBeNull();
   });
 
-  it('clicking 지금 업데이트 starts the one-click flow', () => {
-    const { onUpdate } = renderBanner();
+  it('wires the actions: 지금 업데이트, What’s new icon, dismiss', () => {
+    const { onUpdate, onOpen, onDismiss } = renderBanner();
     fireEvent.click(screen.getByTestId('update-now'));
     expect(onUpdate).toHaveBeenCalledOnce();
-  });
-
-  it('shows live progress and hides the action buttons while updating', () => {
-    renderBanner({ applyState: { phase: 'downloading', receivedBytes: 50, totalBytes: 100 } });
-    expect(screen.getByTestId('update-progress')).toHaveTextContent('50%');
-    expect(screen.queryByTestId('update-now')).toBeNull();
-    expect(screen.queryByTestId('update-dismiss')).toBeNull();
-  });
-
-  it('shows the verifying / applying phases', () => {
-    renderBanner({ applyState: { phase: 'applying' } });
-    expect(screen.getByTestId('update-progress')).toHaveTextContent('재시작');
-  });
-
-  it('shows an error + keeps the manual download fallback when the update fails', () => {
-    renderBanner({ applyState: { phase: 'error', reason: 'Checksum mismatch' } });
-    expect(screen.getByTestId('update-error')).toHaveTextContent('Checksum mismatch');
-    expect(screen.getByTestId('update-download')).toBeInTheDocument();
-    expect(screen.queryByTestId('update-now')).toBeNull(); // no retry-as-one-click in the error state
-  });
-
-  it('Download opens the dmg, What is new opens the release page, Later dismisses', () => {
-    const { onOpen, onDismiss } = renderBanner();
-    fireEvent.click(screen.getByTestId('update-download'));
-    expect(onOpen).toHaveBeenCalledWith(available.dmgUrl);
     fireEvent.click(screen.getByTestId('update-notes'));
     expect(onOpen).toHaveBeenCalledWith(available.releaseUrl);
     fireEvent.click(screen.getByTestId('update-dismiss'));

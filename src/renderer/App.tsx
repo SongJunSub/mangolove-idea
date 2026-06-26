@@ -23,9 +23,12 @@ import { useRepo } from './hooks/use-repo';
 import { Titlebar } from './components/titlebar/titlebar';
 import { FileTree } from './components/tree/file-tree';
 import { SettingsModal } from './components/settings/settings-modal';
-import { UpdateBanner } from './components/update/update-banner';
+import { UpdateBanner, UpdateProgressInline } from './components/update/update-banner';
+import { StatusBar } from './components/statusbar/status-bar';
+import { UsageWidget } from './components/usage/usage-widget';
 import { useUpdateCheck } from './hooks/use-update-check';
 import { useSelfUpdate } from './hooks/use-self-update';
+import { useUsage } from './hooks/use-usage';
 import { openExternal } from './lib/open-external';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
@@ -102,6 +105,7 @@ export function App(): React.JSX.Element {
   // stays hidden). The app never auto-installs — the banner just links the download.
   const { status: update } = useUpdateCheck(true);
   const selfUpdate = useSelfUpdate();
+  const usage = useUsage();
   // Effective session-persistence mode (b-full). Drives the quit dialog's wording:
   // under 'full' a quit does NOT lose the turn — it keeps running in the background.
   const [persistenceInfo, setPersistenceInfo] = useState<SessionPersistenceInfo | null>(null);
@@ -487,18 +491,6 @@ export function App(): React.JSX.Element {
           </div>
         }
       />
-      <UpdateBanner
-        status={update}
-        dismissedVersion={settings.lastDismissedUpdateVersion}
-        onDismiss={(version) => void saveSettings({ lastDismissedUpdateVersion: version })}
-        onOpen={openExternal}
-        applyState={selfUpdate.state}
-        onUpdate={() => {
-          if (update?.dmgUrl && update.latestVersion) {
-            selfUpdate.start({ dmgUrl: update.dmgUrl, sha256: update.sha256 });
-          }
-        }}
-      />
       <main className="app-body">
         <div className="workspace">
           {/* top-left: project file tree (A3) */}
@@ -880,6 +872,40 @@ export function App(): React.JSX.Element {
           </div>
         )}
       </main>
+      <StatusBar
+        left={
+          <UsageWidget
+            status={usage.status}
+            loading={usage.loading}
+            onRefresh={() => void usage.refresh()}
+          />
+        }
+        right={
+          <UpdateProgressInline
+            applyState={selfUpdate.state}
+            latestVersion={update?.latestVersion ?? null}
+            releaseUrl={update?.releaseUrl ?? null}
+            onOpen={openExternal}
+            onDismiss={() => {
+              if (update?.latestVersion) {
+                void saveSettings({ lastDismissedUpdateVersion: update.latestVersion });
+              }
+            }}
+          />
+        }
+      />
+      <UpdateBanner
+        status={update}
+        dismissedVersion={settings.lastDismissedUpdateVersion}
+        onDismiss={(version) => void saveSettings({ lastDismissedUpdateVersion: version })}
+        onOpen={openExternal}
+        applyState={selfUpdate.state}
+        onUpdate={() => {
+          if (update?.dmgUrl && update.latestVersion) {
+            selfUpdate.start({ dmgUrl: update.dmgUrl, sha256: update.sha256 });
+          }
+        }}
+      />
     </div>
   );
 }

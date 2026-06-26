@@ -99,6 +99,9 @@ const api: MangoApi = {
     perform: (req) => ipcRenderer.invoke(IPC.UPDATE_PERFORM, req),
     onProgress: (cb) => subscribe(IPC.UPDATE_PROGRESS, cb),
   },
+  usage: {
+    get: () => ipcRenderer.invoke(IPC.USAGE_GET),
+  },
   fanout: {
     start: (req) => ipcRenderer.invoke(IPC.FANOUT_START, req),
     get: () => ipcRenderer.invoke(IPC.FANOUT_GET),
