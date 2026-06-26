@@ -58,6 +58,7 @@ import type {
   UpdatePerformRequest,
   UpdateApplyResult,
   UpdateProgress,
+  UsageStatus,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -209,6 +210,14 @@ export interface MangoApi {
     perform(req: UpdatePerformRequest): Promise<UpdateApplyResult>;
     /** Live progress of an in-flight perform() (download %, verify, stage, apply). */
     onProgress(cb: (e: UpdateProgress) => void): Unsubscribe;
+  };
+  usage: {
+    /**
+     * Claude Code subscription usage (5h session + weekly limits + resets), read from the
+     * user's own OAuth token. Read-only, NO token cost. Never rejects: a failure returns a
+     * status with `error` set.
+     */
+    get(): Promise<UsageStatus>;
   };
   fanout: {
     /** Start ONE fan-out: N worktrees + N headless claude -p lanes. Rejects if a run is active or models out of [1,4]. */

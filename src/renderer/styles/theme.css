@@ -372,3 +372,250 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── In-app update UI: a bottom-right CARD announces an update; a bottom BAR shows the
+ *    active download/verify/install (and any error). ── */
+
+/* the soft pulsing mango dot — shared by the card + the bar */
+.update-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: update-pulse 1.8s ease-in-out infinite;
+}
+@keyframes update-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+/* the mango-filled primary action ("지금 업데이트") */
+.update-primary {
+  border: none;
+  border-radius: 7px;
+  padding: 6px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.update-primary:hover {
+  background: var(--accent-hover);
+}
+/* small square icon button (What's new / dismiss) */
+.update-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 27px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.update-icon:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.update-icon--ghost {
+  border-color: transparent;
+  color: var(--faint);
+}
+.update-icon--ghost:hover {
+  background: var(--accent-soft);
+}
+
+/* Bottom-right notification CARD (update available) */
+.update-card {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  width: 288px;
+  padding: 13px 14px 12px;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  color: var(--text);
+  animation: update-card-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes update-card-in {
+  from {
+    transform: translateY(14px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.update-card__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+.update-card__title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.update-card__msg {
+  line-height: 1.45;
+}
+.update-card__sub {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.update-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+/* Bottom status BAR (active update + error), anchored to the very bottom of the window */
+/* The always-on bottom status bar: Claude usage (left) + active-update (right). */
+.status-bar {
+  flex: none;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--elevated);
+  border-top: 1px solid var(--border);
+  user-select: none;
+}
+.status-bar__left,
+.status-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.status-bar__right {
+  justify-content: flex-end;
+}
+.update-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Claude usage widget (bottom-left) */
+.usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.usage-claude {
+  flex: none;
+  display: block;
+}
+.usage-muted {
+  color: var(--muted);
+}
+.usage-chips {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.usage-sep {
+  color: var(--faint);
+  margin: 0 7px;
+}
+.usage-chip {
+  color: var(--muted);
+  cursor: default;
+}
+.usage-chip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.usage-chip--warn strong {
+  color: var(--warn);
+}
+.usage-chip--crit strong {
+  color: var(--err);
+}
+.usage-refresh {
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 5px;
+  -webkit-app-region: no-drag;
+}
+.usage-refresh:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.usage-refresh--spin {
+  animation: usage-spin 0.8s linear infinite;
+}
+@keyframes usage-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.update-bar__muted {
+  color: var(--muted);
+}
+.update-bar__err {
+  color: var(--warn);
+}
+/* the download "loading bar": a rounded track with a mango-gradient fill + glow */
+.update-bar__track {
+  position: relative;
+  width: 150px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.update-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  box-shadow: 0 0 8px var(--accent-ring);
+  transition: width 0.25s ease;
+}
+/* verify/stage/apply have no percent — sweep an indeterminate shimmer instead */
+.update-bar__fill--indeterminate {
+  position: absolute;
+  width: 42%;
+  animation: update-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes update-indeterminate {
+  0% {
+    left: -42%;
+  }
+  100% {
+    left: 100%;
+  }
+}

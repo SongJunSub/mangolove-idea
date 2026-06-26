@@ -95,6 +95,9 @@ export const IPC = {
   UPDATE_CHECK: 'update:check', // invoke (-> UpdateStatus)
   UPDATE_PERFORM: 'update:perform', // invoke (UpdatePerformRequest -> UpdateApplyResult; success quits)
   UPDATE_PROGRESS: 'update:progress', // main -> renderer, event (UpdateProgress)
+
+  // Claude Code subscription usage (renderer -> main, invoke; read-only OAuth usage endpoint, no cost)
+  USAGE_GET: 'usage:get', // invoke (-> UsageStatus)
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

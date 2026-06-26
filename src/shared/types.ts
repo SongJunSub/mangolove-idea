@@ -624,6 +624,40 @@ export interface UpdateStatus {
   readonly error?: 'offline' | 'rate_limited' | 'failed';
 }
 
+/**
+ * One Claude usage limit window (from the OAuth usage endpoint). `percent` is 0–100 of the
+ * limit consumed; `resetsAt` is when that window rolls over. Read-only metadata — no token cost.
+ */
+export interface UsageLimit {
+  /** 'session' (5-hour) | 'weekly_all' (every model) | 'weekly_scoped' (one model) | other. */
+  readonly kind: string;
+  /** A short human label, e.g. '세션 (5시간)', '주간 (전체)', '주간 (Sonnet)'. */
+  readonly label: string;
+  /** Percent of this limit used (0–100). */
+  readonly percent: number;
+  /** 'normal' | 'warning' | 'critical' (drives color); pass-through from the API. */
+  readonly severity: string;
+  /** When this window resets (ISO 8601), or null. */
+  readonly resetsAt: string | null;
+  /** Model display name for a per-model (weekly_scoped) limit, else null. */
+  readonly model: string | null;
+}
+
+/**
+ * Claude Code subscription usage (the 5-hour session + weekly limits + resets), read from the
+ * user's own OAuth token (macOS Keychain) via the same endpoint Claude Code's `/usage` uses.
+ * Read-only, NO token cost. On failure `error` is set and `limits` is empty.
+ *  - no-login     : no Claude Code credential found (the user never logged in to `claude`).
+ *  - denied       : the Keychain read was refused.
+ *  - rate_limited : the usage endpoint returned 429.
+ *  - offline      : the request could not be made.
+ *  - failed       : anything else (parse / non-200).
+ */
+export interface UsageStatus {
+  readonly limits: readonly UsageLimit[];
+  readonly error?: 'no-login' | 'denied' | 'rate_limited' | 'offline' | 'failed';
+}
+
 /** Renderer request to perform a one-click update (download + verify + swap + restart). */
 export interface UpdatePerformRequest {
   /** Direct .dmg asset URL (from UpdateStatus.dmgUrl). */
