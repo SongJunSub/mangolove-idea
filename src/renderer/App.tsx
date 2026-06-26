@@ -31,7 +31,7 @@ import { useSelfUpdate } from './hooks/use-self-update';
 import { useUsage } from './hooks/use-usage';
 import { openExternal } from './lib/open-external';
 import { I18nContext } from './i18n/i18n-context';
-import { makeT } from './i18n/messages';
+import { makeT, type TranslateFn } from './i18n/messages';
 import { resolveLocale } from './i18n/resolve-locale';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
@@ -69,11 +69,14 @@ const CodeEditor = lazy(() =>
 );
 
 /** Human-readable reason a file opened view-only (mirrors FileReadResult.reason). */
-function readOnlyReason(reason?: 'binary' | 'tooLarge' | 'encoding'): string {
-  if (reason === 'binary') return '바이너리 파일';
-  if (reason === 'tooLarge') return '파일이 너무 큼 (5MB 초과)';
-  if (reason === 'encoding') return 'UTF-8이 아닌 파일';
-  return '읽기 전용';
+function readOnlyReason(
+  reason: 'binary' | 'tooLarge' | 'encoding' | undefined,
+  t: TranslateFn,
+): string {
+  if (reason === 'binary') return t('app.readonly.binary');
+  if (reason === 'tooLarge') return t('app.readonly.tooLarge');
+  if (reason === 'encoding') return t('app.readonly.encoding');
+  return t('app.readonly.default');
 }
 
 /** A queued selection change held while the editor is dirty (resolved via the modal). */
@@ -122,6 +125,7 @@ export function App(): React.JSX.Element {
   // i18n value App both provides (for child screens) and consumes (for its own titlebar).
   const locale = resolveLocale(settings.locale, navigator.language);
   const i18n = useMemo(() => ({ locale, t: makeT(locale) }), [locale]);
+  const { t } = i18n;
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
@@ -468,10 +472,10 @@ export function App(): React.JSX.Element {
             }}
           >
             <p data-testid="repo-empty-state" style={{ fontSize: 14, color: 'var(--muted)' }}>
-              Select your git repository to begin
+              {t('app.repoEmpty')}
             </p>
             <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
-              Select repository…
+              {t('app.repoPick')}
             </button>
           </main>
         </div>
@@ -489,34 +493,34 @@ export function App(): React.JSX.Element {
                 {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
               </span>
               <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
-                change repo
+                {t('app.repoChange')}
               </button>
               <button
                 type="button"
                 data-testid="fanout-open"
                 aria-pressed={fanoutOpen}
-                title="Multimodel fan-out"
+                title={t('app.fanoutTip')}
                 onClick={() => setFanoutOpen((v) => !v)}
               >
-                ⑃ Fan-out
+                {t('app.fanout')}
               </button>
               <button
                 type="button"
                 data-testid="cross-machine-open"
-                title="Cross-machine sessions"
+                title={t('app.machinesTip')}
                 onClick={() => {
                   setCrossMachineOpen(true);
                   void crossMachine.refresh();
                 }}
               >
-                ⌘ Machines
+                {t('app.machines')}
               </button>
               <button
                 type="button"
                 className="icon-btn"
                 data-testid="settings-open"
-                aria-label="settings"
-                title="Settings"
+                aria-label={t('settings.title')}
+                title={t('settings.title')}
                 disabled={settingsLoading}
                 onClick={() => setSettingsOpen(true)}
               >
@@ -529,7 +533,7 @@ export function App(): React.JSX.Element {
           <div className="workspace">
             {/* top-left: project file tree (A3) */}
             <div className="ws-pane ws-tree">
-              <div className="pane-head">📁 Project</div>
+              <div className="pane-head">📁 {t('app.project')}</div>
               <FileTree
                 worktreeId={selectedId}
                 selectedFile={selectedFile}
@@ -541,7 +545,7 @@ export function App(): React.JSX.Element {
               <div className="pane-head">
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <NavBack canGoBack={canGoBack} onBack={onNavBack} />
-                  Editor
+                  {t('app.editor')}
                 </span>
                 {selectedFile && selectedId && !editor.readOnly && (
                   <button
@@ -549,18 +553,18 @@ export function App(): React.JSX.Element {
                     data-testid="editor-save"
                     className="editor-save-btn"
                     disabled={!editor.dirty || editor.saving}
-                    title="Save ⌘S"
+                    title={t('app.saveTip')}
                     onClick={() => void editor.save()}
                   >
-                    {editor.saving ? 'Saving…' : 'Save'}
+                    {editor.saving ? t('app.saving') : t('app.save')}
                   </button>
                 )}
               </div>
               {!selectedFile || !selectedId ? (
-                <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다</div>
+                <div className="pane-placeholder">{t('app.editorEmpty')}</div>
               ) : editor.loadError ? (
                 <div className="pane-placeholder" data-testid="editor-load-error">
-                  불러오기 실패: {editor.loadError}
+                  {t('app.loadError', { error: editor.loadError })}
                 </div>
               ) : (
                 <div
@@ -569,15 +573,17 @@ export function App(): React.JSX.Element {
                 >
                   {editor.readOnly && (
                     <div className="editor-banner" data-testid="editor-readonly">
-                      {readOnlyReason(editor.reason)} — 읽기 전용
+                      {readOnlyReason(editor.reason, t)} — {t('app.readonly.default')}
                     </div>
                   )}
                   {editor.saveError && (
                     <div className="editor-banner err" data-testid="editor-save-error">
-                      저장 실패: {editor.saveError}
+                      {t('app.saveError', { error: editor.saveError })}
                     </div>
                   )}
-                  <Suspense fallback={<div className="pane-placeholder">에디터 로딩…</div>}>
+                  <Suspense
+                    fallback={<div className="pane-placeholder">{t('app.editorLoading')}</div>}
+                  >
                     <CodeEditor
                       worktreeId={selectedId}
                       relPath={selectedFile}
@@ -603,7 +609,7 @@ export function App(): React.JSX.Element {
             </div>
             {/* bottom-left: worktree management (create + list + per-worktree controls) */}
             <div className="ws-pane ws-worktrees">
-              <div className="pane-head">🌿 Worktrees</div>
+              <div className="pane-head">🌿 {t('app.worktrees')}</div>
               <div className="pane-body">
                 <Toolbar onCreate={create} />
                 <ServerControls
@@ -649,7 +655,7 @@ export function App(): React.JSX.Element {
                   <>
                     <div
                       role="tablist"
-                      aria-label="worktree view"
+                      aria-label={t('app.worktreeView')}
                       style={{ display: 'flex', gap: 4, marginBottom: 8 }}
                     >
                       <button
@@ -659,7 +665,7 @@ export function App(): React.JSX.Element {
                         data-testid="tab-terminal"
                         onClick={() => setPaneMode('terminal')}
                       >
-                        Terminal
+                        {t('app.tab.terminal')}
                       </button>
                       <button
                         type="button"
@@ -668,7 +674,7 @@ export function App(): React.JSX.Element {
                         data-testid="tab-diff"
                         onClick={() => setPaneMode('diff')}
                       >
-                        Diff
+                        {t('app.tab.diff')}
                       </button>
                       <button
                         type="button"
@@ -677,7 +683,7 @@ export function App(): React.JSX.Element {
                         data-testid="tab-browser"
                         onClick={() => setPaneMode('browser')}
                       >
-                        Browser
+                        {t('app.tab.browser')}
                       </button>
                       <button
                         type="button"
@@ -686,7 +692,7 @@ export function App(): React.JSX.Element {
                         data-testid="tab-references"
                         onClick={() => setPaneMode('references')}
                       >
-                        Usages
+                        {t('app.tab.usages')}
                       </button>
                       {conflictWorktreeId === selectedId && (
                         <button
@@ -697,7 +703,7 @@ export function App(): React.JSX.Element {
                           style={{ color: 'var(--warn)' }}
                           onClick={() => setPaneMode('conflict')}
                         >
-                          Conflicts
+                          {t('app.tab.conflicts')}
                         </button>
                       )}
                     </div>
@@ -705,7 +711,9 @@ export function App(): React.JSX.Element {
                     <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
                       <Suspense
                         fallback={
-                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
+                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                            {t('app.loadingTerminal')}
+                          </p>
                         }
                       >
                         <AgentTerminal
@@ -720,7 +728,9 @@ export function App(): React.JSX.Element {
                     {paneMode === 'diff' && (
                       <Suspense
                         fallback={
-                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>
+                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                            {t('app.loadingDiff')}
+                          </p>
                         }
                       >
                         <DiffView
@@ -746,7 +756,9 @@ export function App(): React.JSX.Element {
                     {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
                       <Suspense
                         fallback={
-                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
+                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                            {t('app.loadingConflicts')}
+                          </p>
                         }
                       >
                         <ConflictView
@@ -768,9 +780,7 @@ export function App(): React.JSX.Element {
                     )}
                   </>
                 ) : (
-                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                    Select a worktree to start its agent.
-                  </p>
+                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>{t('app.selectWorktree')}</p>
                 )}
                 <LogPanel lines={logLines} />
               </section>
@@ -779,7 +789,9 @@ export function App(): React.JSX.Element {
           {fanoutOpen && (
             <div className="fanout-overlay" data-testid="fanout-overlay">
               <Suspense
-                fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
+                fallback={
+                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>{t('app.loadingFanout')}</p>
+                }
               >
                 <FanoutView
                   base={baseBranch}
@@ -850,32 +862,25 @@ export function App(): React.JSX.Element {
                   maxWidth: 380,
                 }}
               >
-                <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
+                <h2 style={{ marginTop: 0, fontSize: 16 }}>{t('app.quit.title')}</h2>
                 {quitWarning.activeWorktreeIds.length > 0 &&
                   (persistenceInfo?.effective === 'full' ? (
                     <p style={{ fontSize: 13 }}>
-                      {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With
-                      background persistence on, they will{' '}
-                      <strong>keep running in the background</strong> and re-attach when you reopen
-                      — nothing is lost. You can also stop them now.
+                      {t('app.quit.fullPersist', { count: quitWarning.activeWorktreeIds.length })}
                     </p>
                   ) : (
                     <p style={{ fontSize: 13 }}>
-                      {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and
-                      would be interrupted. (Conversations are saved by claude and resume with{' '}
-                      <code>--continue</code> next time — only the in-flight turn is lost.) Quit
-                      anyway?
+                      {t('app.quit.lite', { count: quitWarning.activeWorktreeIds.length })}
                     </p>
                   ))}
                 {quitWarning.unsavedFileCount > 0 && (
                   <p data-testid="quit-unsaved" style={{ fontSize: 13 }}>
-                    <strong>{quitWarning.unsavedFileCount}</strong> unsaved editor file(s) will be
-                    lost — they were never saved to disk.
+                    {t('app.quit.unsaved', { count: quitWarning.unsavedFileCount })}
                   </p>
                 )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
                   <button type="button" onClick={() => void onQuitDecision(false)}>
-                    Cancel
+                    {t('app.quit.cancel')}
                   </button>
                   {quitWarning.activeWorktreeIds.length > 0 &&
                   persistenceInfo?.effective === 'full' ? (
@@ -885,14 +890,14 @@ export function App(): React.JSX.Element {
                         data-testid="quit-stop-all"
                         onClick={() => void onQuitStopAll()}
                       >
-                        Stop all &amp; quit
+                        {t('app.quit.stopAll')}
                       </button>
                       <button
                         type="button"
                         data-testid="quit-keep-running"
                         onClick={() => void onQuitDecision(true)}
                       >
-                        Keep running &amp; quit
+                        {t('app.quit.keepRunning')}
                       </button>
                     </>
                   ) : (
@@ -901,7 +906,7 @@ export function App(): React.JSX.Element {
                       data-testid="quit-anyway"
                       onClick={() => void onQuitDecision(true)}
                     >
-                      Quit anyway
+                      {t('app.quit.anyway')}
                     </button>
                   )}
                 </div>
