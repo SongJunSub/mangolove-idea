@@ -536,6 +536,12 @@ export interface AppSettings {
    * Any value other than 'dark' / 'light' is treated as 'system'.
    */
   readonly theme?: 'dark' | 'light' | 'system';
+  /**
+   * UI language. Unset / 'system' (default): follow the OS locale (Korean when it starts
+   * with 'ko', else English). 'ko' / 'en': pinned. Resolved by the renderer (i18n/resolve-locale).
+   * Any value other than 'ko' / 'en' is treated as 'system'.
+   */
+  readonly locale?: 'system' | 'ko' | 'en';
   /** Agent binary to spawn; unset => MANGO_AGENT_CMD ?? 'claude'. */
   readonly agentCommand?: string;
   /** Verify hook command; unset => MANGO_VERIFY_CMD ?? 'true'. */

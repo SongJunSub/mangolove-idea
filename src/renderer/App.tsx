@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
 import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
@@ -30,6 +30,9 @@ import { useUpdateCheck } from './hooks/use-update-check';
 import { useSelfUpdate } from './hooks/use-self-update';
 import { useUsage } from './hooks/use-usage';
 import { openExternal } from './lib/open-external';
+import { I18nContext } from './i18n/i18n-context';
+import { makeT } from './i18n/messages';
+import { resolveLocale } from './i18n/resolve-locale';
 import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
 import { ServerControls } from './components/toolbar/server-controls';
@@ -115,6 +118,13 @@ export function App(): React.JSX.Element {
 
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
+  // Resolve the UI locale (explicit setting wins; otherwise follow the OS) and build the
+  // i18n value App both provides (for child screens) and consumes (for its own titlebar).
+  const locale = resolveLocale(settings.locale, navigator.language);
+  const i18n = useMemo(() => ({ locale, t: makeT(locale) }), [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
   const crossMachine = useCrossMachine();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fanoutOpen, setFanoutOpen] = useState(false);
@@ -444,486 +454,496 @@ export function App(): React.JSX.Element {
   }
   if (repo.repoRoot === null) {
     return (
-      <div className="app-shell">
-        <Titlebar />
-        <main
-          className="app-body"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 16,
-          }}
-        >
-          <p data-testid="repo-empty-state" style={{ fontSize: 14, color: 'var(--muted)' }}>
-            Select your git repository to begin
-          </p>
-          <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
-            Select repository…
-          </button>
-        </main>
-      </div>
+      <I18nContext.Provider value={i18n}>
+        <div className="app-shell">
+          <Titlebar />
+          <main
+            className="app-body"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 16,
+            }}
+          >
+            <p data-testid="repo-empty-state" style={{ fontSize: 14, color: 'var(--muted)' }}>
+              Select your git repository to begin
+            </p>
+            <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
+              Select repository…
+            </button>
+          </main>
+        </div>
+      </I18nContext.Provider>
     );
   }
 
   return (
-    <div className="app-shell">
-      <Titlebar
-        right={
-          <div className="titlebar-actions">
-            <span className="titlebar-repo" data-testid="repo-name">
-              {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
-            </span>
-            <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
-              change repo
-            </button>
-            <button
-              type="button"
-              data-testid="fanout-open"
-              aria-pressed={fanoutOpen}
-              title="Multimodel fan-out"
-              onClick={() => setFanoutOpen((v) => !v)}
-            >
-              ⑃ Fan-out
-            </button>
-            <button
-              type="button"
-              data-testid="cross-machine-open"
-              title="Cross-machine sessions"
-              onClick={() => {
-                setCrossMachineOpen(true);
-                void crossMachine.refresh();
-              }}
-            >
-              ⌘ Machines
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              data-testid="settings-open"
-              aria-label="settings"
-              title="Settings"
-              disabled={settingsLoading}
-              onClick={() => setSettingsOpen(true)}
-            >
-              <GearIcon />
-            </button>
-          </div>
-        }
-      />
-      <main className="app-body">
-        <div className="workspace">
-          {/* top-left: project file tree (A3) */}
-          <div className="ws-pane ws-tree">
-            <div className="pane-head">📁 Project</div>
-            <FileTree
-              worktreeId={selectedId}
-              selectedFile={selectedFile}
-              onOpenFile={requestOpenFile}
-            />
-          </div>
-          {/* top-right: code editor (A4) — edit + ⌘S save */}
-          <div className="ws-pane ws-editor">
-            <div className="pane-head">
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <NavBack canGoBack={canGoBack} onBack={onNavBack} />
-                Editor
+    <I18nContext.Provider value={i18n}>
+      <div className="app-shell">
+        <Titlebar
+          right={
+            <div className="titlebar-actions">
+              <span className="titlebar-repo" data-testid="repo-name">
+                {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
               </span>
-              {selectedFile && selectedId && !editor.readOnly && (
-                <button
-                  type="button"
-                  data-testid="editor-save"
-                  className="editor-save-btn"
-                  disabled={!editor.dirty || editor.saving}
-                  title="Save ⌘S"
-                  onClick={() => void editor.save()}
-                >
-                  {editor.saving ? 'Saving…' : 'Save'}
-                </button>
-              )}
-            </div>
-            {!selectedFile || !selectedId ? (
-              <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다</div>
-            ) : editor.loadError ? (
-              <div className="pane-placeholder" data-testid="editor-load-error">
-                불러오기 실패: {editor.loadError}
-              </div>
-            ) : (
-              <div
-                className="pane-body"
-                style={{ display: 'flex', flexDirection: 'column', minHeight: 0, gap: 6 }}
+              <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
+                change repo
+              </button>
+              <button
+                type="button"
+                data-testid="fanout-open"
+                aria-pressed={fanoutOpen}
+                title="Multimodel fan-out"
+                onClick={() => setFanoutOpen((v) => !v)}
               >
-                {editor.readOnly && (
-                  <div className="editor-banner" data-testid="editor-readonly">
-                    {readOnlyReason(editor.reason)} — 읽기 전용
-                  </div>
-                )}
-                {editor.saveError && (
-                  <div className="editor-banner err" data-testid="editor-save-error">
-                    저장 실패: {editor.saveError}
-                  </div>
-                )}
-                <Suspense fallback={<div className="pane-placeholder">에디터 로딩…</div>}>
-                  <CodeEditor
-                    worktreeId={selectedId}
-                    relPath={selectedFile}
-                    theme={resolvedTheme}
-                    content={editor.content}
-                    readOnly={editor.readOnly}
-                    dirty={editor.dirty}
-                    reveal={
-                      pendingReveal?.relPath === selectedFile
-                        ? { line: pendingReveal.line, column: pendingReveal.column }
-                        : null
-                    }
-                    onChange={editor.setValue}
-                    onSaveRequested={() => void editor.save()}
-                    onCursor={(line, column) => {
-                      currentPosRef.current = { line, column };
-                    }}
-                    onUsages={onFindUsages}
-                  />
-                </Suspense>
-              </div>
-            )}
-          </div>
-          {/* bottom-left: worktree management (create + list + per-worktree controls) */}
-          <div className="ws-pane ws-worktrees">
-            <div className="pane-head">🌿 Worktrees</div>
-            <div className="pane-body">
-              <Toolbar onCreate={create} />
-              <ServerControls
-                selectedId={selectedId}
-                status={selectedServer}
-                serverUrl={detectedServerUrl}
-                onStart={(id) => void startServer(id)}
-                onStop={(id) => void stopServer(id)}
-                onOpen={() => setPaneMode('browser')}
-              />
-              <MergeControls
-                selected={selectedWorktree}
-                running={merging}
-                progress={mergeProgress}
-                onMerge={(wt) => void onMerge(wt)}
-              />
-              <GhStatusPanel
-                selectedId={selectedId}
-                status={ghStatus}
-                loading={ghLoading}
-                error={ghError}
-                onRefresh={refreshGh}
-                onOpen={openExternal}
-              />
-              <WorktreeList
-                worktrees={worktrees}
-                loading={loading}
-                error={error}
-                selectedId={selectedId}
-                statuses={statuses}
-                onSelect={requestSelectWorktree}
-                onRemove={(id) => void remove(id)}
+                ⑃ Fan-out
+              </button>
+              <button
+                type="button"
+                data-testid="cross-machine-open"
+                title="Cross-machine sessions"
+                onClick={() => {
+                  setCrossMachineOpen(true);
+                  void crossMachine.refresh();
+                }}
+              >
+                ⌘ Machines
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                data-testid="settings-open"
+                aria-label="settings"
+                title="Settings"
+                disabled={settingsLoading}
+                onClick={() => setSettingsOpen(true)}
+              >
+                <GearIcon />
+              </button>
+            </div>
+          }
+        />
+        <main className="app-body">
+          <div className="workspace">
+            {/* top-left: project file tree (A3) */}
+            <div className="ws-pane ws-tree">
+              <div className="pane-head">📁 Project</div>
+              <FileTree
+                worktreeId={selectedId}
+                selectedFile={selectedFile}
+                onOpenFile={requestOpenFile}
               />
             </div>
-          </div>
-          {/* bottom-right: terminal / diff / browser / conflict + logs */}
-          <div className="ws-pane ws-terminal">
-            <section
-              className="pane-body"
-              style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
-            >
-              {selectedId ? (
-                <>
-                  <div
-                    role="tablist"
-                    aria-label="worktree view"
-                    style={{ display: 'flex', gap: 4, marginBottom: 8 }}
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={paneMode === 'terminal'}
-                      data-testid="tab-terminal"
-                      onClick={() => setPaneMode('terminal')}
-                    >
-                      Terminal
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={paneMode === 'diff'}
-                      data-testid="tab-diff"
-                      onClick={() => setPaneMode('diff')}
-                    >
-                      Diff
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={paneMode === 'browser'}
-                      data-testid="tab-browser"
-                      onClick={() => setPaneMode('browser')}
-                    >
-                      Browser
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={paneMode === 'references'}
-                      data-testid="tab-references"
-                      onClick={() => setPaneMode('references')}
-                    >
-                      Usages
-                    </button>
-                    {conflictWorktreeId === selectedId && (
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={paneMode === 'conflict'}
-                        data-testid="tab-conflict"
-                        style={{ color: 'var(--warn)' }}
-                        onClick={() => setPaneMode('conflict')}
-                      >
-                        Conflicts
-                      </button>
-                    )}
-                  </div>
-                  {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
-                  <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
-                    <Suspense
-                      fallback={
-                        <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
-                      }
-                    >
-                      <AgentTerminal
-                        key={selectedId}
-                        worktreeId={selectedId}
-                        continueSession={!sessionRecords.loading && sessionRecords.has(selectedId)}
-                      />
-                    </Suspense>
-                  </div>
-                  {paneMode === 'diff' && (
-                    <Suspense
-                      fallback={
-                        <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>
-                      }
-                    >
-                      <DiffView
-                        key={`diff-${selectedId}`}
-                        worktreeId={selectedId}
-                        base={baseBranch}
-                        theme={resolvedTheme}
-                      />
-                    </Suspense>
-                  )}
-                  {paneMode === 'browser' && (
-                    <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
-                  )}
-                  {paneMode === 'references' && (
-                    <UsagesPanel
-                      usages={usages}
-                      loading={usagesLoading}
-                      onOpen={(relPath, line, column) => {
-                        if (selectedId) onCodeNavOpen(selectedId, relPath, { line, column });
-                      }}
-                    />
-                  )}
-                  {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
-                    <Suspense
-                      fallback={
-                        <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
-                      }
-                    >
-                      <ConflictView
-                        key={`conflict-${selectedId}`}
-                        worktreeId={selectedId}
-                        targetBranch={baseBranch}
-                        cleanup={true}
-                        theme={resolvedTheme}
-                        onResolved={(merged) => {
-                          setConflictWorktreeId(null);
-                          setPaneMode('terminal');
-                          if (merged) {
-                            if (selectedId === selectedWorktree?.id) requestSelectWorktree(null);
-                          }
-                          void refresh();
-                        }}
-                      />
-                    </Suspense>
-                  )}
-                </>
-              ) : (
-                <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  Select a worktree to start its agent.
-                </p>
-              )}
-              <LogPanel lines={logLines} />
-            </section>
-          </div>
-        </div>
-        {fanoutOpen && (
-          <div className="fanout-overlay" data-testid="fanout-overlay">
-            <Suspense
-              fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
-            >
-              <FanoutView base={baseBranch} theme={resolvedTheme} onMerged={() => void refresh()} />
-            </Suspense>
-          </div>
-        )}
-        {settingsOpen && !settingsLoading && (
-          <SettingsModal
-            settings={settings}
-            onChange={(partial) => void saveSettings(partial)}
-            onClose={() => setSettingsOpen(false)}
-          />
-        )}
-        {crossMachineOpen && (
-          <CrossMachinePanel
-            pointers={crossMachine.pointers}
-            loading={crossMachine.loading}
-            error={crossMachine.error}
-            enabled={settings.crossMachineSessions === 'on'}
-            selfMachineId={settings.machineId}
-            onRefresh={() => void crossMachine.refresh()}
-            onStartHere={(branch) => {
-              void crossMachine.startHere(branch).then((wt) => {
-                if (!wt) return; // failure surfaced via crossMachine.error in the panel
-                setCrossMachineOpen(false);
-                // Refresh the worktree list, then select the (new) worktree — selecting it
-                // mounts AgentTerminal with continueSession=false (no record), a FRESH session.
-                void refresh().then(() => requestSelectWorktree(wt.id));
-              });
-            }}
-            onClose={() => setCrossMachineOpen(false)}
-          />
-        )}
-        {pending && selectedFile && (
-          <ConfirmDiscardModal
-            fileName={selectedFile}
-            saving={editor.saving}
-            saveError={editor.saveError}
-            onSave={() => void onGuardSave()}
-            onDiscard={onGuardDiscard}
-            onCancel={onGuardCancel}
-          />
-        )}
-        {quitWarning && (
-          <div
-            role="dialog"
-            aria-modal="true"
-            data-testid="quit-warning"
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <div
-              style={{
-                background: 'var(--surface)',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: 24,
-                maxWidth: 380,
-              }}
-            >
-              <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
-              {quitWarning.activeWorktreeIds.length > 0 &&
-                (persistenceInfo?.effective === 'full' ? (
-                  <p style={{ fontSize: 13 }}>
-                    {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With
-                    background persistence on, they will{' '}
-                    <strong>keep running in the background</strong> and re-attach when you reopen —
-                    nothing is lost. You can also stop them now.
-                  </p>
-                ) : (
-                  <p style={{ fontSize: 13 }}>
-                    {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and
-                    would be interrupted. (Conversations are saved by claude and resume with{' '}
-                    <code>--continue</code> next time — only the in-flight turn is lost.) Quit
-                    anyway?
-                  </p>
-                ))}
-              {quitWarning.unsavedFileCount > 0 && (
-                <p data-testid="quit-unsaved" style={{ fontSize: 13 }}>
-                  <strong>{quitWarning.unsavedFileCount}</strong> unsaved editor file(s) will be
-                  lost — they were never saved to disk.
-                </p>
-              )}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-                <button type="button" onClick={() => void onQuitDecision(false)}>
-                  Cancel
-                </button>
-                {quitWarning.activeWorktreeIds.length > 0 &&
-                persistenceInfo?.effective === 'full' ? (
-                  <>
-                    <button
-                      type="button"
-                      data-testid="quit-stop-all"
-                      onClick={() => void onQuitStopAll()}
-                    >
-                      Stop all &amp; quit
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="quit-keep-running"
-                      onClick={() => void onQuitDecision(true)}
-                    >
-                      Keep running &amp; quit
-                    </button>
-                  </>
-                ) : (
+            {/* top-right: code editor (A4) — edit + ⌘S save */}
+            <div className="ws-pane ws-editor">
+              <div className="pane-head">
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <NavBack canGoBack={canGoBack} onBack={onNavBack} />
+                  Editor
+                </span>
+                {selectedFile && selectedId && !editor.readOnly && (
                   <button
                     type="button"
-                    data-testid="quit-anyway"
-                    onClick={() => void onQuitDecision(true)}
+                    data-testid="editor-save"
+                    className="editor-save-btn"
+                    disabled={!editor.dirty || editor.saving}
+                    title="Save ⌘S"
+                    onClick={() => void editor.save()}
                   >
-                    Quit anyway
+                    {editor.saving ? 'Saving…' : 'Save'}
                   </button>
                 )}
               </div>
+              {!selectedFile || !selectedId ? (
+                <div className="pane-placeholder">파일을 선택하면 여기에서 편집합니다</div>
+              ) : editor.loadError ? (
+                <div className="pane-placeholder" data-testid="editor-load-error">
+                  불러오기 실패: {editor.loadError}
+                </div>
+              ) : (
+                <div
+                  className="pane-body"
+                  style={{ display: 'flex', flexDirection: 'column', minHeight: 0, gap: 6 }}
+                >
+                  {editor.readOnly && (
+                    <div className="editor-banner" data-testid="editor-readonly">
+                      {readOnlyReason(editor.reason)} — 읽기 전용
+                    </div>
+                  )}
+                  {editor.saveError && (
+                    <div className="editor-banner err" data-testid="editor-save-error">
+                      저장 실패: {editor.saveError}
+                    </div>
+                  )}
+                  <Suspense fallback={<div className="pane-placeholder">에디터 로딩…</div>}>
+                    <CodeEditor
+                      worktreeId={selectedId}
+                      relPath={selectedFile}
+                      theme={resolvedTheme}
+                      content={editor.content}
+                      readOnly={editor.readOnly}
+                      dirty={editor.dirty}
+                      reveal={
+                        pendingReveal?.relPath === selectedFile
+                          ? { line: pendingReveal.line, column: pendingReveal.column }
+                          : null
+                      }
+                      onChange={editor.setValue}
+                      onSaveRequested={() => void editor.save()}
+                      onCursor={(line, column) => {
+                        currentPosRef.current = { line, column };
+                      }}
+                      onUsages={onFindUsages}
+                    />
+                  </Suspense>
+                </div>
+              )}
+            </div>
+            {/* bottom-left: worktree management (create + list + per-worktree controls) */}
+            <div className="ws-pane ws-worktrees">
+              <div className="pane-head">🌿 Worktrees</div>
+              <div className="pane-body">
+                <Toolbar onCreate={create} />
+                <ServerControls
+                  selectedId={selectedId}
+                  status={selectedServer}
+                  serverUrl={detectedServerUrl}
+                  onStart={(id) => void startServer(id)}
+                  onStop={(id) => void stopServer(id)}
+                  onOpen={() => setPaneMode('browser')}
+                />
+                <MergeControls
+                  selected={selectedWorktree}
+                  running={merging}
+                  progress={mergeProgress}
+                  onMerge={(wt) => void onMerge(wt)}
+                />
+                <GhStatusPanel
+                  selectedId={selectedId}
+                  status={ghStatus}
+                  loading={ghLoading}
+                  error={ghError}
+                  onRefresh={refreshGh}
+                  onOpen={openExternal}
+                />
+                <WorktreeList
+                  worktrees={worktrees}
+                  loading={loading}
+                  error={error}
+                  selectedId={selectedId}
+                  statuses={statuses}
+                  onSelect={requestSelectWorktree}
+                  onRemove={(id) => void remove(id)}
+                />
+              </div>
+            </div>
+            {/* bottom-right: terminal / diff / browser / conflict + logs */}
+            <div className="ws-pane ws-terminal">
+              <section
+                className="pane-body"
+                style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
+              >
+                {selectedId ? (
+                  <>
+                    <div
+                      role="tablist"
+                      aria-label="worktree view"
+                      style={{ display: 'flex', gap: 4, marginBottom: 8 }}
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={paneMode === 'terminal'}
+                        data-testid="tab-terminal"
+                        onClick={() => setPaneMode('terminal')}
+                      >
+                        Terminal
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={paneMode === 'diff'}
+                        data-testid="tab-diff"
+                        onClick={() => setPaneMode('diff')}
+                      >
+                        Diff
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={paneMode === 'browser'}
+                        data-testid="tab-browser"
+                        onClick={() => setPaneMode('browser')}
+                      >
+                        Browser
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={paneMode === 'references'}
+                        data-testid="tab-references"
+                        onClick={() => setPaneMode('references')}
+                      >
+                        Usages
+                      </button>
+                      {conflictWorktreeId === selectedId && (
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={paneMode === 'conflict'}
+                          data-testid="tab-conflict"
+                          style={{ color: 'var(--warn)' }}
+                          onClick={() => setPaneMode('conflict')}
+                        >
+                          Conflicts
+                        </button>
+                      )}
+                    </div>
+                    {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
+                    <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
+                      <Suspense
+                        fallback={
+                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading terminal…</p>
+                        }
+                      >
+                        <AgentTerminal
+                          key={selectedId}
+                          worktreeId={selectedId}
+                          continueSession={
+                            !sessionRecords.loading && sessionRecords.has(selectedId)
+                          }
+                        />
+                      </Suspense>
+                    </div>
+                    {paneMode === 'diff' && (
+                      <Suspense
+                        fallback={
+                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading diff…</p>
+                        }
+                      >
+                        <DiffView
+                          key={`diff-${selectedId}`}
+                          worktreeId={selectedId}
+                          base={baseBranch}
+                          theme={resolvedTheme}
+                        />
+                      </Suspense>
+                    )}
+                    {paneMode === 'browser' && (
+                      <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
+                    )}
+                    {paneMode === 'references' && (
+                      <UsagesPanel
+                        usages={usages}
+                        loading={usagesLoading}
+                        onOpen={(relPath, line, column) => {
+                          if (selectedId) onCodeNavOpen(selectedId, relPath, { line, column });
+                        }}
+                      />
+                    )}
+                    {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
+                      <Suspense
+                        fallback={
+                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading conflicts…</p>
+                        }
+                      >
+                        <ConflictView
+                          key={`conflict-${selectedId}`}
+                          worktreeId={selectedId}
+                          targetBranch={baseBranch}
+                          cleanup={true}
+                          theme={resolvedTheme}
+                          onResolved={(merged) => {
+                            setConflictWorktreeId(null);
+                            setPaneMode('terminal');
+                            if (merged) {
+                              if (selectedId === selectedWorktree?.id) requestSelectWorktree(null);
+                            }
+                            void refresh();
+                          }}
+                        />
+                      </Suspense>
+                    )}
+                  </>
+                ) : (
+                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                    Select a worktree to start its agent.
+                  </p>
+                )}
+                <LogPanel lines={logLines} />
+              </section>
             </div>
           </div>
-        )}
-      </main>
-      <StatusBar
-        left={
-          <UsageWidget
-            status={usage.status}
-            loading={usage.loading}
-            onRefresh={() => void usage.refresh()}
-          />
-        }
-        right={
-          <UpdateProgressInline
-            applyState={selfUpdate.state}
-            latestVersion={update?.latestVersion ?? null}
-            releaseUrl={update?.releaseUrl ?? null}
-            onOpen={openExternal}
-            onDismiss={() => {
-              if (update?.latestVersion) {
-                void saveSettings({ lastDismissedUpdateVersion: update.latestVersion });
-              }
-            }}
-          />
-        }
-      />
-      <UpdateBanner
-        status={update}
-        dismissedVersion={settings.lastDismissedUpdateVersion}
-        onDismiss={(version) => void saveSettings({ lastDismissedUpdateVersion: version })}
-        onOpen={openExternal}
-        applyState={selfUpdate.state}
-        onUpdate={() => {
-          if (update?.dmgUrl && update.latestVersion) {
-            selfUpdate.start({ dmgUrl: update.dmgUrl, sha256: update.sha256 });
+          {fanoutOpen && (
+            <div className="fanout-overlay" data-testid="fanout-overlay">
+              <Suspense
+                fallback={<p style={{ fontSize: 13, color: 'var(--muted)' }}>Loading fan-out…</p>}
+              >
+                <FanoutView
+                  base={baseBranch}
+                  theme={resolvedTheme}
+                  onMerged={() => void refresh()}
+                />
+              </Suspense>
+            </div>
+          )}
+          {settingsOpen && !settingsLoading && (
+            <SettingsModal
+              settings={settings}
+              onChange={(partial) => void saveSettings(partial)}
+              onClose={() => setSettingsOpen(false)}
+            />
+          )}
+          {crossMachineOpen && (
+            <CrossMachinePanel
+              pointers={crossMachine.pointers}
+              loading={crossMachine.loading}
+              error={crossMachine.error}
+              enabled={settings.crossMachineSessions === 'on'}
+              selfMachineId={settings.machineId}
+              onRefresh={() => void crossMachine.refresh()}
+              onStartHere={(branch) => {
+                void crossMachine.startHere(branch).then((wt) => {
+                  if (!wt) return; // failure surfaced via crossMachine.error in the panel
+                  setCrossMachineOpen(false);
+                  // Refresh the worktree list, then select the (new) worktree — selecting it
+                  // mounts AgentTerminal with continueSession=false (no record), a FRESH session.
+                  void refresh().then(() => requestSelectWorktree(wt.id));
+                });
+              }}
+              onClose={() => setCrossMachineOpen(false)}
+            />
+          )}
+          {pending && selectedFile && (
+            <ConfirmDiscardModal
+              fileName={selectedFile}
+              saving={editor.saving}
+              saveError={editor.saveError}
+              onSave={() => void onGuardSave()}
+              onDiscard={onGuardDiscard}
+              onCancel={onGuardCancel}
+            />
+          )}
+          {quitWarning && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              data-testid="quit-warning"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <div
+                style={{
+                  background: 'var(--surface)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: 24,
+                  maxWidth: 380,
+                }}
+              >
+                <h2 style={{ marginTop: 0, fontSize: 16 }}>Quit MangoLove IDEA?</h2>
+                {quitWarning.activeWorktreeIds.length > 0 &&
+                  (persistenceInfo?.effective === 'full' ? (
+                    <p style={{ fontSize: 13 }}>
+                      {quitWarning.activeWorktreeIds.length} agent turn(s) are running. With
+                      background persistence on, they will{' '}
+                      <strong>keep running in the background</strong> and re-attach when you reopen
+                      — nothing is lost. You can also stop them now.
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: 13 }}>
+                      {quitWarning.activeWorktreeIds.length} running agent turn(s) are in flight and
+                      would be interrupted. (Conversations are saved by claude and resume with{' '}
+                      <code>--continue</code> next time — only the in-flight turn is lost.) Quit
+                      anyway?
+                    </p>
+                  ))}
+                {quitWarning.unsavedFileCount > 0 && (
+                  <p data-testid="quit-unsaved" style={{ fontSize: 13 }}>
+                    <strong>{quitWarning.unsavedFileCount}</strong> unsaved editor file(s) will be
+                    lost — they were never saved to disk.
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button type="button" onClick={() => void onQuitDecision(false)}>
+                    Cancel
+                  </button>
+                  {quitWarning.activeWorktreeIds.length > 0 &&
+                  persistenceInfo?.effective === 'full' ? (
+                    <>
+                      <button
+                        type="button"
+                        data-testid="quit-stop-all"
+                        onClick={() => void onQuitStopAll()}
+                      >
+                        Stop all &amp; quit
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="quit-keep-running"
+                        onClick={() => void onQuitDecision(true)}
+                      >
+                        Keep running &amp; quit
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="quit-anyway"
+                      onClick={() => void onQuitDecision(true)}
+                    >
+                      Quit anyway
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+        <StatusBar
+          left={
+            <UsageWidget
+              status={usage.status}
+              loading={usage.loading}
+              onRefresh={() => void usage.refresh()}
+            />
           }
-        }}
-      />
-    </div>
+          right={
+            <UpdateProgressInline
+              applyState={selfUpdate.state}
+              latestVersion={update?.latestVersion ?? null}
+              releaseUrl={update?.releaseUrl ?? null}
+              onOpen={openExternal}
+              onDismiss={() => {
+                if (update?.latestVersion) {
+                  void saveSettings({ lastDismissedUpdateVersion: update.latestVersion });
+                }
+              }}
+            />
+          }
+        />
+        <UpdateBanner
+          status={update}
+          dismissedVersion={settings.lastDismissedUpdateVersion}
+          onDismiss={(version) => void saveSettings({ lastDismissedUpdateVersion: version })}
+          onOpen={openExternal}
+          applyState={selfUpdate.state}
+          onUpdate={() => {
+            if (update?.dmgUrl && update.latestVersion) {
+              selfUpdate.start({ dmgUrl: update.dmgUrl, sha256: update.sha256 });
+            }
+          }}
+        />
+      </div>
+    </I18nContext.Provider>
   );
 }
