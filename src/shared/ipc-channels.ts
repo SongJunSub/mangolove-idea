@@ -90,6 +90,9 @@ export const IPC = {
   FANOUT_SELECT: 'fanout:select', // invoke ({laneId} -> MergeResult; merge winner + clean rest)
   FANOUT_ABORT: 'fanout:abort', // invoke (-> Ack; kill running lanes + remove all worktrees)
   FANOUT_STATUS: 'fanout:status', // main -> renderer, event (FanoutLaneStatusEvent)
+
+  // in-app update check (renderer -> main, invoke; read-only GitHub Releases query)
+  UPDATE_CHECK: 'update:check', // invoke (-> UpdateStatus)
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

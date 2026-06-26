@@ -54,6 +54,7 @@ import type {
   FanoutStartResult,
   FanoutSelectRequest,
   FanoutLaneStatusEvent,
+  UpdateStatus,
 } from './types';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
@@ -190,6 +191,13 @@ export interface MangoApi {
      * when nothing was opened.
      */
     pick(): Promise<RepoPickResult>;
+  };
+  update: {
+    /**
+     * Check GitHub Releases for a newer stable version (read-only; never auto-installs —
+     * the app is unsigned). Never rejects: a failed check returns a status with `error` set.
+     */
+    check(): Promise<UpdateStatus>;
   };
   fanout: {
     /** Start ONE fan-out: N worktrees + N headless claude -p lanes. Rejects if a run is active or models out of [1,4]. */

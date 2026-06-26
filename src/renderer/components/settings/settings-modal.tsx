@@ -4,6 +4,8 @@ import type {
   SessionPersistenceInfo,
   CodeNavCapabilities,
 } from '../../../shared/types';
+import { useUpdateCheck } from '../../hooks/use-update-check';
+import { openExternal } from '../../lib/open-external';
 
 /** Props for the Settings modal. */
 export interface SettingsModalProps {
@@ -58,6 +60,8 @@ export function SettingsModal({
   const [caps, setCaps] = useState<CodeNavCapabilities | null>(null);
   const [stopping, setStopping] = useState(false);
   const [stoppedNote, setStoppedNote] = useState('');
+  const [appVersion, setAppVersion] = useState('');
+  const { status: update, checking: checkingUpdate, check: checkForUpdate } = useUpdateCheck(false);
 
   useEffect(() => {
     let alive = true;
@@ -67,6 +71,9 @@ export function SettingsModal({
     // Code-nav availability is machine-global (PATH-detected); worktreeId is ignored.
     void window.mango.codenav.capabilities('').then((c) => {
       if (alive) setCaps(c);
+    });
+    void window.mango.app.ping().then((a) => {
+      if (alive) setAppVersion(a.appVersion);
     });
     return () => {
       alive = false;
@@ -290,6 +297,48 @@ export function SettingsModal({
           setLspKotlinPath,
           'settings-lsp-kotlin',
         )}
+
+        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Updates</div>
+        <div
+          data-testid="settings-update"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
+        >
+          <span>
+            Current version: <strong>v{appVersion || '…'}</strong>
+          </span>
+          <button
+            type="button"
+            data-testid="settings-update-check"
+            disabled={checkingUpdate}
+            onClick={() => void checkForUpdate()}
+          >
+            {checkingUpdate ? 'Checking…' : 'Check for updates'}
+          </button>
+        </div>
+        {update && (
+          <p data-testid="settings-update-result" style={{ fontSize: 12, margin: '6px 0 0' }}>
+            {update.error ? (
+              `Couldn't check (${update.error.replace('_', ' ')}) — try again later.`
+            ) : update.updateAvailable ? (
+              <>
+                v{update.latestVersion} is available.{' '}
+                <button
+                  type="button"
+                  data-testid="settings-update-download"
+                  onClick={() => openExternal(update.dmgUrl ?? update.releaseUrl)}
+                >
+                  Download
+                </button>
+              </>
+            ) : (
+              "You're on the latest version."
+            )}
+          </p>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
+          Unsigned build: an update downloads as a .dmg you drag into Applications.
+        </p>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" onClick={onClose}>

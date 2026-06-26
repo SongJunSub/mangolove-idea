@@ -590,6 +590,38 @@ export interface AppSettings {
    * derived from the OS hostname.
    */
   readonly machineLabel?: string;
+  /**
+   * The app version whose update banner the user last dismissed ("Later"). The banner
+   * stays hidden for THIS version but reappears for a newer one. Unset => never dismissed.
+   */
+  readonly lastDismissedUpdateVersion?: string;
+}
+
+/**
+ * Result of an in-app update check against the project's GitHub Releases (macOS, unsigned).
+ * A flat struct (not a union) so the renderer always has `currentVersion`. On a failed
+ * check, `error` is set and `updateAvailable` is false (the banner stays hidden); a manual
+ * check surfaces the reason, the silent launch check does not. Every newer-version field is
+ * null on failure. The app is UNSIGNED so this only NOTIFIES + links the download — it never
+ * silently replaces the bundle (see docs/UPDATE-MECHANISM if added).
+ */
+export interface UpdateStatus {
+  /** The running app version (app.getVersion()), always present. */
+  readonly currentVersion: string;
+  /** Latest STABLE release version (tag without 'v'), or null when the check failed. */
+  readonly latestVersion: string | null;
+  /** True iff a strictly-newer stable release exists (X.Y.Z numeric compare). */
+  readonly updateAvailable: boolean;
+  /** GitHub release page URL (release notes), or null. */
+  readonly releaseUrl: string | null;
+  /** Direct .dmg asset download URL, or null when absent/failed. */
+  readonly dmgUrl: string | null;
+  /** Lowercase-hex sha256 of the .dmg from the release asset digest, when GitHub provides it. */
+  readonly sha256: string | null;
+  /** ISO publish timestamp of the latest release, or null. */
+  readonly publishedAt: string | null;
+  /** Set ONLY when the check failed; classifies why for the manual-check surface. */
+  readonly error?: 'offline' | 'rate_limited' | 'failed';
 }
 
 /**

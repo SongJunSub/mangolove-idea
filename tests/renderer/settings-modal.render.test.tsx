@@ -3,8 +3,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsModal } from '../../src/renderer/components/settings/settings-modal';
 
-// SettingsModal calls window.mango.session.persistenceInfo() + codenav.capabilities() on
-// mount; stub the bridge.
+// SettingsModal calls session.persistenceInfo() + codenav.capabilities() + app.ping() on
+// mount, and update.check() from the Updates section; stub the bridge.
 beforeEach(() => {
   const mango = {
     session: {
@@ -19,6 +19,21 @@ beforeEach(() => {
       capabilities: vi.fn(async () => ({
         java: { available: false, reason: 'jdtls not found' },
         kotlin: { available: false, reason: 'kotlin-language-server not found' },
+      })),
+    },
+    app: {
+      ping: vi.fn(async () => ({ appVersion: '0.1.1' })),
+      openExternal: vi.fn(async () => ({ ok: true })),
+    },
+    update: {
+      check: vi.fn(async () => ({
+        currentVersion: '0.1.1',
+        latestVersion: '0.1.1',
+        updateAvailable: false,
+        releaseUrl: null,
+        dmgUrl: null,
+        sha256: null,
+        publishedAt: null,
       })),
     },
   };
