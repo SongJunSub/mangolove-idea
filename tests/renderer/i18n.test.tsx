@@ -76,6 +76,6 @@ describe('useI18n', () => {
     );
     const { result } = renderHook(() => useI18n(), { wrapper });
     expect(result.current.locale).toBe('ko');
-    expect(result.current.t('settings.done')).toBe('닫기');
+    expect(result.current.t('settings.done')).toBe('완료');
   });
 });

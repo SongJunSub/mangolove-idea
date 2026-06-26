@@ -70,6 +70,36 @@ export const en = {
   'settings.updates.failed': "Couldn't check ({reason}) — try again later.",
   'settings.updates.unsignedHint':
     'Unsigned build: an update downloads as a .dmg you drag into Applications.',
+
+  // Usage widget (bottom-left status bar)
+  'usage.session': 'Session',
+  'usage.weekly': 'Weekly',
+  'usage.model': 'Model',
+  'usage.loading': 'Claude usage…',
+  'usage.none': 'No usage',
+  'usage.refresh': 'Refresh',
+  'usage.resetSoon': 'resets soon',
+  'usage.resetInHM': 'resets in {h}h {m}m',
+  'usage.resetInM': 'resets in {m}m',
+  'usage.resetAt': 'reset: {at}',
+  'usage.error.noLogin': 'Claude not connected',
+  'usage.error.denied': 'Keychain access denied',
+  'usage.error.rateLimited': 'Usage — retry shortly',
+  'usage.error.failed': "Couldn't load usage",
+
+  // Update notification (bottom status bar + card)
+  'update.available': 'Update available',
+  'update.current': 'Current v{version}',
+  'update.now': 'Update now',
+  'update.whatsNew': "What's new",
+  'update.later': 'Later',
+  'update.dismiss': 'Dismiss',
+  'update.failed': 'Update failed: {reason}',
+  'update.phase.downloadingPct': 'Downloading {pct}%',
+  'update.phase.downloadingMb': 'Downloading {mb}MB',
+  'update.phase.verifying': 'Verifying…',
+  'update.phase.staging': 'Preparing install…',
+  'update.phase.applying': 'Installing & restarting…',
 } as const;
 
 /** Every message key, derived from the English catalog (the single source of truth). */
@@ -78,8 +108,8 @@ export type MessageKey = keyof typeof en;
 /** Korean catalog. Typed so it MUST cover exactly the English keys (compile-time check). */
 export const ko: Record<MessageKey, string> = {
   'settings.title': '설정',
-  'settings.saved': '✓ 저장됨',
-  'settings.done': '닫기',
+  'settings.saved': '✓ 저장했어요',
+  'settings.done': '완료',
 
   'settings.language': '언어',
   'settings.language.system': '시스템',
@@ -91,47 +121,74 @@ export const ko: Record<MessageKey, string> = {
   'settings.theme.light': '라이트',
   'settings.theme.system': '시스템',
 
-  'settings.blankHint': '비워두면 환경변수 → 기본값 순으로 사용됩니다.',
+  'settings.blankHint': '비워두면 환경변수, 그다음 기본값을 사용해요.',
   'settings.agentCommand': '에이전트 명령',
   'settings.verifyCommand': '검증 명령',
   'settings.serverCommand': '서버 명령',
   'settings.baseBranch': '기준 브랜치',
-  'settings.autoDetect': '(자동 감지)',
+  'settings.autoDetect': '(자동으로 찾아요)',
 
-  'settings.persist.label': '종료 후에도 에이전트를 백그라운드로 유지 (b-full)',
+  'settings.persist.label': '종료해도 에이전트를 백그라운드에서 계속 켜둬요 (b-full)',
   'settings.persist.hint':
-    '에이전트를 abduco 세션으로 감싸 진행 중인 턴이 종료/크래시에도 살아남고 재시작 시 다시 연결됩니다. macOS 전용.',
-  'settings.persist.missing':
-    '⚠ abduco를 찾을 수 없어 b-full이 비활성화되고 세션이 lite로 폴백됩니다. 설치:',
+    '에이전트를 abduco 세션으로 감싸서, 종료하거나 꺼져도 하던 작업이 이어지고 다시 열면 연결돼요. macOS에서만 돼요.',
+  'settings.persist.missing': '⚠ abduco가 없어서 b-full을 못 켜고 lite로 동작해요. 설치하기:',
   'settings.persist.active':
-    '✓ b-full 활성 — 에이전트가 종료/크래시에도 유지되고 재시작 시 재연결됩니다.',
-  'settings.stopAll': '백그라운드 에이전트 모두 중지',
-  'settings.stopping': '중지 중…',
-  'settings.stoppedNote': '모든 백그라운드 에이전트를 중지했습니다.',
+    '✓ b-full이 켜져 있어요 — 종료하거나 꺼져도 에이전트가 유지되고, 다시 열면 연결돼요.',
+  'settings.stopAll': '백그라운드 에이전트 모두 끄기',
+  'settings.stopping': '끄는 중…',
+  'settings.stoppedNote': '백그라운드 에이전트를 모두 껐어요.',
 
-  'settings.crossMachine.label': '이 머신의 세션을 다른 머신과 공유 (조회 전용)',
+  'settings.crossMachine.label': '이 컴퓨터의 세션을 다른 컴퓨터와 공유해요 (보기 전용)',
   'settings.crossMachine.hint':
-    '세션 메타데이터(브랜치 + 상태, 대화 내용은 절대 아님)를 공유 원격에 게시해 다른 머신의 세션을 볼 수 있게 합니다. 기본값은 꺼짐.',
-  'settings.crossMachine.machineLabel': '이 머신 라벨',
+    '세션 정보(브랜치와 상태만, 대화 내용은 빼고)를 공유 원격에 올려서 다른 컴퓨터의 세션을 볼 수 있어요. 기본은 꺼져 있어요.',
+  'settings.crossMachine.machineLabel': '이 컴퓨터 이름',
 
   'settings.codenav.title': '코드 내비게이션 (Java / Kotlin)',
   'settings.codenav.hint':
-    'Java/Kotlin의 Command+클릭 정의로 이동은 설치된 언어 서버를 사용합니다 (TS/JS는 기본 내장). 아래 경로를 지정하면 PATH 감지를 덮어씁니다.',
-  'settings.codenav.available': '사용 가능',
-  'settings.codenav.checking': '확인 중…',
+    'Java/Kotlin에서 Command+클릭으로 정의로 이동할 때 설치된 언어 서버를 써요 (TS/JS는 기본 내장이에요). 아래에 경로를 적으면 PATH 자동 감지 대신 그 경로를 써요.',
+  'settings.codenav.available': '사용할 수 있어요',
+  'settings.codenav.checking': '확인하고 있어요…',
   'settings.codenav.javaPath': 'jdtls 경로 (Java)',
   'settings.codenav.kotlinPath': 'kotlin-language-server 경로',
 
   'settings.updates.title': '업데이트',
   'settings.updates.current': '현재 버전:',
-  'settings.updates.check': '업데이트 확인',
-  'settings.updates.checking': '확인 중…',
-  'settings.updates.available': 'v{version} 사용 가능.',
+  'settings.updates.check': '업데이트 확인하기',
+  'settings.updates.checking': '확인하고 있어요…',
+  'settings.updates.available': 'v{version} 버전을 받을 수 있어요.',
   'settings.updates.download': '다운로드',
-  'settings.updates.upToDate': '최신 버전을 사용 중입니다.',
-  'settings.updates.failed': '확인 실패 ({reason}) — 잠시 후 다시 시도하세요.',
+  'settings.updates.upToDate': '최신 버전을 쓰고 있어요.',
+  'settings.updates.failed': '확인하지 못했어요 ({reason}) — 잠시 후 다시 시도해 주세요.',
   'settings.updates.unsignedHint':
-    '서명되지 않은 빌드: 업데이트는 .dmg로 받아 Applications에 끌어다 놓습니다.',
+    '서명되지 않은 빌드예요: 업데이트는 .dmg로 받아서 Applications에 끌어다 놓으면 돼요.',
+
+  'usage.session': '세션',
+  'usage.weekly': '주간',
+  'usage.model': '모델',
+  'usage.loading': 'Claude 사용량…',
+  'usage.none': '사용량이 없어요',
+  'usage.refresh': '새로고침',
+  'usage.resetSoon': '곧 초기화돼요',
+  'usage.resetInHM': '{h}시간 {m}분 후 초기화돼요',
+  'usage.resetInM': '{m}분 후 초기화돼요',
+  'usage.resetAt': '초기화: {at}',
+  'usage.error.noLogin': 'Claude 연결이 필요해요',
+  'usage.error.denied': '키체인 접근이 막혔어요',
+  'usage.error.rateLimited': '잠시 후 다시 시도해요',
+  'usage.error.failed': '사용량을 못 불러왔어요',
+
+  'update.available': '업데이트가 있어요',
+  'update.current': '현재 v{version}',
+  'update.now': '지금 업데이트',
+  'update.whatsNew': '새 소식',
+  'update.later': '나중에',
+  'update.dismiss': '닫기',
+  'update.failed': '업데이트하지 못했어요: {reason}',
+  'update.phase.downloadingPct': '받는 중 {pct}%',
+  'update.phase.downloadingMb': '받는 중 {mb}MB',
+  'update.phase.verifying': '확인하고 있어요…',
+  'update.phase.staging': '설치를 준비하고 있어요…',
+  'update.phase.applying': '설치하고 다시 시작할게요…',
 };
 
 /** The two catalogs, keyed by resolved locale. */
