@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   AppSettings,
   SessionPersistenceInfo,
   CodeNavCapabilities,
 } from '../../../shared/types';
 import { useUpdateCheck } from '../../hooks/use-update-check';
+import { useAutoSave } from '../../hooks/use-auto-save';
 import { openExternal } from '../../lib/open-external';
 
 /** Props for the Settings modal. */
@@ -12,11 +13,11 @@ export interface SettingsModalProps {
   /** Current persisted settings used to seed the inputs. */
   readonly settings: AppSettings;
   /**
-   * Persists the edited partial. The modal sends ALL four fields every save; a
-   * blank field is sent as the EMPTY STRING `''`, which SettingsStore.set() treats
-   * as a DELETE of that key (reverting it to the env seam, then the default).
+   * Persists ONE auto-saved patch as the user edits (no Save button). A text field
+   * blanked to '' is sent as the EMPTY STRING, which SettingsStore.set() treats as a
+   * DELETE of that key (reverting it to the env seam, then the default).
    */
-  onSave(partial: AppSettings): void;
+  onChange(patch: Partial<AppSettings>): void;
   onClose(): void;
 }
 
@@ -31,9 +32,11 @@ function field(value: string): string {
 }
 
 /**
- * Per-project settings editor (V2 item E). Four text inputs seeded from the
- * persisted settings; Save persists the edited values + closes; Cancel closes.
- * Mirrors the App.tsx quit-warning modal (fixed overlay + role="dialog").
+ * Per-project settings editor (V2 item E). Fields are seeded from the persisted
+ * settings and AUTO-SAVE as you edit — text inputs debounce (one write when you
+ * pause), toggles/segmented controls persist immediately. There is no Save button;
+ * a transient "Saved" note confirms each write. The card is responsive: its body
+ * scrolls so every control stays reachable on a short/narrow window.
  *
  * Also hosts the b-full session-persistence control: a toggle that wraps the agent
  * in an abduco detached session so an in-flight turn survives quit/crash. The
@@ -43,7 +46,7 @@ function field(value: string): string {
  */
 export function SettingsModal({
   settings,
-  onSave,
+  onChange,
   onClose,
 }: SettingsModalProps): React.JSX.Element {
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(settings.theme ?? 'system');
@@ -61,7 +64,17 @@ export function SettingsModal({
   const [stopping, setStopping] = useState(false);
   const [stoppedNote, setStoppedNote] = useState('');
   const [appVersion, setAppVersion] = useState('');
+  // Transient "✓ Saved" note: shown for ~1.5s after each persist (timer re-armed each write).
+  const [showSaved, setShowSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { status: update, checking: checkingUpdate, check: checkForUpdate } = useUpdateCheck(false);
+
+  const { queue, flush } = useAutoSave<AppSettings>((patch) => {
+    onChange(patch);
+    setShowSaved(true);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setShowSaved(false), 1500);
+  });
 
   useEffect(() => {
     let alive = true;
@@ -80,26 +93,17 @@ export function SettingsModal({
     };
   }, []);
 
-  const submit = (): void => {
-    onSave({
-      // Theme is always one of the three valid enums (never ''), so SettingsStore
-      // persists it; 'system' reads back as follow-the-OS.
-      theme,
-      agentCommand: field(agentCommand),
-      verifyCommand: field(verifyCommand),
-      serverCommand: field(serverCommand),
-      baseBranch: field(baseBranch),
-      // 'full' enables b-full; 'lite' (not '') keeps the value a valid enum and
-      // reads back as lite. SettingsStore persists both as non-empty strings.
-      sessionPersistence: persistFull ? 'full' : 'lite',
-      // 'on' opts into cross-machine session sharing; 'off' (not '') stays a valid
-      // enum. machineLabel blank => unset => the non-identifying default is used.
-      crossMachineSessions: crossMachine ? 'on' : 'off',
-      machineLabel: field(machineLabel),
-      // Blank => unset => fall back to the PATH-dir probe for the LSP server.
-      lspJavaPath: field(lspJavaPath),
-      lspKotlinPath: field(lspKotlinPath),
-    });
+  // Clear the "Saved" timer on unmount so it can't fire after the modal closes.
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+    },
+    [],
+  );
+
+  const close = (): void => {
+    flush(); // persist any debounced edit before unmounting
+    onClose();
   };
 
   const stopAll = async (): Promise<void> => {
@@ -116,236 +120,265 @@ export function SettingsModal({
   // The b-full 'full' request can't be honored when abduco is missing -> LOUD warn.
   const downgraded = persistFull && info !== null && !info.abducoAvailable;
 
-  const row = (
+  // A debounced text field: updates local state for responsiveness, queues the
+  // trimmed value, and flushes on blur so leaving the field persists at once.
+  const textRow = (
     label: string,
     placeholder: string,
     value: string,
-    set: (v: string) => void,
+    setLocal: (v: string) => void,
+    key: keyof AppSettings,
     testid: string,
   ): React.JSX.Element => (
-    <label style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+    <label className="settings-field">
       {label}
       <input
         aria-label={label}
         data-testid={testid}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => set(e.target.value)}
-        style={{ display: 'block', width: '100%', marginTop: 2 }}
+        onChange={(e) => {
+          setLocal(e.target.value);
+          queue({ [key]: field(e.target.value) } as Partial<AppSettings>);
+        }}
+        onBlur={flush}
       />
     </label>
   );
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      data-testid="settings-modal"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
+    <div className="settings-overlay" onMouseDown={close}>
       <div
-        style={{
-          background: 'var(--surface)',
-          color: 'var(--text)',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          padding: 24,
-          width: 420,
-          maxWidth: '90vw',
-        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        data-testid="settings-modal"
+        className="settings-card"
+        // Clicks inside the card must not bubble to the overlay's close handler.
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Settings</h2>
+        <div className="settings-card__head">
+          <h2 className="settings-card__title">Settings</h2>
+          <span className="settings-saved" data-testid="settings-saved" aria-live="polite">
+            {showSaved ? '✓ Saved' : ''}
+          </span>
+        </div>
 
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Theme</div>
-          <div role="group" aria-label="Theme" style={{ display: 'inline-flex', gap: 4 }}>
-            {(['dark', 'light', 'system'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                data-testid={`settings-theme-${t}`}
-                aria-pressed={theme === t}
-                onClick={() => setTheme(t)}
+        <div className="settings-card__body">
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Theme</div>
+            <div role="group" aria-label="Theme" style={{ display: 'inline-flex', gap: 4 }}>
+              {(['dark', 'light', 'system'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  data-testid={`settings-theme-${t}`}
+                  aria-pressed={theme === t}
+                  onClick={() => {
+                    setTheme(t);
+                    queue({ theme: t }, true);
+                  }}
+                  style={{
+                    background: theme === t ? 'var(--accent)' : 'var(--surface)',
+                    color: theme === t ? '#fff' : 'var(--text)',
+                    borderColor: theme === t ? 'var(--accent)' : 'var(--border)',
+                  }}
+                >
+                  {t === 'dark' ? 'Dark' : t === 'light' ? 'Light' : 'System'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 0 }}>
+            Blank = fall back to the env seam, then the default.
+          </p>
+          {textRow(
+            'agent command',
+            'claude',
+            agentCommand,
+            setAgentCommand,
+            'agentCommand',
+            'settings-agent',
+          )}
+          {textRow(
+            'verify command',
+            'true',
+            verifyCommand,
+            setVerifyCommand,
+            'verifyCommand',
+            'settings-verify',
+          )}
+          {textRow(
+            'server command',
+            '(auto-detect)',
+            serverCommand,
+            setServerCommand,
+            'serverCommand',
+            'settings-server',
+          )}
+          {textRow('base branch', 'main', baseBranch, setBaseBranch, 'baseBranch', 'settings-base')}
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+            <input
+              type="checkbox"
+              data-testid="settings-persist-full"
+              checked={persistFull}
+              onChange={(e) => {
+                setPersistFull(e.target.checked);
+                queue({ sessionPersistence: e.target.checked ? 'full' : 'lite' }, true);
+              }}
+            />
+            Keep the agent running in the background after quit (b-full)
+          </label>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
+            Wraps the agent in an abduco session so an in-flight turn survives quit/crash and
+            re-attaches on reopen. macOS only.
+          </p>
+          {downgraded && (
+            <p
+              data-testid="settings-persist-warning"
+              style={{ fontSize: 12, color: 'var(--err)', margin: '6px 0 0' }}
+            >
+              ⚠ abduco not found — b-full is disabled and sessions fall back to lite. Install it:{' '}
+              <code>brew install abduco</code>
+            </p>
+          )}
+          {info?.effective === 'full' && (
+            <p style={{ fontSize: 12, color: 'var(--ok)', margin: '6px 0 0' }}>
+              ✓ b-full active — agents survive quit/crash; reopen re-attaches.
+            </p>
+          )}
+          <div style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              data-testid="settings-stop-all-background"
+              onClick={() => void stopAll()}
+              disabled={stopping}
+            >
+              {stopping ? 'Stopping…' : 'Stop all background agents'}
+            </button>
+            {stoppedNote && (
+              <span style={{ fontSize: 12, color: 'var(--ok)', marginLeft: 8 }}>{stoppedNote}</span>
+            )}
+          </div>
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+            <input
+              type="checkbox"
+              data-testid="settings-cross-machine"
+              checked={crossMachine}
+              onChange={(e) => {
+                setCrossMachine(e.target.checked);
+                queue({ crossMachineSessions: e.target.checked ? 'on' : 'off' }, true);
+              }}
+            />
+            Share this machine's sessions across machines (visibility only)
+          </label>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
+            Publishes session metadata (branch + status, never the conversation) to the shared
+            remote so you can see sessions from your other machines. Off by default.
+          </p>
+          {crossMachine &&
+            textRow(
+              'this machine label',
+              'machine-…',
+              machineLabel,
+              setMachineLabel,
+              'machineLabel',
+              'settings-machine-label',
+            )}
+
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+            Code navigation (Java / Kotlin)
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 8px' }}>
+            Command+click go-to-definition for Java/Kotlin uses your installed language server
+            (TS/JS works built-in). Set a path below to override PATH detection.
+          </p>
+          {(['java', 'kotlin'] as const).map((lang) => {
+            const st = caps?.[lang];
+            return (
+              <p
+                key={lang}
+                data-testid={`settings-codenav-${lang}`}
                 style={{
-                  background: theme === t ? 'var(--accent)' : 'var(--surface)',
-                  color: theme === t ? '#fff' : 'var(--text)',
-                  borderColor: theme === t ? 'var(--accent)' : 'var(--border)',
+                  fontSize: 12,
+                  margin: '2px 0',
+                  color: st?.available ? 'var(--ok)' : 'var(--muted)',
                 }}
               >
-                {t === 'dark' ? 'Dark' : t === 'light' ? 'Light' : 'System'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 0 }}>
-          Blank = fall back to the env seam, then the default.
-        </p>
-        {row('agent command', 'claude', agentCommand, setAgentCommand, 'settings-agent')}
-        {row('verify command', 'true', verifyCommand, setVerifyCommand, 'settings-verify')}
-        {row('server command', '(auto-detect)', serverCommand, setServerCommand, 'settings-server')}
-        {row('base branch', 'main', baseBranch, setBaseBranch, 'settings-base')}
-
-        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
-          <input
-            type="checkbox"
-            data-testid="settings-persist-full"
-            checked={persistFull}
-            onChange={(e) => setPersistFull(e.target.checked)}
-          />
-          Keep the agent running in the background after quit (b-full)
-        </label>
-        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
-          Wraps the agent in an abduco session so an in-flight turn survives quit/crash and
-          re-attaches on reopen. macOS only.
-        </p>
-        {downgraded && (
-          <p
-            data-testid="settings-persist-warning"
-            style={{ fontSize: 12, color: 'var(--err)', margin: '6px 0 0' }}
-          >
-            ⚠ abduco not found — b-full is disabled and sessions fall back to lite. Install it:{' '}
-            <code>brew install abduco</code>
-          </p>
-        )}
-        {info?.effective === 'full' && (
-          <p style={{ fontSize: 12, color: 'var(--ok)', margin: '6px 0 0' }}>
-            ✓ b-full active — agents survive quit/crash; reopen re-attaches.
-          </p>
-        )}
-        <div style={{ marginTop: 10 }}>
-          <button
-            type="button"
-            data-testid="settings-stop-all-background"
-            onClick={() => void stopAll()}
-            disabled={stopping}
-          >
-            {stopping ? 'Stopping…' : 'Stop all background agents'}
-          </button>
-          {stoppedNote && (
-            <span style={{ fontSize: 12, color: 'var(--ok)', marginLeft: 8 }}>{stoppedNote}</span>
+                {st?.available ? '✓' : '⚠'} {lang}:{' '}
+                {st?.available ? 'available' : (st?.reason ?? 'checking…')}
+              </p>
+            );
+          })}
+          {textRow(
+            'jdtls path (Java)',
+            '(auto-detect)',
+            lspJavaPath,
+            setLspJavaPath,
+            'lspJavaPath',
+            'settings-lsp-java',
           )}
-        </div>
-
-        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
-          <input
-            type="checkbox"
-            data-testid="settings-cross-machine"
-            checked={crossMachine}
-            onChange={(e) => setCrossMachine(e.target.checked)}
-          />
-          Share this machine's sessions across machines (visibility only)
-        </label>
-        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
-          Publishes session metadata (branch + status, never the conversation) to the shared remote
-          so you can see sessions from your other machines. Off by default.
-        </p>
-        {crossMachine &&
-          row(
-            'this machine label',
-            'machine-…',
-            machineLabel,
-            setMachineLabel,
-            'settings-machine-label',
+          {textRow(
+            'kotlin-language-server path',
+            '(auto-detect)',
+            lspKotlinPath,
+            setLspKotlinPath,
+            'lspKotlinPath',
+            'settings-lsp-kotlin',
           )}
 
-        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
-          Code navigation (Java / Kotlin)
-        </div>
-        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 8px' }}>
-          Command+click go-to-definition for Java/Kotlin uses your installed language server (TS/JS
-          works built-in). Set a path below to override PATH detection.
-        </p>
-        {(['java', 'kotlin'] as const).map((lang) => {
-          const st = caps?.[lang];
-          return (
-            <p
-              key={lang}
-              data-testid={`settings-codenav-${lang}`}
-              style={{
-                fontSize: 12,
-                margin: '2px 0',
-                color: st?.available ? 'var(--ok)' : 'var(--muted)',
-              }}
+          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Updates</div>
+          <div
+            data-testid="settings-update"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
+          >
+            <span>
+              Current version: <strong>v{appVersion || '…'}</strong>
+            </span>
+            <button
+              type="button"
+              data-testid="settings-update-check"
+              disabled={checkingUpdate}
+              onClick={() => void checkForUpdate()}
             >
-              {st?.available ? '✓' : '⚠'} {lang}:{' '}
-              {st?.available ? 'available' : (st?.reason ?? 'checking…')}
+              {checkingUpdate ? 'Checking…' : 'Check for updates'}
+            </button>
+          </div>
+          {update && (
+            <p data-testid="settings-update-result" style={{ fontSize: 12, margin: '6px 0 0' }}>
+              {update.error ? (
+                `Couldn't check (${update.error.replace('_', ' ')}) — try again later.`
+              ) : update.updateAvailable ? (
+                <>
+                  v{update.latestVersion} is available.{' '}
+                  <button
+                    type="button"
+                    data-testid="settings-update-download"
+                    onClick={() => openExternal(update.dmgUrl ?? update.releaseUrl)}
+                  >
+                    Download
+                  </button>
+                </>
+              ) : (
+                "You're on the latest version."
+              )}
             </p>
-          );
-        })}
-        {row(
-          'jdtls path (Java)',
-          '(auto-detect)',
-          lspJavaPath,
-          setLspJavaPath,
-          'settings-lsp-java',
-        )}
-        {row(
-          'kotlin-language-server path',
-          '(auto-detect)',
-          lspKotlinPath,
-          setLspKotlinPath,
-          'settings-lsp-kotlin',
-        )}
-
-        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Updates</div>
-        <div
-          data-testid="settings-update"
-          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
-        >
-          <span>
-            Current version: <strong>v{appVersion || '…'}</strong>
-          </span>
-          <button
-            type="button"
-            data-testid="settings-update-check"
-            disabled={checkingUpdate}
-            onClick={() => void checkForUpdate()}
-          >
-            {checkingUpdate ? 'Checking…' : 'Check for updates'}
-          </button>
-        </div>
-        {update && (
-          <p data-testid="settings-update-result" style={{ fontSize: 12, margin: '6px 0 0' }}>
-            {update.error ? (
-              `Couldn't check (${update.error.replace('_', ' ')}) — try again later.`
-            ) : update.updateAvailable ? (
-              <>
-                v{update.latestVersion} is available.{' '}
-                <button
-                  type="button"
-                  data-testid="settings-update-download"
-                  onClick={() => openExternal(update.dmgUrl ?? update.releaseUrl)}
-                >
-                  Download
-                </button>
-              </>
-            ) : (
-              "You're on the latest version."
-            )}
+          )}
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
+            Unsigned build: an update downloads as a .dmg you drag into Applications.
           </p>
-        )}
-        <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
-          Unsigned build: an update downloads as a .dmg you drag into Applications.
-        </p>
+        </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="button" data-testid="settings-save" onClick={submit}>
-            Save
+        <div className="settings-card__foot">
+          <button type="button" data-testid="settings-close" onClick={close}>
+            Done
           </button>
         </div>
       </div>

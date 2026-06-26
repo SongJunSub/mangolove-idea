@@ -105,6 +105,19 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
+/* Square icon-only button (e.g. the titlebar Settings gear): centers a 16px glyph
+   and stays a tidy square instead of inheriting the text-button's wide padding. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+.icon-btn svg {
+  display: block;
+}
 
 input,
 select,
@@ -490,6 +503,72 @@ a {
   justify-content: flex-end;
   gap: 7px;
   margin-top: 11px;
+}
+
+/* Settings modal — responsive. The card never exceeds the padded viewport and its
+   body scrolls, so every control stays reachable on a short/narrow window (no fixed
+   resolution, no cut-off). Header + footer are pinned; only the body scrolls. */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60; /* above the status bar (5) and update card (50) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px; /* keep the card off the window edges */
+  background: rgba(0, 0, 0, 0.5);
+}
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100%);
+  max-height: 100%; /* within the padded overlay => body scrolls instead of overflowing */
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.settings-card__head,
+.settings-card__foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+}
+.settings-card__head {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.settings-card__foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+}
+.settings-card__title {
+  margin: 0;
+  font-size: 16px;
+}
+.settings-card__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.settings-saved {
+  font-size: 12px;
+  color: var(--ok);
+  white-space: nowrap;
+}
+.settings-field {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.settings-field input {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
 }
 
 /* Bottom status BAR (active update + error), anchored to the very bottom of the window */
