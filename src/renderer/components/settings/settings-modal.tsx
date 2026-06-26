@@ -6,6 +6,8 @@ import type {
 } from '../../../shared/types';
 import { useUpdateCheck } from '../../hooks/use-update-check';
 import { useAutoSave } from '../../hooks/use-auto-save';
+import { useI18n } from '../../i18n/i18n-context';
+import { asLocaleSetting } from '../../i18n/resolve-locale';
 import { openExternal } from '../../lib/open-external';
 
 /** Props for the Settings modal. */
@@ -36,7 +38,8 @@ function field(value: string): string {
  * settings and AUTO-SAVE as you edit — text inputs debounce (one write when you
  * pause), toggles/segmented controls persist immediately. There is no Save button;
  * a transient "Saved" note confirms each write. The card is responsive: its body
- * scrolls so every control stays reachable on a short/narrow window.
+ * scrolls so every control stays reachable on a short/narrow window. All copy is
+ * localized via useI18n; the Language control switches the whole app live.
  *
  * Also hosts the b-full session-persistence control: a toggle that wraps the agent
  * in an abduco detached session so an in-flight turn survives quit/crash. The
@@ -49,6 +52,8 @@ export function SettingsModal({
   onChange,
   onClose,
 }: SettingsModalProps): React.JSX.Element {
+  const { t } = useI18n();
+  const [locale, setLocale] = useState(asLocaleSetting(settings.locale));
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(settings.theme ?? 'system');
   const [agentCommand, setAgentCommand] = useState(settings.agentCommand ?? '');
   const [verifyCommand, setVerifyCommand] = useState(settings.verifyCommand ?? '');
@@ -62,7 +67,7 @@ export function SettingsModal({
   const [info, setInfo] = useState<SessionPersistenceInfo | null>(null);
   const [caps, setCaps] = useState<CodeNavCapabilities | null>(null);
   const [stopping, setStopping] = useState(false);
-  const [stoppedNote, setStoppedNote] = useState('');
+  const [stoppedNote, setStoppedNote] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   // Transient "✓ Saved" note: shown for ~1.5s after each persist (timer re-armed each write).
   const [showSaved, setShowSaved] = useState(false);
@@ -108,10 +113,10 @@ export function SettingsModal({
 
   const stopAll = async (): Promise<void> => {
     setStopping(true);
-    setStoppedNote('');
+    setStoppedNote(false);
     try {
       await window.mango.session.stopAllBackground();
-      setStoppedNote('All background agents stopped.');
+      setStoppedNote(true);
     } finally {
       setStopping(false);
     }
@@ -146,55 +151,95 @@ export function SettingsModal({
     </label>
   );
 
+  // A labeled segmented control (radio-like button group). The caller's onSelect closure
+  // narrows the value back to its enum and persists it; used for both Language and Theme.
+  const segmentedRow = (
+    label: string,
+    options: { value: string; label: string }[],
+    selected: string,
+    onSelect: (value: string) => void,
+    testidPrefix: string,
+  ): React.JSX.Element => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
+      <div role="group" aria-label={label} style={{ display: 'inline-flex', gap: 4 }}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            data-testid={`${testidPrefix}-${o.value}`}
+            aria-pressed={selected === o.value}
+            onClick={() => onSelect(o.value)}
+            style={{
+              background: selected === o.value ? 'var(--accent)' : 'var(--surface)',
+              color: selected === o.value ? '#fff' : 'var(--text)',
+              borderColor: selected === o.value ? 'var(--accent)' : 'var(--border)',
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const localeOptions: { value: 'system' | 'ko' | 'en'; label: string }[] = [
+    { value: 'system', label: t('settings.language.system') },
+    { value: 'ko', label: t('settings.language.ko') },
+    { value: 'en', label: t('settings.language.en') },
+  ];
+  const themeOptions: { value: 'dark' | 'light' | 'system'; label: string }[] = [
+    { value: 'dark', label: t('settings.theme.dark') },
+    { value: 'light', label: t('settings.theme.light') },
+    { value: 'system', label: t('settings.theme.system') },
+  ];
+
   return (
     <div className="settings-overlay" onMouseDown={close}>
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Settings"
+        aria-label={t('settings.title')}
         data-testid="settings-modal"
         className="settings-card"
         // Clicks inside the card must not bubble to the overlay's close handler.
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="settings-card__head">
-          <h2 className="settings-card__title">Settings</h2>
+          <h2 className="settings-card__title">{t('settings.title')}</h2>
           <span className="settings-saved" data-testid="settings-saved" aria-live="polite">
-            {showSaved ? '✓ Saved' : ''}
+            {showSaved ? t('settings.saved') : ''}
           </span>
         </div>
 
         <div className="settings-card__body">
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Theme</div>
-            <div role="group" aria-label="Theme" style={{ display: 'inline-flex', gap: 4 }}>
-              {(['dark', 'light', 'system'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  data-testid={`settings-theme-${t}`}
-                  aria-pressed={theme === t}
-                  onClick={() => {
-                    setTheme(t);
-                    queue({ theme: t }, true);
-                  }}
-                  style={{
-                    background: theme === t ? 'var(--accent)' : 'var(--surface)',
-                    color: theme === t ? '#fff' : 'var(--text)',
-                    borderColor: theme === t ? 'var(--accent)' : 'var(--border)',
-                  }}
-                >
-                  {t === 'dark' ? 'Dark' : t === 'light' ? 'Light' : 'System'}
-                </button>
-              ))}
-            </div>
-          </div>
+          {segmentedRow(
+            t('settings.language'),
+            localeOptions,
+            locale,
+            (v) => {
+              setLocale(v as 'system' | 'ko' | 'en');
+              queue({ locale: v } as Partial<AppSettings>, true);
+            },
+            'settings-locale',
+          )}
+
+          {segmentedRow(
+            t('settings.theme'),
+            themeOptions,
+            theme,
+            (v) => {
+              setTheme(v as 'dark' | 'light' | 'system');
+              queue({ theme: v } as Partial<AppSettings>, true);
+            },
+            'settings-theme',
+          )}
 
           <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 0 }}>
-            Blank = fall back to the env seam, then the default.
+            {t('settings.blankHint')}
           </p>
           {textRow(
-            'agent command',
+            t('settings.agentCommand'),
             'claude',
             agentCommand,
             setAgentCommand,
@@ -202,7 +247,7 @@ export function SettingsModal({
             'settings-agent',
           )}
           {textRow(
-            'verify command',
+            t('settings.verifyCommand'),
             'true',
             verifyCommand,
             setVerifyCommand,
@@ -210,14 +255,21 @@ export function SettingsModal({
             'settings-verify',
           )}
           {textRow(
-            'server command',
-            '(auto-detect)',
+            t('settings.serverCommand'),
+            t('settings.autoDetect'),
             serverCommand,
             setServerCommand,
             'serverCommand',
             'settings-server',
           )}
-          {textRow('base branch', 'main', baseBranch, setBaseBranch, 'baseBranch', 'settings-base')}
+          {textRow(
+            t('settings.baseBranch'),
+            'main',
+            baseBranch,
+            setBaseBranch,
+            'baseBranch',
+            'settings-base',
+          )}
 
           <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
@@ -230,24 +282,22 @@ export function SettingsModal({
                 queue({ sessionPersistence: e.target.checked ? 'full' : 'lite' }, true);
               }}
             />
-            Keep the agent running in the background after quit (b-full)
+            {t('settings.persist.label')}
           </label>
           <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
-            Wraps the agent in an abduco session so an in-flight turn survives quit/crash and
-            re-attaches on reopen. macOS only.
+            {t('settings.persist.hint')}
           </p>
           {downgraded && (
             <p
               data-testid="settings-persist-warning"
               style={{ fontSize: 12, color: 'var(--err)', margin: '6px 0 0' }}
             >
-              ⚠ abduco not found — b-full is disabled and sessions fall back to lite. Install it:{' '}
-              <code>brew install abduco</code>
+              {t('settings.persist.missing')} <code>brew install abduco</code>
             </p>
           )}
           {info?.effective === 'full' && (
             <p style={{ fontSize: 12, color: 'var(--ok)', margin: '6px 0 0' }}>
-              ✓ b-full active — agents survive quit/crash; reopen re-attaches.
+              {t('settings.persist.active')}
             </p>
           )}
           <div style={{ marginTop: 10 }}>
@@ -257,10 +307,12 @@ export function SettingsModal({
               onClick={() => void stopAll()}
               disabled={stopping}
             >
-              {stopping ? 'Stopping…' : 'Stop all background agents'}
+              {stopping ? t('settings.stopping') : t('settings.stopAll')}
             </button>
             {stoppedNote && (
-              <span style={{ fontSize: 12, color: 'var(--ok)', marginLeft: 8 }}>{stoppedNote}</span>
+              <span style={{ fontSize: 12, color: 'var(--ok)', marginLeft: 8 }}>
+                {t('settings.stoppedNote')}
+              </span>
             )}
           </div>
 
@@ -275,15 +327,14 @@ export function SettingsModal({
                 queue({ crossMachineSessions: e.target.checked ? 'on' : 'off' }, true);
               }}
             />
-            Share this machine's sessions across machines (visibility only)
+            {t('settings.crossMachine.label')}
           </label>
           <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
-            Publishes session metadata (branch + status, never the conversation) to the shared
-            remote so you can see sessions from your other machines. Off by default.
+            {t('settings.crossMachine.hint')}
           </p>
           {crossMachine &&
             textRow(
-              'this machine label',
+              t('settings.crossMachine.machineLabel'),
               'machine-…',
               machineLabel,
               setMachineLabel,
@@ -293,11 +344,10 @@ export function SettingsModal({
 
           <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
-            Code navigation (Java / Kotlin)
+            {t('settings.codenav.title')}
           </div>
           <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 8px' }}>
-            Command+click go-to-definition for Java/Kotlin uses your installed language server
-            (TS/JS works built-in). Set a path below to override PATH detection.
+            {t('settings.codenav.hint')}
           </p>
           {(['java', 'kotlin'] as const).map((lang) => {
             const st = caps?.[lang];
@@ -312,21 +362,23 @@ export function SettingsModal({
                 }}
               >
                 {st?.available ? '✓' : '⚠'} {lang}:{' '}
-                {st?.available ? 'available' : (st?.reason ?? 'checking…')}
+                {st?.available
+                  ? t('settings.codenav.available')
+                  : (st?.reason ?? t('settings.codenav.checking'))}
               </p>
             );
           })}
           {textRow(
-            'jdtls path (Java)',
-            '(auto-detect)',
+            t('settings.codenav.javaPath'),
+            t('settings.autoDetect'),
             lspJavaPath,
             setLspJavaPath,
             'lspJavaPath',
             'settings-lsp-java',
           )}
           {textRow(
-            'kotlin-language-server path',
-            '(auto-detect)',
+            t('settings.codenav.kotlinPath'),
+            t('settings.autoDetect'),
             lspKotlinPath,
             setLspKotlinPath,
             'lspKotlinPath',
@@ -334,13 +386,15 @@ export function SettingsModal({
           )}
 
           <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Updates</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>
+            {t('settings.updates.title')}
+          </div>
           <div
             data-testid="settings-update"
             style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
           >
             <span>
-              Current version: <strong>v{appVersion || '…'}</strong>
+              {t('settings.updates.current')} <strong>v{appVersion || '…'}</strong>
             </span>
             <button
               type="button"
@@ -348,37 +402,37 @@ export function SettingsModal({
               disabled={checkingUpdate}
               onClick={() => void checkForUpdate()}
             >
-              {checkingUpdate ? 'Checking…' : 'Check for updates'}
+              {checkingUpdate ? t('settings.updates.checking') : t('settings.updates.check')}
             </button>
           </div>
           {update && (
             <p data-testid="settings-update-result" style={{ fontSize: 12, margin: '6px 0 0' }}>
               {update.error ? (
-                `Couldn't check (${update.error.replace('_', ' ')}) — try again later.`
+                t('settings.updates.failed', { reason: update.error.replace('_', ' ') })
               ) : update.updateAvailable ? (
                 <>
-                  v{update.latestVersion} is available.{' '}
+                  {t('settings.updates.available', { version: update.latestVersion ?? '' })}{' '}
                   <button
                     type="button"
                     data-testid="settings-update-download"
                     onClick={() => openExternal(update.dmgUrl ?? update.releaseUrl)}
                   >
-                    Download
+                    {t('settings.updates.download')}
                   </button>
                 </>
               ) : (
-                "You're on the latest version."
+                t('settings.updates.upToDate')
               )}
             </p>
           )}
           <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
-            Unsigned build: an update downloads as a .dmg you drag into Applications.
+            {t('settings.updates.unsignedHint')}
           </p>
         </div>
 
         <div className="settings-card__foot">
           <button type="button" data-testid="settings-close" onClick={close}>
-            Done
+            {t('settings.done')}
           </button>
         </div>
       </div>

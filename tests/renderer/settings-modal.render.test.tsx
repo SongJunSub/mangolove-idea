@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsModal } from '../../src/renderer/components/settings/settings-modal';
+import { I18nContext } from '../../src/renderer/i18n/i18n-context';
+import { makeT } from '../../src/renderer/i18n/messages';
+
+// SettingsModal reads copy via useI18n; wrap every render in an English provider.
+const renderModal = (ui: React.ReactElement): ReturnType<typeof render> =>
+  render(
+    <I18nContext.Provider value={{ locale: 'en', t: makeT('en') }}>{ui}</I18nContext.Provider>,
+  );
 
 // SettingsModal calls session.persistenceInfo() + codenav.capabilities() + app.ping() on
 // mount, and update.check() from the Updates section; stub the bridge.
@@ -45,7 +53,7 @@ beforeEach(() => {
 describe('<SettingsModal> theme control', () => {
   it("defaults to 'system' when unset and auto-saves the picked theme on click", async () => {
     const onChange = vi.fn();
-    render(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
+    renderModal(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
     // unset => 'system' is the active (pressed) option
     expect(screen.getByTestId('settings-theme-system')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('settings-theme-dark')).toHaveAttribute('aria-pressed', 'false');
@@ -56,22 +64,42 @@ describe('<SettingsModal> theme control', () => {
   });
 
   it('seeds the active option from the persisted theme', () => {
-    render(<SettingsModal settings={{ theme: 'light' }} onChange={vi.fn()} onClose={vi.fn()} />);
+    renderModal(
+      <SettingsModal settings={{ theme: 'light' }} onChange={vi.fn()} onClose={vi.fn()} />,
+    );
     expect(screen.getByTestId('settings-theme-light')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('settings-theme-system')).toHaveAttribute('aria-pressed', 'false');
   });
 });
 
+describe('<SettingsModal> language control', () => {
+  it("defaults to 'system' when unset and auto-saves the picked language immediately", async () => {
+    const onChange = vi.fn();
+    renderModal(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
+    expect(screen.getByTestId('settings-locale-system')).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByTestId('settings-locale-ko'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ locale: 'ko' }));
+    expect(screen.getByTestId('settings-locale-ko')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('seeds the active language from the persisted setting', () => {
+    renderModal(<SettingsModal settings={{ locale: 'en' }} onChange={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByTestId('settings-locale-en')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('settings-locale-system')).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
 describe('<SettingsModal> auto-save', () => {
   it('has no Save button (fields auto-save)', () => {
-    render(<SettingsModal settings={{}} onChange={vi.fn()} onClose={vi.fn()} />);
+    renderModal(<SettingsModal settings={{}} onChange={vi.fn()} onClose={vi.fn()} />);
     expect(screen.queryByTestId('settings-save')).not.toBeInTheDocument();
     expect(screen.getByTestId('settings-close')).toBeInTheDocument();
   });
 
   it('persists a text field (trimmed) on blur', async () => {
     const onChange = vi.fn();
-    render(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
+    renderModal(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
     const input = screen.getByTestId('settings-agent');
     await userEvent.type(input, '  claude-next  ');
     await userEvent.tab(); // blur flushes the debounced write
@@ -81,7 +109,7 @@ describe('<SettingsModal> auto-save', () => {
   it('flushes a pending text edit when Done is clicked', async () => {
     const onChange = vi.fn();
     const onClose = vi.fn();
-    render(<SettingsModal settings={{}} onChange={onChange} onClose={onClose} />);
+    renderModal(<SettingsModal settings={{}} onChange={onChange} onClose={onClose} />);
     const input = screen.getByTestId('settings-base');
     await userEvent.type(input, 'develop');
     await userEvent.click(screen.getByTestId('settings-close'));
@@ -92,7 +120,7 @@ describe('<SettingsModal> auto-save', () => {
 
 describe('<SettingsModal> cross-machine controls', () => {
   it('seeds the toggle + label from settings', () => {
-    render(
+    renderModal(
       <SettingsModal
         settings={{ crossMachineSessions: 'on', machineLabel: 'work-mac' }}
         onChange={vi.fn()}
@@ -105,7 +133,7 @@ describe('<SettingsModal> cross-machine controls', () => {
 
   it('defaults to off, reveals the label on enable, and auto-saves the toggle', async () => {
     const onChange = vi.fn();
-    render(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
+    renderModal(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
     expect(screen.getByTestId('settings-cross-machine')).not.toBeChecked();
     expect(screen.queryByTestId('settings-machine-label')).not.toBeInTheDocument();
 
@@ -117,7 +145,7 @@ describe('<SettingsModal> cross-machine controls', () => {
 
   it('toggling an enabled instance OFF persists off immediately', async () => {
     const onChange = vi.fn();
-    render(
+    renderModal(
       <SettingsModal
         settings={{ crossMachineSessions: 'on' }}
         onChange={onChange}
