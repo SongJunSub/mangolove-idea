@@ -22,6 +22,7 @@ import { CrossMachinePanel } from './components/cross-machine/cross-machine-pane
 import { useRepo } from './hooks/use-repo';
 import { Titlebar } from './components/titlebar/titlebar';
 import { FileTree } from './components/tree/file-tree';
+import { FolderIcon } from './components/tree/tree-icons';
 import { SettingsModal } from './components/settings/settings-modal';
 import { UpdateBanner, UpdateProgressInline } from './components/update/update-banner';
 import { StatusBar } from './components/statusbar/status-bar';
@@ -533,7 +534,12 @@ export function App(): React.JSX.Element {
           <div className="workspace">
             {/* top-left: project file tree (A3) */}
             <div className="ws-pane ws-tree">
-              <div className="pane-head">📁 {t('app.project')}</div>
+              <div className="pane-head">
+                <span className="pane-head-ico">
+                  <FolderIcon open={false} />
+                </span>
+                {t('app.project')}
+              </div>
               <FileTree
                 worktreeId={selectedId}
                 selectedFile={selectedFile}
