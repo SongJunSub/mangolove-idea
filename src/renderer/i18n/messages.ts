@@ -102,7 +102,8 @@ export const en = {
   'update.phase.applying': 'Installing & restarting…',
 
   // App chrome (titlebar actions, panes, tabs, editor, quit dialog)
-  'app.repoChange': 'change repo',
+  'app.repoList': 'Repositories',
+  'app.repoAdd': 'Add repository…',
   'app.fanout': '⑃ Fan-out',
   'app.fanoutTip': 'Multimodel fan-out',
   'app.machines': '⌘ Machines',
@@ -399,7 +400,8 @@ export const ko: Record<MessageKey, string> = {
   'update.phase.staging': '설치를 준비하고 있어요…',
   'update.phase.applying': '설치하고 다시 시작할게요…',
 
-  'app.repoChange': '저장소 변경',
+  'app.repoList': '저장소',
+  'app.repoAdd': '저장소 추가…',
   'app.fanout': '⑃ Fan-out',
   'app.fanoutTip': '여러 모델 동시 실행',
   'app.machines': '⌘ 컴퓨터',

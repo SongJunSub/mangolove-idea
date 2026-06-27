@@ -748,6 +748,14 @@ export type RepoPickResult =
   | { readonly ok: false; readonly canceled: true }
   | { readonly ok: false; readonly error: string };
 
+/** One entry in the sidebar repo switcher: a known recent repo + whether it's the active one. */
+export interface RecentRepo {
+  /** Canonical absolute path of the repo root. */
+  readonly path: string;
+  /** True when this is the repo THIS window is bound to (ctx.repoRoot). */
+  readonly active: boolean;
+}
+
 // ── Multimodel fan-out (V2) ──
 
 /** Per-lane lifecycle for a headless claude -p run in a fan-out worktree. */

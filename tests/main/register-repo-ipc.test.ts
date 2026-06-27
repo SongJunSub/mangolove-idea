@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc-channels';
@@ -73,16 +73,17 @@ describe('repo IPC wiring', () => {
     expect(ctx.settingsStore!.set).not.toHaveBeenCalled();
   });
 
-  it('REPO_PICK validates a repo, pushes it to recentRepos, and asks main to open it', async () => {
+  it('REPO_PICK validates a repo, pushes its CANONICAL path to recentRepos, and opens it', async () => {
     writeFileSync(join(dir, '.git'), 'gitdir: /somewhere\n');
+    const canon = realpathSync(dir); // recentRepos is keyed canonically
     mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [dir] });
     const ctx = baseCtx();
     const openRepo = vi.fn();
     ctx.openRepo = openRepo; // index.ts injects the real openOrFocusRepo
     const { handlers, fakeEvent } = registerIpcForTest(ctx);
     const out = await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined);
-    expect(out).toEqual({ ok: true, repoRoot: dir });
-    expect(openRepo).toHaveBeenCalledWith(dir);
+    expect(out).toEqual({ ok: true, repoRoot: canon });
+    expect(openRepo).toHaveBeenCalledWith(canon);
     expect(mocks.relaunch).not.toHaveBeenCalled(); // multi-window: NEVER relaunch
   });
 
@@ -100,6 +101,63 @@ describe('repo IPC wiring', () => {
 
     mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [dir] }); // dir has no .git
     expect(await handlers.get(IPC.REPO_PICK)!(fakeEvent, undefined)).toEqual({
+      ok: false,
+      error: 'not a git repository',
+    });
+    expect(openRepo).not.toHaveBeenCalled();
+  });
+
+  it('REPO_LIST drops stale dirs, canonicalizes, dedupes, and flags the active repo', async () => {
+    const a = mkdtempSync(join(tmpdir(), 'mango-a-'));
+    writeFileSync(join(a, '.git'), 'gitdir: a\n');
+    const b = mkdtempSync(join(tmpdir(), 'mango-b-'));
+    writeFileSync(join(b, '.git'), 'gitdir: b\n');
+    const gone = join(tmpdir(), 'mango-gone-does-not-exist');
+    try {
+      const canonA = realpathSync(a);
+      const canonB = realpathSync(b);
+      const ctx = baseCtx();
+      ctx.repoRoot = canonB; // active = b
+      // recentRepos holds raw paths, with a stale entry + a duplicate of b.
+      ctx.settingsStore = { get: () => ({ recentRepos: [b, gone, a, b] }), set: vi.fn() } as never;
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      const out = await handlers.get(IPC.REPO_LIST)!(fakeEvent, undefined);
+      expect(out).toEqual([
+        { path: canonB, active: true }, // gone dropped, duplicate b collapsed, order kept
+        { path: canonA, active: false },
+      ]);
+    } finally {
+      rmSync(a, { recursive: true, force: true });
+      rmSync(b, { recursive: true, force: true });
+    }
+  });
+
+  it('REPO_OPEN switches to a known repo: bumps the CANONICAL path + calls openRepo', async () => {
+    writeFileSync(join(dir, '.git'), 'gitdir: x\n');
+    const canon = realpathSync(dir);
+    const setSpy = vi.fn();
+    const ctx = baseCtx();
+    // '/old' is non-existent -> canonicalRepoRoot falls back to itself, stays in the list.
+    ctx.settingsStore = { get: () => ({ recentRepos: ['/old', dir] }), set: setSpy } as never;
+    const openRepo = vi.fn();
+    ctx.openRepo = openRepo;
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const out = await handlers.get(IPC.REPO_OPEN)!(fakeEvent, dir);
+    expect(out).toEqual({ ok: true, repoRoot: canon });
+    expect(setSpy).toHaveBeenCalledWith({ recentRepos: [canon, '/old'] }); // canonical, front, deduped
+    expect(openRepo).toHaveBeenCalledWith(canon);
+  });
+
+  it('REPO_OPEN rejects a non-git / non-string path without opening', async () => {
+    const ctx = baseCtx();
+    const openRepo = vi.fn();
+    ctx.openRepo = openRepo;
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    expect(await handlers.get(IPC.REPO_OPEN)!(fakeEvent, dir)).toEqual({
+      ok: false,
+      error: 'not a git repository', // dir has no .git
+    });
+    expect(await handlers.get(IPC.REPO_OPEN)!(fakeEvent, 123 as never)).toEqual({
       ok: false,
       error: 'not a git repository',
     });

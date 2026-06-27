@@ -49,6 +49,7 @@ import type {
   OpenExternalRequest,
   ScrollbackSetRequest,
   RepoPickResult,
+  RecentRepo,
   FanoutRun,
   FanoutStartRequest,
   FanoutStartResult,
@@ -195,6 +196,17 @@ export interface MangoApi {
      * when nothing was opened.
      */
     pick(): Promise<RepoPickResult>;
+    /**
+     * The sidebar repo switcher's list: recentRepos filtered to still-existing git repos,
+     * canonicalized + deduped, with the active one (= this window's repoRoot) flagged.
+     */
+    list(): Promise<RecentRepo[]>;
+    /**
+     * Switch to a KNOWN recent repo by path: opens or FOCUSES its window (never a second
+     * window for the same repo). Bumps it to the front of recentRepos. Rejects-as-result
+     * with {error} if the path is no longer a git repo.
+     */
+    open(path: string): Promise<RepoPickResult>;
   };
   update: {
     /**

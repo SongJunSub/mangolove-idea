@@ -23,6 +23,8 @@ import { useRepo } from './hooks/use-repo';
 import { Titlebar } from './components/titlebar/titlebar';
 import { FileTree } from './components/tree/file-tree';
 import { FolderIcon } from './components/tree/tree-icons';
+import { RepoList } from './components/sidebar/repo-list';
+import { useRecentRepos } from './hooks/use-recent-repos';
 import { SettingsModal } from './components/settings/settings-modal';
 import { UpdateBanner, UpdateProgressInline } from './components/update/update-banner';
 import { StatusBar } from './components/statusbar/status-bar';
@@ -105,6 +107,7 @@ function GearIcon(): React.JSX.Element {
 
 export function App(): React.JSX.Element {
   const repo = useRepo();
+  const recentRepos = useRecentRepos();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { worktrees, loading, error, create, remove, refresh } = useWorktrees();
   const { servers, start: startServer, stop: stopServer } = useServer();
@@ -475,6 +478,15 @@ export function App(): React.JSX.Element {
             <p data-testid="repo-empty-state" style={{ fontSize: 14, color: 'var(--muted)' }}>
               {t('app.repoEmpty')}
             </p>
+            {recentRepos.repos.length > 0 && (
+              <div className="repo-launcher">
+                <RepoList
+                  repos={recentRepos.repos}
+                  onOpen={(path) => void recentRepos.open(path)}
+                  onAdd={() => void repo.pick()}
+                />
+              </div>
+            )}
             <button type="button" data-testid="repo-pick" onClick={() => void repo.pick()}>
               {t('app.repoPick')}
             </button>
@@ -493,9 +505,6 @@ export function App(): React.JSX.Element {
               <span className="titlebar-repo" data-testid="repo-name">
                 {repo.repoRoot.split('/').filter(Boolean).pop() ?? repo.repoRoot}
               </span>
-              <button type="button" data-testid="repo-change" onClick={() => void repo.pick()}>
-                {t('app.repoChange')}
-              </button>
               <button
                 type="button"
                 data-testid="fanout-open"
@@ -532,8 +541,17 @@ export function App(): React.JSX.Element {
         />
         <main className="app-body">
           <div className="workspace">
-            {/* top-left: project file tree (A3) */}
+            {/* top-left: repo switcher + project file tree (A3) */}
             <div className="ws-pane ws-tree">
+              <RepoList
+                repos={recentRepos.repos}
+                onOpen={(path) => void recentRepos.open(path)}
+                onAdd={() =>
+                  void repo.pick().then((r) => {
+                    if (r.ok) void recentRepos.refresh();
+                  })
+                }
+              />
               <div className="pane-head">
                 <span className="pane-head-ico">
                   <FolderIcon open={false} />

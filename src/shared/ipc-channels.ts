@@ -82,7 +82,9 @@ export const IPC = {
 
   // repo root (V2 packaging) — pick/persist the git repo MangoLove operates on
   REPO_GET: 'repo:get', // invoke (-> string | null = ctx.repoRoot)
-  REPO_PICK: 'repo:pick', // invoke (-> RepoPickResult; persists to recentRepos + opens/focuses a window on success, no relaunch)
+  REPO_PICK: 'repo:pick', // invoke (-> RepoPickResult; native picker; persists to recentRepos + opens/focuses a window, no relaunch)
+  REPO_LIST: 'repo:list', // invoke (-> RecentRepo[]; recentRepos filtered to live .git dirs, canonicalized, active flagged)
+  REPO_OPEN: 'repo:open', // invoke (path -> RepoPickResult; switch to a KNOWN recent repo by path = openOrFocus its window)
 
   // multimodel fan-out (V2) — one prompt to N claude --model lanes in parallel worktrees
   FANOUT_START: 'fanout:start', // invoke ({prompt, models, skipPermissions} -> {id, lanes})
