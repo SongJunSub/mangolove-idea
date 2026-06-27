@@ -438,6 +438,98 @@ a {
   text-overflow: ellipsis;
 }
 
+/* ---- repo switcher (left sidebar, above the file tree) ---- */
+.repo-list {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+.repo-list-title {
+  flex: 1;
+}
+.repo-add {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+}
+.repo-list-body {
+  max-height: 168px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 7px 6px;
+}
+.repo-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 12.5px;
+}
+.repo-item:hover {
+  background: var(--accent-soft);
+}
+.repo-item.active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+  cursor: default;
+}
+.repo-item-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.repo-item.active .repo-item-ico {
+  color: var(--accent);
+}
+.repo-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+/* empty-state launcher: the same list, boxed + width-capped */
+.repo-launcher {
+  width: 320px;
+  max-width: 90vw;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.repo-launcher .repo-list {
+  border-bottom: none;
+}
+.repo-launcher .repo-list-body {
+  max-height: 240px;
+}
+
 /* ── In-app update UI: a bottom-right CARD announces an update; a bottom BAR shows the
  *    active download/verify/install (and any error). ── */
 

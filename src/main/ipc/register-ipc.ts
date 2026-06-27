@@ -52,6 +52,7 @@ import type {
   OpenExternalRequest,
   ScrollbackSetRequest,
   RepoPickResult,
+  RecentRepo,
   FanoutStartRequest,
   FanoutStartResult,
   FanoutRun,
@@ -81,6 +82,7 @@ import {
   requireCtxFrom,
   aggregateUnsavedCount,
   sweepAll,
+  canonicalRepoRoot,
   type CtxEventLike,
 } from '../app/window-registry';
 import type { SessionStore } from '../managers/session-store';
@@ -1249,12 +1251,55 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     // Multi-window: push to recentRepos (most-recent first, deduped) and ask main to
     // open or FOCUS a window for this repo — NEVER app.relaunch() (it would nuke every
     // other window). The same-repo-twice focus-guard lives in openRepo (index.ts).
+    // Store the CANONICAL path so recentRepos is keyed consistently with REPO_LIST's
+    // canonicalized read (else a symlinked repo's raw + canonical forms both persist).
     const store = getSettingsStore(ctx);
+    const root = canonicalRepoRoot(dir);
     const prev = store.get().recentRepos ?? [];
-    const recentRepos = [dir, ...prev.filter((r) => r !== dir)];
+    const recentRepos = [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)];
     store.set({ recentRepos });
-    ctx.openRepo?.(dir);
-    return { ok: true, repoRoot: dir };
+    ctx.openRepo?.(root);
+    return { ok: true, repoRoot: root };
+  });
+
+  // The sidebar repo switcher's list: recentRepos filtered to repos that STILL exist
+  // (a deleted/moved dir is dropped), canonicalized + deduped (recentRepos holds raw
+  // dialog paths), with the active one (= THIS window's canonical repoRoot) flagged.
+  ipcMain.handle(IPC.REPO_LIST, async (event): Promise<RecentRepo[]> => {
+    const ctx = requireCtx(event);
+    const store = getSettingsStore(ctx);
+    const active = ctx.repoRoot ?? null; // already canonical (set in createWindow)
+    const seen = new Set<string>();
+    const repos: RecentRepo[] = [];
+    for (const raw of store.get().recentRepos ?? []) {
+      if (!existsSync(join(raw, '.git'))) continue; // stale: dir gone or no longer a repo
+      const path = canonicalRepoRoot(raw);
+      if (seen.has(path)) continue; // two raw forms of the same repo collapse to one
+      seen.add(path);
+      repos.push({ path, active: path === active });
+    }
+    // Defensive: surface the active repo even if recentRepos somehow lost it.
+    if (active && !seen.has(active) && existsSync(join(active, '.git'))) {
+      repos.unshift({ path: active, active: true });
+    }
+    return repos;
+  });
+
+  // Switch to a KNOWN recent repo by path (no native dialog): same dedupe-write as
+  // REPO_PICK, then openOrFocus its window. The same-repo-twice focus-guard lives in
+  // openRepo (index.ts), so clicking a repo already open elsewhere just FOCUSES it.
+  ipcMain.handle(IPC.REPO_OPEN, async (event, path: unknown): Promise<RepoPickResult> => {
+    const ctx = requireCtx(event);
+    if (typeof path !== 'string' || !existsSync(join(path, '.git'))) {
+      return { ok: false, error: 'not a git repository' };
+    }
+    const store = getSettingsStore(ctx);
+    const root = canonicalRepoRoot(path); // canonical-key (matches REPO_LIST + REPO_PICK)
+    const prev = store.get().recentRepos ?? [];
+    const recentRepos = [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)];
+    store.set({ recentRepos });
+    ctx.openRepo?.(root);
+    return { ok: true, repoRoot: root };
   });
 
   ipcMain.handle(IPC.SCROLLBACK_GET, async (event, worktreeId: string): Promise<string | null> => {
