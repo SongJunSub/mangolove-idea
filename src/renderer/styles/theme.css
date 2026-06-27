@@ -247,12 +247,24 @@ a {
 }
 .pane-head {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--faint);
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
+}
+.pane-head-ico {
+  flex: none;
+  display: inline-flex;
+  color: var(--accent);
+}
+.pane-head-ico svg {
+  width: 13px;
+  height: 13px;
 }
 .pane-body {
   flex: 1;
@@ -261,7 +273,8 @@ a {
   padding: 10px 12px;
 }
 .pane-placeholder {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -351,35 +364,74 @@ a {
 }
 
 /* ---- file tree (A3) ---- */
+/* The tree IS the scroll region: it's the flex child that grows + scrolls (its parent
+   .ws-pane is overflow:hidden), so a tall tree scrolls instead of being clipped. */
 .tree {
-  padding: 4px 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 7px;
   font-size: 12.5px;
-  line-height: 1.9;
-  white-space: nowrap;
 }
 .tree-node {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 1px 8px 1px 0;
-  border-radius: 6px;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
   cursor: pointer;
-  border-left: 2px solid transparent;
+  color: var(--text);
+  white-space: nowrap;
+  user-select: none;
 }
 .tree-node:hover {
   background: var(--accent-soft);
 }
 .tree-node.sel {
   background: var(--accent-soft);
-  border-left-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
   color: var(--accent);
 }
-.tree-tw {
-  width: 12px;
+.tree-node.sel .tree-ico,
+.tree-node.sel .tree-chevron {
+  color: var(--accent);
+}
+/* faint vertical nesting guide, one per depth level */
+.tree-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.tree-chevron {
   flex: none;
-  text-align: center;
-  font-size: 9px;
+  width: 12px;
+  height: 12px;
   color: var(--faint);
+  transition: transform 0.12s ease;
+}
+.tree-chevron--open {
+  transform: rotate(90deg);
+}
+.tree-chevron--leaf {
+  visibility: hidden; /* files: keep the chevron's width so names align under folders */
+}
+.tree-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted); /* folders inherit this; files override with their type tint */
+}
+.tree-ico-svg {
+  width: 16px;
+  height: 16px;
 }
 .tree-name {
   overflow: hidden;

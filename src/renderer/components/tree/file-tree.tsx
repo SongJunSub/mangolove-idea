@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { TreeEntry } from '../../../shared/types';
 import { useI18n } from '../../i18n/i18n-context';
+import { Chevron, FileIcon, FolderIcon, fileAccent } from './tree-icons';
+
+/** Indent step (px) per nesting depth — also where the indent guide line sits. */
+const INDENT = 16;
 
 interface Node extends TreeEntry {
   /** Path relative to the worktree root (POSIX-style, what the IPC expects). */
@@ -82,18 +86,30 @@ export function FileTree({
   const renderNodes = (nodes: Node[], depth: number): React.JSX.Element[] =>
     nodes.map((node) => {
       const kids = node.isDir ? children[node.relPath] : undefined;
+      const expanded = node.isDir && kids !== undefined; // expanded once children are requested
       return (
         <div key={node.relPath}>
           <div
             className={`tree-node${selectedFile === node.relPath ? ' sel' : ''}`}
             data-testid={`tree-node-${node.relPath}`}
-            style={{ paddingLeft: 8 + depth * 14 }}
+            style={{ paddingLeft: 8 + depth * INDENT }}
             onClick={() => (node.isDir ? toggle(node) : onOpenFile(node.relPath))}
           >
-            <span className="tree-tw">{node.isDir ? (kids ? '▾' : '▸') : ''}</span>
-            <span className="tree-name">
-              {node.isDir ? '📁' : '📄'} {node.name}
+            {Array.from({ length: depth }, (_, i) => (
+              <span key={i} className="tree-guide" style={{ left: 8 + i * INDENT + 7 }} />
+            ))}
+            {node.isDir ? (
+              <Chevron open={expanded} />
+            ) : (
+              <span className="tree-chevron tree-chevron--leaf" aria-hidden="true" />
+            )}
+            <span
+              className="tree-ico"
+              style={node.isDir ? undefined : { color: fileAccent(node.name) }}
+            >
+              {node.isDir ? <FolderIcon open={expanded} /> : <FileIcon />}
             </span>
+            <span className="tree-name">{node.name}</span>
           </div>
           {Array.isArray(kids) && renderNodes(kids, depth + 1)}
         </div>
