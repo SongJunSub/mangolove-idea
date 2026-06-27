@@ -29,6 +29,30 @@ describe('useUpdateCheck', () => {
     expect(result.current.checking).toBe(false); // the mount check never toggles `checking`
   });
 
+  it('re-checks every hour while mounted (checkOnMount=true), and stops on unmount', async () => {
+    vi.useFakeTimers();
+    try {
+      const check = stubCheck();
+      const { unmount } = renderHook(() => useUpdateCheck(true));
+      expect(check).toHaveBeenCalledTimes(1); // launch check
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000); // +1h
+      });
+      expect(check).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000); // +2h
+      });
+      expect(check).toHaveBeenCalledTimes(3);
+      unmount();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000); // +3h: no more checks after unmount
+      });
+      expect(check).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does NOT check on mount when checkOnMount=false', () => {
     const check = stubCheck();
     renderHook(() => useUpdateCheck(false));
