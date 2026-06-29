@@ -9,6 +9,7 @@ import {
   sweepAll,
   findCtxByRepoRoot,
   teardownWindow,
+  rebindCtxRepo,
   canonicalRepoRoot,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
@@ -128,6 +129,95 @@ describe('teardownWindow', () => {
   it('teardownWindow on an unknown id is a guarded no-op', () => {
     const contexts = new Map<number, IpcContext>();
     expect(() => teardownWindow(contexts, 42)).not.toThrow();
+  });
+});
+
+describe('rebindCtxRepo (in-place repo switch)', () => {
+  const REPO_SCOPED = [
+    'worktreeManager',
+    'sessionManager',
+    'sessionPublisher',
+    'serverManager',
+    'logStore',
+    'mergeRunner',
+    'diffViewer',
+    'fileTreeReader',
+    'fileEditor',
+    'ghStatusReader',
+    'codeNavService',
+    'lspManager',
+    'conflictResolver',
+    'fanoutManager',
+  ] as const;
+
+  it('kills live processes, nulls every repo-scoped manager, resets flags, sets the new root — and KEEPS shared state', () => {
+    const calls: string[] = [];
+    const sentinel = {} as never;
+    const ctx: IpcContext = {
+      mainWindow: { focus: () => {} } as never,
+      repoRoot: '/old',
+      // live-process managers (spied — must be torn down). rebind uses sessionManager.dispose()
+      // (killAll + sessions.clear), NOT bare killAll, since the window stays alive across reload.
+      sessionManager: { dispose: () => calls.push('sessionDispose') } as never,
+      serverManager: { dispose: () => calls.push('serverDispose') } as never,
+      lspManager: { dispose: () => calls.push('lspDispose') } as never,
+      fanoutManager: {
+        abort: async () => {
+          calls.push('abort');
+          return { ok: true };
+        },
+      } as never,
+      // the remaining repo-scoped managers (must be nulled)
+      worktreeManager: sentinel,
+      sessionPublisher: sentinel,
+      logStore: sentinel,
+      mergeRunner: sentinel,
+      diffViewer: sentinel,
+      fileTreeReader: sentinel,
+      fileEditor: sentinel,
+      ghStatusReader: sentinel,
+      codeNavService: sentinel,
+      conflictResolver: sentinel,
+      // per-window flags (must reset)
+      unsavedFileCount: 3,
+      sessionSettingsDirty: true,
+      serverSettingsDirty: true,
+      // shared / non-repo state (must be KEPT)
+      sessionStore: sentinel,
+      settingsStore: sentinel,
+      scrollbackStore: sentinel,
+      updaterService: sentinel,
+      abducoPath: '/usr/bin/abduco',
+      requestQuit: () => {},
+      openRepo: () => {},
+    };
+
+    rebindCtxRepo(ctx, '/new/repo');
+
+    expect(calls.sort()).toEqual(['abort', 'lspDispose', 'serverDispose', 'sessionDispose']);
+    for (const key of REPO_SCOPED) {
+      expect(ctx[key], key).toBeUndefined();
+    }
+    expect(ctx.unsavedFileCount).toBe(0);
+    expect(ctx.sessionSettingsDirty).toBe(false);
+    expect(ctx.serverSettingsDirty).toBe(false);
+    expect(ctx.repoRoot).toBe(canonicalRepoRoot('/new/repo'));
+    // shared stores + window + updater + abducoPath + injected callbacks are NOT repo-scoped
+    expect(ctx.mainWindow).not.toBeNull();
+    expect(ctx.sessionStore).toBe(sentinel);
+    expect(ctx.settingsStore).toBe(sentinel);
+    expect(ctx.scrollbackStore).toBe(sentinel);
+    expect(ctx.updaterService).toBe(sentinel);
+    expect(ctx.abducoPath).toBe('/usr/bin/abduco');
+    expect(typeof ctx.requestQuit).toBe('function');
+    expect(typeof ctx.openRepo).toBe('function');
+  });
+
+  it('rebinds an empty-gate ctx (no managers) without throwing', () => {
+    const ctx: IpcContext = { mainWindow: null, repoRoot: null };
+    expect(() => rebindCtxRepo(ctx, '/x')).not.toThrow();
+    expect(ctx.repoRoot).toBe(canonicalRepoRoot('/x'));
+    expect(ctx.unsavedFileCount).toBe(0);
   });
 
   // Regression: the same-repo focus-guard was bypassable when the repo was reached via

@@ -96,6 +96,55 @@ export function teardownWindow(contexts: Map<number, IpcContext>, id: number): v
   contexts.delete(id);
 }
 
+/**
+ * Rebinds a window's ctx to a DIFFERENT repo IN PLACE (one window, no new BrowserWindow).
+ * Kills every live OS process the old repo's managers own (the teardownWindow kill set +
+ * fan-out lanes), then NULLs every repo-scoped manager so register-ipc's lazy getters
+ * rebuild them against the new root on the next call. Resets the per-window dirty flags
+ * and sets the new (canonical) repoRoot. The caller must webContents.reload() after, so
+ * the renderer remounts and re-reads REPO_GET. The 3 shared stores, the window ref, the
+ * updater, abducoPath and injected callbacks are NOT repo-scoped and are kept. The ctx
+ * stays in `contexts` under the SAME webContents.id (stable across reload).
+ */
+export function rebindCtxRepo(ctx: IpcContext, newRoot: string): void {
+  // 1. Kill live processes (same set teardownWindow uses on close, plus fan-out lanes).
+  //    Unlike teardownWindow, the window stays ALIVE here (we reload, not destroy), so use
+  //    sessionManager.dispose() — killAll() + sessions.clear() — NOT bare killAll(): clearing
+  //    the map makes the old PTYs' async exits register as stale (handleExit's identity guard
+  //    drops them) instead of re-emitting a SESSION_EXIT for an old-repo worktree into the
+  //    reloaded renderer. Mirrors ServerManager.killAll, which already clears its map.
+  //    fanoutManager.abort() is async + fire-and-forget on purpose: rebindCtxRepo MUST stay
+  //    synchronous so a window 'closed' event can't interleave mid-rebind (teardownWindow then
+  //    no-ops on the already-nulled managers). The abort cleans old-repo .worktrees/branches in
+  //    the background; an A->B->A switch-back during that window can briefly contend on A's .git
+  //    locks (transient, self-healing, retried by the caller) — accepted to keep teardown sync.
+  ctx.sessionManager?.dispose();
+  ctx.serverManager?.dispose();
+  ctx.lspManager?.dispose();
+  void ctx.fanoutManager?.abort();
+  // 2. Null every repo-scoped manager so the lazy getters rebuild against the new root.
+  ctx.worktreeManager = undefined;
+  ctx.sessionManager = undefined;
+  ctx.sessionPublisher = undefined;
+  ctx.serverManager = undefined;
+  ctx.logStore = undefined; // built with serverManager — null together
+  ctx.mergeRunner = undefined;
+  ctx.diffViewer = undefined;
+  ctx.fileTreeReader = undefined;
+  ctx.fileEditor = undefined;
+  ctx.ghStatusReader = undefined; // caches owner/repo — must null
+  ctx.codeNavService = undefined;
+  ctx.lspManager = undefined;
+  ctx.conflictResolver = undefined;
+  ctx.fanoutManager = undefined;
+  // 3. Reset per-window flags (new repo => no unsaved files, no stale-settings markers).
+  ctx.unsavedFileCount = 0;
+  ctx.sessionSettingsDirty = false;
+  ctx.serverSettingsDirty = false;
+  // 4. Bind the new repo (canonical, like createWindow).
+  ctx.repoRoot = canonicalRepoRoot(newRoot);
+}
+
 /** First ctx whose repoRoot equals the given path (same-repo focus-guard), or undefined. */
 export function findCtxByRepoRoot(
   contexts: Map<number, IpcContext>,

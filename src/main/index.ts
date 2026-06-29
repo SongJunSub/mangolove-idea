@@ -12,8 +12,8 @@ import {
   aggregateUnsavedCount,
   sweepAll,
   teardownWindow,
+  rebindCtxRepo,
   findCtxByRepoRoot,
-  pickEmptyGateCtx,
   canonicalRepoRoot,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
@@ -42,34 +42,25 @@ let scrollbackStore: ScrollbackStore;
 let abducoPath: string | null = null;
 
 /**
- * Opens a window for `repoRoot`, OR focuses the existing window if that repo is
- * already open (SAME REPO IN TWO WINDOWS = FORBIDDEN — shared .git/MERGE_HEAD +
- * scrollback/session races). If an empty-gate window (no repo) exists, ATTACH the
- * repo to it (bind ctx.repoRoot + reload so its renderer re-reads REPO_GET) instead of
- * spawning a duplicate window.
+ * Switches the window identified by `wcId` to `repoRoot` IN PLACE (one window swaps repos,
+ * no new BrowserWindow) — this is what the sidebar repo switcher drives. Honors the same
+ * "one repo per window" invariant: if the target repo is already open in ANOTHER window,
+ * that window is FOCUSED instead (never duplicated). Otherwise this window's managers are
+ * torn down + rebound to the new root (rebindCtxRepo) and the window is reloaded so the
+ * renderer remounts against the new repo. A no-op when already on that repo.
  */
-function openOrFocusRepo(repoRoot: string): void {
-  // Canonicalize FIRST so the focus-guard compares against the same form createWindow
-  // stores on ctx.repoRoot — else /tmp/x vs /private/tmp/x (or a trailing slash) would
-  // dodge the dedup and open a duplicate window racing the shared .git/MERGE_HEAD.
+function switchOrFocusRepo(wcId: number, repoRoot: string): void {
   const root = canonicalRepoRoot(repoRoot);
-  const existing = findCtxByRepoRoot(contexts, root);
-  if (existing?.mainWindow && !existing.mainWindow.isDestroyed()) {
-    existing.mainWindow.focus();
+  const current = contexts.get(wcId);
+  if (!current?.mainWindow || current.mainWindow.isDestroyed()) return;
+  if (current.repoRoot === root) return; // already here
+  const other = findCtxByRepoRoot(contexts, root);
+  if (other && other !== current && other.mainWindow && !other.mainWindow.isDestroyed()) {
+    other.mainWindow.focus(); // open elsewhere -> focus it, don't duplicate or steal
     return;
   }
-  const gate = pickEmptyGateCtx(contexts);
-  if (gate?.mainWindow && !gate.mainWindow.isDestroyed()) {
-    // Attach: set this window's repoRoot, then reload it. The reload re-runs the
-    // renderer's mount-time REPO_GET, which now returns the new ctx.repoRoot, so the
-    // picker is replaced by the worktree UI. NO new REPO_OPENED channel. webContents.id
-    // is STABLE across reload (empirically confirmed on Electron 42.4.0), so the
-    // contexts key for this window is unaffected.
-    gate.repoRoot = root;
-    gate.mainWindow.webContents.reload();
-    return;
-  }
-  createWindow(root);
+  rebindCtxRepo(current, root);
+  current.mainWindow.webContents.reload();
 }
 
 /**
@@ -115,7 +106,9 @@ function createWindow(repoRoot: string | null): BrowserWindow {
   ctx.scrollbackStore = scrollbackStore;
   ctx.abducoPath = abducoPath;
   ctx.requestQuit = () => quitController.decide(true);
-  ctx.openRepo = (root) => openOrFocusRepo(root);
+  // The sidebar switcher swaps repos IN PLACE in THIS window (focus another window only
+  // if the target repo is already open there). Boot/activate use createWindow directly.
+  ctx.openRepo = (root) => switchOrFocusRepo(wcId, root);
   // Register BEFORE loading content so a quit during load still sweeps this window.
   contexts.set(wcId, ctx);
 

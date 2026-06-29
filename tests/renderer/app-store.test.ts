@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { aggregateStatus } from '../../src/renderer/state/app-store';
-import type { Worktree, AgentStatus, ServerStatus } from '../../src/shared/types';
+import {
+  aggregateStatus,
+  isRepoBusy,
+  type WorktreeRowStatus,
+} from '../../src/renderer/state/app-store';
+import type { Worktree, AgentStatus, ServerStatus, ServerState } from '../../src/shared/types';
 
 const wt = (id: string, branch: string, isPrimary = false): Worktree => ({
   id,
@@ -48,5 +52,36 @@ describe('aggregateStatus (per-worktree server map)', () => {
     const servers = new Map<string, ServerStatus>([['/a', serverOn('/a', 'running')]]);
     const map = aggregateStatus([wt('/a', 'main', true), wt('/b', 'feat')], new Map(), servers);
     expect(map.get('/b')).toMatchObject({ server: 'stopped', ownsServer: false });
+  });
+});
+
+describe('isRepoBusy (in-place repo-switch confirm gate)', () => {
+  const row = (agent: AgentStatus, server: ServerState = 'stopped'): WorktreeRowStatus => ({
+    agent,
+    server,
+    ownsServer: server !== 'stopped',
+  });
+  const statuses = (...rows: WorktreeRowStatus[]): ReadonlyMap<string, WorktreeRowStatus> =>
+    new Map(rows.map((r, i) => [`/wt${i}`, r]));
+
+  it('an unsaved editor alone makes the repo busy (even with all agents idle)', () => {
+    expect(isRepoBusy(true, statuses(row('idle'), row('idle')))).toBe(true);
+  });
+
+  it('a clean editor with only idle/exited/error agents is NOT busy', () => {
+    expect(isRepoBusy(false, statuses(row('idle'), row('exited'), row('error')))).toBe(false);
+  });
+
+  it("an in-flight agent turn ('running' or 'starting') makes the repo busy", () => {
+    expect(isRepoBusy(false, statuses(row('idle'), row('running')))).toBe(true);
+    expect(isRepoBusy(false, statuses(row('starting')))).toBe(true);
+  });
+
+  it('a live dev server alone does NOT make the repo busy (cheap to restart, no work lost)', () => {
+    expect(isRepoBusy(false, statuses(row('idle', 'running')))).toBe(false);
+  });
+
+  it('no worktrees + clean editor is not busy', () => {
+    expect(isRepoBusy(false, new Map())).toBe(false);
   });
 });

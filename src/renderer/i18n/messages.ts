@@ -104,6 +104,10 @@ export const en = {
   // App chrome (titlebar actions, panes, tabs, editor, quit dialog)
   'app.repoList': 'Repositories',
   'app.repoAdd': 'Add repository…',
+  'app.repoSwitch.title': 'Switch repository?',
+  'app.repoSwitch.body':
+    "This window's running agents and servers will stop, and unsaved changes will be lost.",
+  'app.repoSwitch.confirm': 'Switch',
   'app.fanout': '⑃ Fan-out',
   'app.fanoutTip': 'Multimodel fan-out',
   'app.machines': '⌘ Machines',
@@ -402,6 +406,10 @@ export const ko: Record<MessageKey, string> = {
 
   'app.repoList': '저장소',
   'app.repoAdd': '저장소 추가…',
+  'app.repoSwitch.title': '레포를 전환할까요?',
+  'app.repoSwitch.body':
+    '이 창에서 실행 중인 에이전트와 서버가 멈추고, 저장 안 한 변경사항은 사라져요.',
+  'app.repoSwitch.confirm': '전환',
   'app.fanout': '⑃ Fan-out',
   'app.fanoutTip': '여러 모델 동시 실행',
   'app.machines': '⌘ 컴퓨터',

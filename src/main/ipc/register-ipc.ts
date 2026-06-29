@@ -725,7 +725,7 @@ async function getGhStatusReader(ctx: IpcContext): Promise<GhStatusReader> {
   const pathOf = async (worktreeId: string): Promise<string> => (await treeOf(worktreeId)).path;
   const branchOf = async (worktreeId: string): Promise<string> => (await treeOf(worktreeId)).branch;
 
-  ctx.ghStatusReader = new GhStatusReader({
+  const reader = new GhStatusReader({
     runner: new NodeProcessRunner(),
     repoRoot,
     owner,
@@ -760,7 +760,13 @@ async function getGhStatusReader(ctx: IpcContext): Promise<GhStatusReader> {
       }
     },
   });
-  return ctx.ghStatusReader;
+  // An in-place repo switch (rebindCtxRepo) can rebind ctx DURING the `git remote get-url`
+  // await above (a real child process), nulling ghStatusReader meanwhile. Only cache when
+  // ctx still points at the repo we built for — otherwise this OLD-repo reader would poison
+  // the NEW repo's PR/CI panel until the next switch. A non-cached return still satisfies the
+  // in-flight (now-stale) request; the new repo re-enters this getter and rebuilds fresh.
+  if (ctx.repoRoot === repoRoot && !ctx.ghStatusReader) ctx.ghStatusReader = reader;
+  return ctx.ghStatusReader ?? reader;
 }
 
 /** Parses an origin URL (ssh or https) into {owner, repo}; empty on no match. */
