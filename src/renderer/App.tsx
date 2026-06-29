@@ -14,6 +14,7 @@ import { useWorktrees } from './hooks/use-worktrees';
 import { useServer } from './hooks/use-server';
 import { useLogs } from './hooks/use-logs';
 import { useWorktreeStatus } from './hooks/use-worktree-status';
+import { isRepoBusy } from './state/app-store';
 import { useMerge } from './hooks/use-merge';
 import { useSessionRecords } from './hooks/use-session-records';
 import { useSettings } from './hooks/use-settings';
@@ -138,6 +139,9 @@ export function App(): React.JSX.Element {
   const [fanoutOpen, setFanoutOpen] = useState(false);
   const [crossMachineOpen, setCrossMachineOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
+  // Pending in-place repo switch awaiting confirmation (set only when the current repo is
+  // busy — a running agent turn or an unsaved file — since the switch tears those down).
+  const [pendingRepoSwitch, setPendingRepoSwitch] = useState<string | null>(null);
   // In-app update notice (macOS, unsigned): one silent check on launch feeds the banner. A
   // failed check yields a status with `error` set, which the banner predicate excludes (so it
   // stays hidden). The app never auto-installs — the banner just links the download.
@@ -158,6 +162,13 @@ export function App(): React.JSX.Element {
   const editor = useFileEditor(selectedId, selectedFile);
   // A selection change queued while the editor is dirty, awaiting the save/discard prompt.
   const [pending, setPending] = useState<PendingSwitch | null>(null);
+
+  // In-place repo switch (the sidebar): main tears down THIS window's agents/servers/LSP and
+  // rebinds it to the new repo. Confirm first if anything live would be lost; else switch now.
+  const requestRepoSwitch = (path: string): void => {
+    if (isRepoBusy(editor.dirty, statuses)) setPendingRepoSwitch(path);
+    else void recentRepos.open(path);
+  };
 
   // Code-nav (Phase B): the position to reveal in the editor after a go-to-definition jump
   // (scoped to its relPath so a normal open never jumps), plus a Back-navigation stack.
@@ -545,7 +556,7 @@ export function App(): React.JSX.Element {
             <div className="ws-pane ws-tree">
               <RepoList
                 repos={recentRepos.repos}
-                onOpen={(path) => void recentRepos.open(path)}
+                onOpen={requestRepoSwitch}
                 onAdd={() =>
                   void repo.pick().then((r) => {
                     if (r.ok) void recentRepos.refresh();
@@ -861,6 +872,55 @@ export function App(): React.JSX.Element {
               onDiscard={onGuardDiscard}
               onCancel={onGuardCancel}
             />
+          )}
+          {pendingRepoSwitch && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              data-testid="repo-switch-dialog"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <div
+                style={{
+                  background: 'var(--surface)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: 24,
+                  maxWidth: 380,
+                }}
+              >
+                <h2 style={{ marginTop: 0, fontSize: 16 }}>{t('app.repoSwitch.title')}</h2>
+                <p style={{ fontSize: 13 }}>{t('app.repoSwitch.body')}</p>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button
+                    type="button"
+                    data-testid="repo-switch-cancel"
+                    onClick={() => setPendingRepoSwitch(null)}
+                  >
+                    {t('app.quit.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="repo-switch-confirm"
+                    onClick={() => {
+                      const path = pendingRepoSwitch;
+                      setPendingRepoSwitch(null);
+                      void recentRepos.open(path);
+                    }}
+                  >
+                    {t('app.repoSwitch.confirm')}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
           {quitWarning && (
             <div
