@@ -142,4 +142,62 @@ describe('SettingsStore — recentRepos (multi-window)', () => {
     store.set({ agentCommand: 'claude' });
     expect(new SettingsStore(file).get().recentRepos).toEqual(['/keep']);
   });
+
+  describe('paneLayout (drag-resize splitters)', () => {
+    it('persists a valid paneLayout and reads it back', () => {
+      const store = new SettingsStore(file);
+      const merged = store.set({ paneLayout: { leftColWidth: 320, topRowFraction: 1.5 } });
+      expect(merged.paneLayout).toEqual({ leftColWidth: 320, topRowFraction: 1.5 });
+      expect(new SettingsStore(file).get().paneLayout).toEqual({
+        leftColWidth: 320,
+        topRowFraction: 1.5,
+      });
+    });
+
+    it('CLAMPS out-of-range values on write (so a pane can never collapse)', () => {
+      const store = new SettingsStore(file);
+      const merged = store.set({ paneLayout: { leftColWidth: 9999, topRowFraction: 0.001 } });
+      expect(merged.paneLayout).toEqual({ leftColWidth: 640, topRowFraction: 0.25 });
+      const tiny = store.set({ paneLayout: { leftColWidth: 1, topRowFraction: 99 } });
+      expect(tiny.paneLayout).toEqual({ leftColWidth: 160, topRowFraction: 4 });
+    });
+
+    it('CLAMPS a hand-edited/stale file on read', () => {
+      writeFileSync(file, JSON.stringify({ paneLayout: { leftColWidth: 0, topRowFraction: -5 } }));
+      expect(new SettingsStore(file).get().paneLayout).toEqual({
+        leftColWidth: 160,
+        topRowFraction: 0.25,
+      });
+    });
+
+    it('treats a non-object / non-finite paneLayout as unset (revert to CSS defaults)', () => {
+      writeFileSync(file, JSON.stringify({ paneLayout: 'nope' }));
+      expect(new SettingsStore(file).get().paneLayout).toBeUndefined();
+      writeFileSync(file, JSON.stringify({ paneLayout: { leftColWidth: 'x', topRowFraction: 1 } }));
+      expect(new SettingsStore(file).get().paneLayout).toBeUndefined();
+      writeFileSync(
+        file,
+        JSON.stringify({ paneLayout: { leftColWidth: 300 /* topRowFraction missing */ } }),
+      );
+      expect(new SettingsStore(file).get().paneLayout).toBeUndefined();
+    });
+
+    it('set({paneLayout: <invalid>}) deletes a previously stored layout (unset)', () => {
+      const store = new SettingsStore(file);
+      store.set({ paneLayout: { leftColWidth: 300, topRowFraction: 1 } });
+      const merged = store.set({ paneLayout: { leftColWidth: NaN, topRowFraction: 1 } });
+      expect(merged.paneLayout).toBeUndefined();
+      expect(new SettingsStore(file).get().paneLayout).toBeUndefined();
+    });
+
+    it('leaves paneLayout untouched when the partial omits it (true partial-merge)', () => {
+      const store = new SettingsStore(file);
+      store.set({ paneLayout: { leftColWidth: 300, topRowFraction: 2 } });
+      store.set({ agentCommand: 'claude' });
+      expect(new SettingsStore(file).get().paneLayout).toEqual({
+        leftColWidth: 300,
+        topRowFraction: 2,
+      });
+    });
+  });
 });

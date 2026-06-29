@@ -26,6 +26,7 @@ import { FileTree } from './components/tree/file-tree';
 import { FolderIcon } from './components/tree/tree-icons';
 import { RepoList } from './components/sidebar/repo-list';
 import { useRecentRepos } from './hooks/use-recent-repos';
+import { usePaneLayout } from './hooks/use-pane-layout';
 import { SettingsModal } from './components/settings/settings-modal';
 import { UpdateBanner, UpdateProgressInline } from './components/update/update-banner';
 import { StatusBar } from './components/statusbar/status-bar';
@@ -126,6 +127,11 @@ export function App(): React.JSX.Element {
 
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
+  // Drag-resizable 2x2 workspace splitters (A2c): live geometry + persist-on-drag-end.
+  const paneLayout = usePaneLayout(
+    settings.paneLayout,
+    (l) => void saveSettings({ paneLayout: l }),
+  );
   // Resolve the UI locale (explicit setting wins; otherwise follow the OS) and build the
   // i18n value App both provides (for child screens) and consumes (for its own titlebar).
   const locale = resolveLocale(settings.locale, navigator.language);
@@ -551,7 +557,7 @@ export function App(): React.JSX.Element {
           }
         />
         <main className="app-body">
-          <div className="workspace">
+          <div className="workspace" ref={paneLayout.workspaceRef} style={paneLayout.gridStyle}>
             {/* top-left: repo switcher + project file tree (A3) */}
             <div className="ws-pane ws-tree">
               <RepoList
@@ -742,8 +748,17 @@ export function App(): React.JSX.Element {
                         </button>
                       )}
                     </div>
-                    {/* Terminal stays mounted (live PTY) but hidden when Diff is active. */}
-                    <div style={{ display: paneMode === 'terminal' ? 'block' : 'none' }}>
+                    {/* Terminal stays mounted (live PTY) but hidden when Diff is active.
+                        When shown it's a flex column that fills the (resizable) pane so the
+                        terminal host's flex:1 can grow to the cell height (A2c). */}
+                    <div
+                      style={{
+                        display: paneMode === 'terminal' ? 'flex' : 'none',
+                        flexDirection: 'column',
+                        flex: 1,
+                        minHeight: 0,
+                      }}
+                    >
                       <Suspense
                         fallback={
                           <p style={{ fontSize: 13, color: 'var(--muted)' }}>
@@ -820,6 +835,30 @@ export function App(): React.JSX.Element {
                 <LogPanel lines={logLines} />
               </section>
             </div>
+            {/* Drag-resizable splitters (A2c): the vertical bar sets the left-column width,
+                the horizontal bar sets the top/bottom row ratio. Both overlay the +-shaped
+                grid divider; double-click resets to defaults. Editor (Monaco automaticLayout)
+                and terminal (ResizeObserver) re-fit themselves when their cell changes. */}
+            <div
+              className="ws-split ws-split-col"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={t('app.resizeColumns')}
+              title={t('app.resizeColumns')}
+              data-testid="ws-split-col"
+              style={{ left: paneLayout.layout.leftColWidth }}
+              {...paneLayout.colHandlers}
+            />
+            <div
+              className="ws-split ws-split-row"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label={t('app.resizeRows')}
+              title={t('app.resizeRows')}
+              data-testid="ws-split-row"
+              style={{ top: paneLayout.rowHandleTop }}
+              {...paneLayout.rowHandlers}
+            />
           </div>
           {fanoutOpen && (
             <div className="fanout-overlay" data-testid="fanout-overlay">

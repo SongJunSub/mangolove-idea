@@ -219,13 +219,65 @@ a {
   margin-right: 4px;
 }
 
-/* ---- 2x2 workspace grid (A2b): tree | editor / worktrees | terminal ---- */
+/* ---- 2x2 workspace grid (A2b): tree | editor / worktrees | terminal ----
+   Track sizes are the DEFAULTS; when the user drags a splitter, App.tsx overrides
+   grid-template-columns/-rows via an inline style from the persisted paneLayout (A2c).
+   position:relative anchors the two absolutely-positioned splitter handles below. */
 .workspace {
   display: grid;
   grid-template-columns: 264px 1fr;
   grid-template-rows: 1.25fr 1fr;
   height: 100%;
   min-height: 0;
+  position: relative;
+}
+/* ---- drag-resize splitter handles (A2c) ----
+   Thin invisible hit areas overlaying the +-shaped grid divider. A 1px accent line
+   appears on hover/drag. The column handle spans full height at left=leftColWidth; the
+   row handle spans full width at top=<topRowFraction ratio>. touch-action:none lets
+   Pointer Events drive the drag without the browser hijacking it for scroll/zoom. */
+.ws-split {
+  position: absolute;
+  z-index: 6;
+  background: transparent;
+  touch-action: none;
+}
+.ws-split::before {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.ws-split:hover::before,
+.ws-split:active::before {
+  opacity: 0.7;
+}
+.ws-split-col {
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  margin-left: -5px; /* center the 9px hit area on the 1px grid border */
+  cursor: col-resize;
+}
+.ws-split-col::before {
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+}
+.ws-split-row {
+  left: 0;
+  right: 0;
+  height: 9px;
+  margin-top: -5px;
+  cursor: row-resize;
+}
+.ws-split-row::before {
+  left: 0;
+  right: 0;
+  top: 4px;
+  height: 1px;
 }
 .ws-pane {
   display: flex;
@@ -345,7 +397,10 @@ a {
 }
 .code-editor-host {
   flex: 1;
-  min-height: 120px;
+  /* min-height:0 (not a fixed floor): a resizable row splitter (A2c) can shrink the editor
+     pane below the old 120px floor, and with overflow:hidden ancestors a floor would clip
+     the bottom instead of letting Monaco's automaticLayout reflow to the smaller box. */
+  min-height: 0;
   border-radius: 4px;
   overflow: hidden;
 }

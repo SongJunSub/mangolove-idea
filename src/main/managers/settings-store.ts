@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AppSettings } from '../../shared/types';
+import type { AppSettings, PaneLayout } from '../../shared/types';
+import { clampPaneLayout } from '../../shared/pane-layout';
 
 /**
  * Resolves the default settings.json path under Electron's userData dir. Kept
@@ -36,6 +37,21 @@ const KNOWN_ARRAY_KEYS: readonly (keyof AppSettings)[] = ['recentRepos'];
 function sanitizeStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((v): v is string => typeof v === 'string' && v !== '');
+}
+
+/**
+ * Projects an unknown to a clamped PaneLayout, or undefined when it is not a valid
+ * layout object (so a present-but-invalid value is treated as UNSET — same delete-on-
+ * invalid rule as the string keys, falling back to the CSS defaults). Requires an
+ * object with two FINITE numbers before clamping (NaN/Infinity/strings -> undefined).
+ */
+function sanitizePaneLayout(raw: unknown): PaneLayout | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const { leftColWidth, topRowFraction } = o;
+  if (typeof leftColWidth !== 'number' || !Number.isFinite(leftColWidth)) return undefined;
+  if (typeof topRowFraction !== 'number' || !Number.isFinite(topRowFraction)) return undefined;
+  return clampPaneLayout({ leftColWidth, topRowFraction });
 }
 
 /**
@@ -102,6 +118,14 @@ export class SettingsStore {
         delete merged[key]; // [] or non-array -> unset
       }
     }
+    if ('paneLayout' in source) {
+      const layout = sanitizePaneLayout(source.paneLayout);
+      if (layout) {
+        merged.paneLayout = layout;
+      } else {
+        delete merged.paneLayout; // present-but-invalid -> unset (revert to CSS defaults)
+      }
+    }
     this.write(merged as AppSettings);
     return merged as AppSettings;
   }
@@ -126,6 +150,8 @@ export class SettingsStore {
       const arr = sanitizeStringArray(source[key]);
       if (arr.length > 0) out[key] = arr;
     }
+    const layout = sanitizePaneLayout(source.paneLayout);
+    if (layout) out.paneLayout = layout;
     return out as AppSettings;
   }
 

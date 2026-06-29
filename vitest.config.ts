@@ -16,7 +16,9 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/main/**/*.test.ts'],
+          // tests/main = main-process units; tests/shared = pure cross-process modules
+          // (e.g. pane-layout clamp) — both run in the node env with no DOM.
+          include: ['tests/main/**/*.test.ts', 'tests/shared/**/*.test.ts'],
           pool: 'forks',
           // Git-heavy manager tests spin up real temp repos and run
           // worktree/merge/commit subprocesses; under the parallel forks pool

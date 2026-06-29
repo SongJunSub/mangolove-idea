@@ -601,6 +601,25 @@ export interface AppSettings {
    * stays hidden for THIS version but reappears for a newer one. Unset => never dismissed.
    */
   readonly lastDismissedUpdateVersion?: string;
+  /**
+   * User-adjusted sizes of the 2x2 workspace splitters (drag-to-resize). Unset =>
+   * the CSS defaults win (264px left column / 1.25:1 top:bottom rows). Persisted on
+   * drag-end only (SETTINGS_SET is heavyweight). Always clamped on read AND write by
+   * the shared sanitizer so a hand-edited/stale value can never collapse a pane.
+   */
+  readonly paneLayout?: PaneLayout;
+}
+
+/**
+ * Geometry of the 2x2 workspace's two shared splitters (A2c). `leftColWidth` is the
+ * tree/worktree column width in px; `topRowFraction` is the top row's flex share with
+ * the bottom row pinned at 1fr (so gridTemplateRows = `${topRowFraction}fr 1fr`). Both
+ * are clamped to safe ranges (see shared/pane-layout.ts) — the single source of truth
+ * for bounds, shared by the main-process sanitizer and the renderer drag handlers.
+ */
+export interface PaneLayout {
+  readonly leftColWidth: number;
+  readonly topRowFraction: number;
 }
 
 /**

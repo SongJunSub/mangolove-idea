@@ -133,9 +133,19 @@ export function AgentTerminal({
 
     void spawnRef.current(term.cols, term.rows, continueRef.current);
 
+    // Re-fit on container resize (window resize AND drag-resizable panes). Only push a
+    // SESSION_RESIZE to the PTY when cols/rows ACTUALLY change: a pane drag fires the
+    // observer every layout tick, and a hidden tab (display:none) fires it at 0x0 where
+    // FitAddon is a no-op — both would otherwise flood node-pty with redundant resizes.
+    let lastCols = term.cols;
+    let lastRows = term.rows;
     const observer = new ResizeObserver(() => {
       fit.fit();
-      resizeRef.current(term.cols, term.rows);
+      if (term.cols !== lastCols || term.rows !== lastRows) {
+        lastCols = term.cols;
+        lastRows = term.rows;
+        resizeRef.current(term.cols, term.rows);
+      }
     });
     observer.observe(host);
 
@@ -161,7 +171,11 @@ export function AgentTerminal({
     <div
       data-testid="agent-terminal"
       ref={hostRef}
-      style={{ width: '100%', height: 420, background: '#1e1e1e', borderRadius: 4 }}
+      // flex:1 + minHeight:0 so the terminal FILLS its (drag-resizable) grid cell instead of
+      // a fixed 420px box; the ResizeObserver above then re-fits rows to the cell height.
+      // Requires the parent chain (terminal tab wrapper -> .pane-body) to be a flex column
+      // with min-height:0 (see App.tsx ws-terminal).
+      style={{ flex: 1, minHeight: 0, width: '100%', background: '#1e1e1e', borderRadius: 4 }}
     />
   );
 }
