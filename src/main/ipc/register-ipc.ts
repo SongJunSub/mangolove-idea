@@ -1211,25 +1211,34 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     async (event, partial: Partial<AppSettings>): Promise<AppSettings> => {
       const ctx = requireCtx(event);
       const merged = getSettingsStore(ctx).set(partial);
-      ctx.mergeRunner = undefined;
-      ctx.diffViewer = undefined;
-      if (ctx.fanoutManager && ctx.fanoutManager.get() === null) {
-        ctx.fanoutManager = undefined;
-      }
-      if (!(await ctx.conflictResolver?.inProgress())) {
-        ctx.conflictResolver = undefined;
-      }
-      if ((ctx.sessionManager?.liveWorktreeIds().length ?? 0) === 0) {
-        ctx.sessionSettingsDirty = false;
-        ctx.sessionManager = undefined;
-      } else {
-        ctx.sessionSettingsDirty = true;
-      }
-      if ((ctx.serverManager?.liveServerWorktreeIds().length ?? 0) === 0) {
-        ctx.serverSettingsDirty = false;
-        ctx.serverManager = undefined;
-      } else {
-        ctx.serverSettingsDirty = true;
+      // A paneLayout-only change is pure UI geometry — it affects NO repo-scoped manager, so
+      // skip the heavyweight cache teardown below (which other keys like baseBranch/agentCommand
+      // DO require). Without this, a single pane drag would needlessly drop diffViewer/mergeRunner
+      // and dirty the session/server managers. The guard is intentionally narrow (paneLayout ONLY)
+      // so every existing settings flow stays byte-identical.
+      const keys = Object.keys(partial);
+      const uiGeometryOnly = keys.length > 0 && keys.every((k) => k === 'paneLayout');
+      if (!uiGeometryOnly) {
+        ctx.mergeRunner = undefined;
+        ctx.diffViewer = undefined;
+        if (ctx.fanoutManager && ctx.fanoutManager.get() === null) {
+          ctx.fanoutManager = undefined;
+        }
+        if (!(await ctx.conflictResolver?.inProgress())) {
+          ctx.conflictResolver = undefined;
+        }
+        if ((ctx.sessionManager?.liveWorktreeIds().length ?? 0) === 0) {
+          ctx.sessionSettingsDirty = false;
+          ctx.sessionManager = undefined;
+        } else {
+          ctx.sessionSettingsDirty = true;
+        }
+        if ((ctx.serverManager?.liveServerWorktreeIds().length ?? 0) === 0) {
+          ctx.serverSettingsDirty = false;
+          ctx.serverManager = undefined;
+        } else {
+          ctx.serverSettingsDirty = true;
+        }
       }
       return merged;
     },

@@ -517,6 +517,30 @@ describe('registerIpc — settings (V2 E)', () => {
     expect(ctx.diffViewer).toBeUndefined();
   });
 
+  it('SETTINGS_SET with a paneLayout-ONLY change skips the repo-scoped teardown (pure UI)', async () => {
+    const store = { get: vi.fn(), set: vi.fn((p) => p) };
+    const session = { liveWorktreeIds: () => [] };
+    const server = { liveServerWorktreeIds: () => [] };
+    const ctx: IpcContext = {
+      mainWindow: null,
+      settingsStore: store as never,
+      sessionManager: session as never,
+      serverManager: server as never,
+      mergeRunner: { tag: 'merge' } as never,
+      diffViewer: { tag: 'diff' } as never,
+    };
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    await handlers.get('settings:set')!(fakeEvent, {
+      paneLayout: { leftColWidth: 300, topRowFraction: 1.5 },
+    });
+    // A pane drag must NOT drop diff/merge caches or touch the session/server managers.
+    expect(ctx.mergeRunner).toEqual({ tag: 'merge' });
+    expect(ctx.diffViewer).toEqual({ tag: 'diff' });
+    expect(ctx.sessionManager).toBe(session);
+    expect(ctx.serverManager).toBe(server);
+    expect(ctx.sessionSettingsDirty).toBeUndefined();
+  });
+
   it('SETTINGS_SET while busy marks the managers dirty for deferred live-apply', async () => {
     const store = { get: vi.fn(), set: vi.fn(() => ({})) };
     const ctx: IpcContext = {
