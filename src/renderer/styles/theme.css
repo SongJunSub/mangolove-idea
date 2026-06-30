@@ -535,13 +535,18 @@ a {
   font: inherit;
   font-size: 12.5px;
 }
+/* Hover uses a NEUTRAL lift (not accent) so it reads differently from the selected repo. */
 .repo-item:hover {
-  background: var(--accent-soft);
+  background: var(--elevated);
 }
-.repo-item.active {
+/* The SELECTED repo: accent-soft fill + a bold leading accent bar + accent, bold text + a
+   trailing check — a clear, unmistakable active affordance distinct from the neutral hover. */
+.repo-item.active,
+.repo-item.active:hover {
   background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
   color: var(--accent);
+  font-weight: 600;
   cursor: default;
 }
 .repo-item-ico {
@@ -560,6 +565,20 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 500;
+  flex: 1;
+}
+/* a small accent check on the selected repo (rendered only when active) */
+.repo-item-check {
+  flex: none;
+  display: none;
+  color: var(--accent);
+}
+.repo-item.active .repo-item-check {
+  display: inline-flex;
+}
+.repo-item-check svg {
+  width: 14px;
+  height: 14px;
 }
 /* empty-state launcher: the same list, boxed + width-capped */
 .repo-launcher {
@@ -587,6 +606,185 @@ a {
   max-height: none;
   flex: 1;
   min-height: 0;
+}
+
+/* ── Worktree pane polish (A2e): a bordered control cluster above the worktree list, and the
+ *    list rows redesigned to match the canonical selected idiom (accent-soft + inset bar). ── */
+.wt-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.wt-list {
+  display: flex;
+  flex-direction: column;
+}
+.wt-list-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  padding: 4px 2px 6px;
+}
+.wt-list-title {
+  flex: 1;
+}
+.wt-count {
+  flex: none;
+  min-width: 17px;
+  text-align: center;
+  font-size: 10.5px;
+  letter-spacing: 0;
+  color: var(--muted);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0 5px;
+}
+.wt-list-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.wt-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 2px;
+}
+.wt-error {
+  color: var(--err);
+  font-size: 12px;
+  white-space: pre-wrap;
+  margin: 0 0 6px;
+}
+.wt-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  min-width: 0;
+}
+.wt-item:hover {
+  background: var(--elevated);
+}
+.wt-item.sel,
+.wt-item.sel:hover {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.wt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wt-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.wt-branch {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.wt-item.sel .wt-branch {
+  color: var(--accent);
+  font-weight: 600;
+}
+.wt-badge {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.wt-badge--warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.wt-head {
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+.wt-remove {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 1px 9px;
+  background: transparent;
+  color: var(--muted);
+}
+.wt-remove:hover:not(:disabled) {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+/* ── Terminal / diff / browser / references tabs (A2e): an underline tab bar with a clear
+ *    active state — previously bare <button>s with NO selected affordance at all. ── */
+.ws-tabs {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.ws-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+/* These hover/selected rules are scoped under .ws-tabs (specificity 0,3,0) so they OUTRANK the
+   global `button:hover:not(:disabled)` (0,2,1) — otherwise hovering a tab would paint it accent
+   (underline + text) and look identical to the selected tab, and a hovered conflict tab would
+   lose its warn color. */
+.ws-tabs .ws-tab:hover {
+  color: var(--text);
+  background: transparent;
+  border-bottom-color: transparent;
+}
+.ws-tabs .ws-tab[aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.ws-tab-warn {
+  color: var(--warn);
+}
+.ws-tabs .ws-tab-warn:hover {
+  color: var(--warn);
+}
+.ws-tabs .ws-tab-warn[aria-selected='true'] {
+  color: var(--warn);
+  border-bottom-color: var(--warn);
 }
 
 /* ── In-app update UI: a bottom-right CARD announces an update; a bottom BAR shows the

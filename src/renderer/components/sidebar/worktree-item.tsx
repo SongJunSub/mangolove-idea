@@ -37,67 +37,32 @@ export function WorktreeItem({
   return (
     <li
       data-testid="worktree-item"
+      className={`wt-item${selected ? ' sel' : ''}`}
       onClick={() => onSelect(worktree.id)}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3,
-        padding: '6px 8px',
-        borderBottom: '1px solid var(--border)',
-        cursor: 'pointer',
-        minWidth: 0,
-        background: selected ? 'var(--accent-soft)' : 'transparent',
-      }}
     >
       {/* line 1: status dot + branch (gets the full column width) + badges */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <div className="wt-row">
         <span
+          className="wt-dot"
           aria-label={agentLabel}
           title={agentLabel}
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: STATUS_COLOR[agentStatus],
-            flex: '0 0 auto',
-          }}
+          style={{ background: STATUS_COLOR[agentStatus] }}
         />
         {ownsServer && <ServerDot state={serverState} />}
-        <span
-          title={worktree.branch}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontFamily: 'ui-monospace, monospace',
-          }}
-        >
+        <span className="wt-branch" title={worktree.branch}>
           {worktree.branch}
         </span>
-        {worktree.isPrimary && (
-          <span style={{ fontSize: 11, color: 'var(--muted)', flex: '0 0 auto' }}>
-            {t('worktree.primary')}
-          </span>
-        )}
+        {worktree.isPrimary && <span className="wt-badge">{t('worktree.primary')}</span>}
         {worktree.isLocked && (
-          <span style={{ fontSize: 11, color: 'var(--warn)', flex: '0 0 auto' }}>
-            {t('worktree.locked')}
-          </span>
+          <span className="wt-badge wt-badge--warn">{t('worktree.locked')}</span>
         )}
       </div>
       {/* line 2: short HEAD + Remove (pushed right) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        {worktree.head && (
-          <span
-            style={{ fontSize: 11, color: 'var(--faint)', fontFamily: 'ui-monospace, monospace' }}
-          >
-            {worktree.head}
-          </span>
-        )}
+      <div className="wt-row">
+        {worktree.head && <span className="wt-head">{worktree.head}</span>}
         <button
           type="button"
+          className="wt-remove"
           disabled={worktree.isPrimary || worktree.isLocked}
           onClick={(e) => {
             e.stopPropagation();
@@ -110,7 +75,6 @@ export function WorktreeItem({
                 ? t('worktree.removeTip.locked')
                 : t('worktree.removeTip.default')
           }
-          style={{ marginLeft: 'auto', flex: '0 0 auto', fontSize: 11, padding: '1px 8px' }}
         >
           {t('worktree.remove')}
         </button>

@@ -24,6 +24,7 @@ import { useRepo } from './hooks/use-repo';
 import { Titlebar } from './components/titlebar/titlebar';
 import { FileTree } from './components/tree/file-tree';
 import { FolderIcon } from './components/tree/tree-icons';
+import { BranchIcon } from './components/icons';
 import { RepoList } from './components/sidebar/repo-list';
 import { useRecentRepos } from './hooks/use-recent-repos';
 import { usePaneLayout } from './hooks/use-pane-layout';
@@ -722,31 +723,38 @@ export function App(): React.JSX.Element {
                   testId="split-col-bottom"
                   first={
                     <div className="ws-pane ws-worktrees">
-                      <div className="pane-head">🌿 {t('app.worktrees')}</div>
+                      <div className="pane-head">
+                        <span className="pane-head-ico">
+                          <BranchIcon />
+                        </span>
+                        {t('app.worktrees')}
+                      </div>
                       <div className="pane-body">
-                        <Toolbar onCreate={create} />
-                        <ServerControls
-                          selectedId={selectedId}
-                          status={selectedServer}
-                          serverUrl={detectedServerUrl}
-                          onStart={(id) => void startServer(id)}
-                          onStop={(id) => void stopServer(id)}
-                          onOpen={() => setPaneMode('browser')}
-                        />
-                        <MergeControls
-                          selected={selectedWorktree}
-                          running={merging}
-                          progress={mergeProgress}
-                          onMerge={(wt) => void onMerge(wt)}
-                        />
-                        <GhStatusPanel
-                          selectedId={selectedId}
-                          status={ghStatus}
-                          loading={ghLoading}
-                          error={ghError}
-                          onRefresh={refreshGh}
-                          onOpen={openExternal}
-                        />
+                        <div className="wt-controls">
+                          <Toolbar onCreate={create} />
+                          <ServerControls
+                            selectedId={selectedId}
+                            status={selectedServer}
+                            serverUrl={detectedServerUrl}
+                            onStart={(id) => void startServer(id)}
+                            onStop={(id) => void stopServer(id)}
+                            onOpen={() => setPaneMode('browser')}
+                          />
+                          <MergeControls
+                            selected={selectedWorktree}
+                            running={merging}
+                            progress={mergeProgress}
+                            onMerge={(wt) => void onMerge(wt)}
+                          />
+                          <GhStatusPanel
+                            selectedId={selectedId}
+                            status={ghStatus}
+                            loading={ghLoading}
+                            error={ghError}
+                            onRefresh={refreshGh}
+                            onOpen={openExternal}
+                          />
+                        </div>
                         <WorktreeList
                           worktrees={worktrees}
                           loading={loading}
@@ -770,11 +778,12 @@ export function App(): React.JSX.Element {
                             <div
                               role="tablist"
                               aria-label={t('app.worktreeView')}
-                              style={{ display: 'flex', gap: 4, marginBottom: 8 }}
+                              className="ws-tabs"
                             >
                               <button
                                 type="button"
                                 role="tab"
+                                className="ws-tab"
                                 aria-selected={paneMode === 'terminal'}
                                 data-testid="tab-terminal"
                                 onClick={() => setPaneMode('terminal')}
@@ -784,6 +793,7 @@ export function App(): React.JSX.Element {
                               <button
                                 type="button"
                                 role="tab"
+                                className="ws-tab"
                                 aria-selected={paneMode === 'diff'}
                                 data-testid="tab-diff"
                                 onClick={() => setPaneMode('diff')}
@@ -793,6 +803,7 @@ export function App(): React.JSX.Element {
                               <button
                                 type="button"
                                 role="tab"
+                                className="ws-tab"
                                 aria-selected={paneMode === 'browser'}
                                 data-testid="tab-browser"
                                 onClick={() => setPaneMode('browser')}
@@ -802,6 +813,7 @@ export function App(): React.JSX.Element {
                               <button
                                 type="button"
                                 role="tab"
+                                className="ws-tab"
                                 aria-selected={paneMode === 'references'}
                                 data-testid="tab-references"
                                 onClick={() => setPaneMode('references')}
@@ -812,9 +824,9 @@ export function App(): React.JSX.Element {
                                 <button
                                   type="button"
                                   role="tab"
+                                  className="ws-tab ws-tab-warn"
                                   aria-selected={paneMode === 'conflict'}
                                   data-testid="tab-conflict"
-                                  style={{ color: 'var(--warn)' }}
                                   onClick={() => setPaneMode('conflict')}
                                 >
                                   {t('app.tab.conflicts')}
