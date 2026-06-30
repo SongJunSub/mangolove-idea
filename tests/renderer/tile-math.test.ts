@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   leavesOf,
   computeRects,
+  computeGutters,
+  setRatioAt,
   removeLeaf,
   replaceLeaf,
   insertAtEdge,
@@ -150,6 +152,42 @@ describe('removeLeaf', () => {
   it('removing an absent leaf leaves the tree unchanged (same reference)', () => {
     const t = row(L('A'), L('B'));
     expect(removeLeaf(t, 'Z')).toBe(t);
+  });
+});
+
+describe('computeGutters', () => {
+  it('a single leaf has no gutters', () => {
+    expect(computeGutters(L('A'))).toEqual([]);
+  });
+  it('a row split yields one gutter at the root with its splitRect + ratio', () => {
+    const g = computeGutters(row(L('A'), L('B'), 0.4));
+    expect(g).toHaveLength(1);
+    expect(g[0].path).toEqual([]);
+    expect(g[0].dir).toBe('row');
+    expect(g[0].ratio).toBe(0.4);
+    expect(g[0].splitRect).toEqual({ left: 0, top: 0, width: 1, height: 1 });
+  });
+  it('a nested split yields a gutter per split with the right path + sub-rect', () => {
+    const g = computeGutters(row(L('A'), col(L('B'), L('C'))));
+    expect(g.map((x) => x.path)).toEqual([[], ['b']]);
+    expect(g[1].dir).toBe('col');
+    // the inner split occupies the RIGHT half (row at 0.5)
+    expect(g[1].splitRect).toEqual({ left: 0.5, top: 0, width: 0.5, height: 1 });
+  });
+});
+
+describe('setRatioAt', () => {
+  it('sets the root split ratio (clamped)', () => {
+    expect(setRatioAt(row(L('A'), L('B')), [], 0.3)).toEqual(row(L('A'), L('B'), 0.3));
+    expect((setRatioAt(row(L('A'), L('B')), [], 0.99) as { ratio: number }).ratio).toBe(0.9);
+  });
+  it('sets a nested split ratio by path', () => {
+    const t = row(L('A'), col(L('B'), L('C')));
+    expect(setRatioAt(t, ['b'], 0.7)).toEqual(row(L('A'), col(L('B'), L('C'), 0.7)));
+  });
+  it('a path pointing at a leaf is ignored (tree unchanged)', () => {
+    const t = row(L('A'), L('B'));
+    expect(setRatioAt(t, ['a'], 0.3)).toEqual(t);
   });
 });
 

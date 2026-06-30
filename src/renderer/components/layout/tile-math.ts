@@ -162,3 +162,51 @@ export function leafAtPoint(rects: Map<LeafId, Rect>, x: number, y: number): Lea
   }
   return undefined;
 }
+
+/** A resizable boundary between a split's two children. `path` locates the split in the tree. */
+export interface Gutter {
+  readonly path: readonly ('a' | 'b')[];
+  readonly dir: SplitDir;
+  /** The split's full rect (0..1 fractions) — maps a pointer position to the new ratio. */
+  readonly splitRect: Rect;
+  readonly ratio: number;
+}
+
+/** Every split's gutter (in-order), each with the path to mutate its ratio + its containing rect. */
+export function computeGutters(
+  node: TileNode,
+  rect: Rect = { left: 0, top: 0, width: 1, height: 1 },
+  path: readonly ('a' | 'b')[] = [],
+): Gutter[] {
+  if (isLeaf(node)) return [];
+  const r = clampRatio(node.ratio);
+  let aRect: Rect;
+  let bRect: Rect;
+  if (node.dir === 'row') {
+    const aw = rect.width * r;
+    aRect = { left: rect.left, top: rect.top, width: aw, height: rect.height };
+    bRect = { left: rect.left + aw, top: rect.top, width: rect.width - aw, height: rect.height };
+  } else {
+    const ah = rect.height * r;
+    aRect = { left: rect.left, top: rect.top, width: rect.width, height: ah };
+    bRect = { left: rect.left, top: rect.top + ah, width: rect.width, height: rect.height - ah };
+  }
+  return [
+    { path, dir: node.dir, splitRect: rect, ratio: r },
+    ...computeGutters(node.a, aRect, [...path, 'a']),
+    ...computeGutters(node.b, bRect, [...path, 'b']),
+  ];
+}
+
+/** Sets the ratio of the split located by `path` (clamped). Returns the tree unchanged on a bad path. */
+export function setRatioAt(tree: TileNode, path: readonly ('a' | 'b')[], ratio: number): TileNode {
+  if (path.length === 0) {
+    if (isLeaf(tree)) return tree; // path pointed at a leaf — ignore
+    return { ...tree, ratio: clampRatio(ratio) };
+  }
+  if (isLeaf(tree)) return tree;
+  const [head, ...rest] = path;
+  return head === 'a'
+    ? { ...tree, a: setRatioAt(tree.a, rest, ratio) }
+    : { ...tree, b: setRatioAt(tree.b, rest, ratio) };
+}
