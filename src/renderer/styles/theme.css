@@ -869,6 +869,36 @@ a {
   font-size: 13px;
   color: var(--muted);
 }
+/* a draggable strip ON a split boundary — resizes the two adjacent tiles (mirrors .split-gutter) */
+.term-gutter {
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+.term-gutter::before {
+  content: '';
+  position: absolute;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.term-gutter:hover::before,
+.term-gutter:active::before {
+  background: var(--accent);
+}
+.term-gutter--row::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+.term-gutter--col::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
 /* the live drop target preview (the half that becomes the new tile) */
 .term-drop-preview {
   position: absolute;

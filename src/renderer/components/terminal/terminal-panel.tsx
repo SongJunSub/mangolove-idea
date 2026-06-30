@@ -2,6 +2,8 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n/i18n-context';
 import {
   computeRects,
+  computeGutters,
+  setRatioAt,
   edgeForPoint,
   insertAtEdge,
   leafAtPoint,
@@ -11,8 +13,10 @@ import {
   MAX_TILES,
   type Edge,
   type Rect,
+  type Gutter,
   type TileNode,
 } from '../layout/tile-math';
+import { clampSplitFraction } from '../layout/split-math';
 import type { TerminalLayout } from '../../../shared/terminal-layout';
 import { fromPersisted, toPersisted, type LeafKind } from '../../lib/terminal-layout-bridge';
 import { AgentTerminal } from './agent-terminal';
@@ -24,6 +28,10 @@ const ShellTerminal = lazy(() =>
 
 /** Gap (px) inset around each tile so adjacent terminals show a seam. */
 const TILE_GAP = 3;
+/** Min px a tile keeps when resizing a gutter (so a pane can't be dragged to nothing). */
+const MIN_TILE_PX = 80;
+/** Width (px) of a gutter's pointer hit-strip, centered on the boundary. */
+const GUTTER_HIT = 9;
 
 export interface TerminalPanelProps {
   /** The selected worktree — the agent leaf's id-binding AND the cwd for new shells. */
@@ -78,6 +86,8 @@ export function TerminalPanel({
   }, []);
 
   const [tree, setTree] = useState<TileNode>(init.tree);
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
   const [shells, setShells] = useState<readonly ShellEntry[]>(init.shells);
   const [focused, setFocused] = useState<string>(() => leavesOf(init.tree)[0] ?? 'agent');
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -86,6 +96,7 @@ export function TerminalPanel({
   // the tab) doesn't re-run selection.
   const justDragged = useRef(false);
   const [drop, setDrop] = useState<{ target: string; edge: Edge } | null>(null);
+  const gutterDragRef = useRef<{ pointerId: number; gutter: Gutter; moved: boolean } | null>(null);
 
   // Persist the CURRENT tree (projected to kinds). Called on every structural change end.
   const persist = useCallback(
@@ -111,6 +122,7 @@ export function TerminalPanel({
   const allIds = useMemo(() => ['agent', ...shells.map((s) => s.id)], [shells]);
   const tiled = useMemo(() => new Set(leavesOf(tree)), [tree]);
   const rects = useMemo(() => computeRects(tree), [tree]);
+  const gutters = useMemo(() => computeGutters(tree), [tree]);
 
   // ── tab actions ──
   // The active TILED leaf to grow from / swap into — never collapses the layout.
@@ -224,6 +236,49 @@ export function TerminalPanel({
     setDrop(null);
   };
 
+  // ── resize a tile boundary (drag a gutter to change its split ratio) ──
+  const onGutterPointerDown =
+    (g: Gutter) =>
+    (e: React.PointerEvent): void => {
+      gutterDragRef.current = { pointerId: e.pointerId, gutter: g, moved: false };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    };
+  const onGutterPointerMove = (e: React.PointerEvent): void => {
+    const active = gutterDragRef.current;
+    if (!active || active.pointerId !== e.pointerId) return;
+    if (e.buttons === 0) {
+      gutterDragRef.current = null;
+      return;
+    }
+    const stage = stageRef.current?.getBoundingClientRect();
+    if (!stage || stage.width <= 0 || stage.height <= 0) return;
+    const { gutter: g } = active;
+    const sr = g.splitRect;
+    const spanPx = g.dir === 'row' ? sr.width * stage.width : sr.height * stage.height;
+    const offsetPx =
+      g.dir === 'row'
+        ? e.clientX - (stage.left + sr.left * stage.width)
+        : e.clientY - (stage.top + sr.top * stage.height);
+    // gutterPx = 0: unlike <Split> (a real flex:none gutter div between panes), computeRects applies
+    // ratio to the FULL split span — the seam is only faked by symmetric tile insets — so reserving a
+    // gutter track here would bias ratio = offset/(span−6) and the divider would trail the cursor ~3px.
+    const ratio = clampSplitFraction(offsetPx, spanPx, 0.1, 0.9, MIN_TILE_PX, MIN_TILE_PX, 0);
+    active.moved = true;
+    setTree((t) => setRatioAt(t, g.path, ratio));
+  };
+  const onGutterPointerUp = (e: React.PointerEvent): void => {
+    const active = gutterDragRef.current;
+    gutterDragRef.current = null;
+    if (!active || active.pointerId !== e.pointerId) return;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId))
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    // Persist only when the boundary actually moved — a click-without-drag must not rewrite the
+    // identical layout (mirrors the persistedRef no-op-write discipline of the pane splitters).
+    if (active.moved) persist(treeRef.current, shells);
+  };
+
   /** The preview overlay rect (the half that becomes the new tile), in % of the stage. */
   const previewStyle = useMemo((): React.CSSProperties | null => {
     if (!drop) return null;
@@ -258,6 +313,33 @@ export function TerminalPanel({
       flexDirection: 'column',
       minWidth: 0,
       minHeight: 0,
+    };
+  };
+
+  /** The thin draggable strip sitting ON a split boundary, centered over the inter-tile gap. */
+  const gutterStyle = (g: Gutter): React.CSSProperties => {
+    const sr = g.splitRect;
+    if (g.dir === 'row') {
+      const x = sr.left + sr.width * g.ratio;
+      return {
+        position: 'absolute',
+        left: `calc(${x * 100}% - ${GUTTER_HIT / 2}px)`,
+        top: `${sr.top * 100}%`,
+        width: `${GUTTER_HIT}px`,
+        height: `${sr.height * 100}%`,
+        cursor: 'col-resize',
+        touchAction: 'none',
+      };
+    }
+    const y = sr.top + sr.height * g.ratio;
+    return {
+      position: 'absolute',
+      left: `${sr.left * 100}%`,
+      top: `calc(${y * 100}% - ${GUTTER_HIT / 2}px)`,
+      width: `${sr.width * 100}%`,
+      height: `${GUTTER_HIT}px`,
+      cursor: 'row-resize',
+      touchAction: 'none',
     };
   };
 
@@ -349,6 +431,20 @@ export function TerminalPanel({
               )}
             </Suspense>
           </div>
+        ))}
+        {gutters.map((g) => (
+          <div
+            key={g.path.join('-') || 'root'}
+            className={`term-gutter term-gutter--${g.dir}`}
+            style={gutterStyle(g)}
+            data-testid={`term-gutter-${g.path.join('-') || 'root'}`}
+            role="separator"
+            aria-orientation={g.dir === 'row' ? 'vertical' : 'horizontal'}
+            onPointerDown={onGutterPointerDown(g)}
+            onPointerMove={onGutterPointerMove}
+            onPointerUp={onGutterPointerUp}
+            onPointerCancel={onGutterPointerUp}
+          />
         ))}
         {previewStyle && <div className="term-drop-preview" style={previewStyle} />}
       </div>
