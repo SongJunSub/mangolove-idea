@@ -608,38 +608,22 @@ a {
   min-height: 0;
 }
 
-/* ── Worktree pane polish (A2e): a bordered control cluster above the worktree list, and the
- *    list rows redesigned to match the canonical selected idiom (accent-soft + inset bar). ── */
-.wt-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-bottom: 10px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+/* ── Worktree pane (A2f): the pane now shows ONLY the worktree list (create/server/merge/gh
+ *    controls were removed). The list rows match the canonical selected idiom (accent-soft +
+ *    inset bar); the worktree count rides in the pane head as a small chip. ── */
+.pane-head--count .wt-count {
+  margin-left: auto;
 }
 .wt-list {
   display: flex;
   flex-direction: column;
-}
-.wt-list-head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--faint);
-  padding: 4px 2px 6px;
-}
-.wt-list-title {
-  flex: 1;
 }
 .wt-count {
   flex: none;
   min-width: 17px;
   text-align: center;
   font-size: 10.5px;
+  text-transform: none;
   letter-spacing: 0;
   color: var(--muted);
   background: var(--elevated);
