@@ -320,6 +320,8 @@ export const en = {
   'terminal.shellExited': 'shell exited: code {code}',
   'app.tab.newTerminal': 'New terminal',
   'app.tab.closeTerminal': 'Close terminal',
+  'app.tab.dragToSplit': 'Drag onto a terminal edge to split (up to 4)',
+  'app.tab.untile': 'Remove from the split',
 } as const;
 
 /** Every message key, derived from the English catalog (the single source of truth). */
@@ -619,6 +621,8 @@ export const ko: Record<MessageKey, string> = {
   'terminal.shellExited': '셸이 종료됐어요 (코드 {code})',
   'app.tab.newTerminal': '새 터미널',
   'app.tab.closeTerminal': '터미널 닫기',
+  'app.tab.dragToSplit': '터미널 가장자리로 드래그하면 분할돼요 (최대 4개)',
+  'app.tab.untile': '분할에서 빼기',
 };
 
 /** The two catalogs, keyed by resolved locale. */

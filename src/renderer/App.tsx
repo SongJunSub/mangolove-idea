@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { QuitWarningEvent, SessionPersistenceInfo } from '../shared/types';
+import type { TerminalLayout } from '../shared/terminal-layout';
 import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
@@ -46,12 +47,10 @@ import { BrowserPane } from './components/browser/browser-pane';
 
 // Lazy-loaded so the xterm.js bundle (+ addon-fit + its CSS) is only fetched when
 // a worktree is first selected — keeps the initial renderer chunk smaller.
-const AgentTerminal = lazy(() =>
-  import('./components/terminal/agent-terminal').then((m) => ({ default: m.AgentTerminal })),
-);
-// Plain $SHELL terminals for the multi-terminal panel — shares xterm's chunk with AgentTerminal.
-const ShellTerminal = lazy(() =>
-  import('./components/terminal/shell-terminal').then((m) => ({ default: m.ShellTerminal })),
+// The multi-terminal panel (agent + tiled $SHELL terminals) — pulls the xterm chunk, so it's
+// lazy and only fetched once a worktree is selected.
+const TerminalPanel = lazy(() =>
+  import('./components/terminal/terminal-panel').then((m) => ({ default: m.TerminalPanel })),
 );
 // Lazy so monaco's ~3.9 MB bundle is a SEPARATE async chunk, fetched only when the
 // Diff tab is first opened (mirrors AgentTerminal's React.lazy treatment of xterm).
@@ -158,12 +157,6 @@ export function App(): React.JSX.Element {
   >('terminal');
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
-  // Multi-terminal panel (Phase A): the agent terminal (tab 'agent') + plain $SHELL terminals.
-  // Each shell is created in the selected worktree's cwd; the user runs claude (or anything)
-  // themselves. Terminals stay MOUNTED (live PTY) across tab switches; the "+" adds a shell.
-  const [shells, setShells] = useState<readonly { id: string; cwd: string }[]>([]);
-  const [activeTermTab, setActiveTermTab] = useState<string>('agent'); // 'agent' | shellId
-  const shellSeq = useRef(0);
   // relPath of the file open in the editor pane (A4 edits + saves it), or null.
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   // The A4 editor state for (selectedId, selectedFile). dirty drives the unsaved-guard.
@@ -447,21 +440,20 @@ export function App(): React.JSX.Element {
   const selectedWorktree = worktrees.find((w) => w.id === selectedId) ?? null;
   const baseBranch = settings.baseBranch ?? 'main';
 
-  // Add a plain shell terminal in the selected worktree's dir; switch to it. (No-op with no
-  // worktree selected — the terminal panel is gated behind a selection.)
-  const addShell = (): void => {
-    const cwd = selectedWorktree?.path;
-    if (!cwd) return;
-    const id = `sh-${(shellSeq.current += 1)}`;
-    setShells((prev) => [...prev, { id, cwd }]);
-    setActiveTermTab(id);
-    setPaneMode('terminal');
-  };
-  // Close a shell tab (its ShellTerminal unmounts -> kills the PTY); fall back to the agent tab.
-  const closeShell = (id: string): void => {
-    setShells((prev) => prev.filter((s) => s.id !== id));
-    setActiveTermTab((cur) => (cur === id ? 'agent' : cur));
-  };
+  // Persist a worktree's terminal tile layout (TerminalPanel debounces to structural-change-end).
+  // Prunes entries for worktrees that no longer exist so the map can't grow unbounded.
+  const onTerminalPersist = useCallback(
+    (wtId: string, layout: TerminalLayout): void => {
+      const known = new Set(worktrees.map((w) => w.id));
+      const next: Record<string, TerminalLayout> = { [wtId]: layout };
+      for (const [k, v] of Object.entries(settings.terminalLayouts ?? {})) {
+        if (known.has(k)) next[k] = v;
+      }
+      next[wtId] = layout;
+      void saveSettings({ terminalLayouts: next });
+    },
+    [saveSettings, settings.terminalLayouts, worktrees],
+  );
 
   // Repo-picker gate: until a git repo is selected, show a centered empty-state
   // INSTEAD of the worktree UI. While loading the initial REPO_GET, render nothing
@@ -744,66 +736,24 @@ export function App(): React.JSX.Element {
                       >
                         {selectedId ? (
                           <>
-                            {/* Multi-terminal tabs: the worktree's agent + plain $SHELL terminals,
-                                a "+" to add a shell, plus the auto-managed conflict tab. */}
-                            <div
-                              role="tablist"
-                              aria-label={t('app.worktreeView')}
-                              className="ws-tabs"
-                            >
-                              <button
-                                type="button"
-                                role="tab"
-                                className="ws-tab"
-                                aria-selected={paneMode === 'terminal' && activeTermTab === 'agent'}
-                                data-testid="tab-terminal"
-                                onClick={() => {
-                                  setPaneMode('terminal');
-                                  setActiveTermTab('agent');
-                                }}
+                            {/* A merge conflict (when present) overlays the terminal panel
+                                full-area; this switch toggles back to the terminals. */}
+                            {conflictWorktreeId === selectedId && (
+                              <div
+                                role="tablist"
+                                aria-label={t('app.worktreeView')}
+                                className="ws-tabs term-conflict-switch"
                               >
-                                {t('app.tab.terminal')}
-                              </button>
-                              {shells.map((sh) => (
-                                <span key={sh.id} className="ws-tab-shell">
-                                  <button
-                                    type="button"
-                                    role="tab"
-                                    className="ws-tab"
-                                    aria-selected={
-                                      paneMode === 'terminal' && activeTermTab === sh.id
-                                    }
-                                    data-testid={`tab-shell-${sh.id}`}
-                                    onClick={() => {
-                                      setPaneMode('terminal');
-                                      setActiveTermTab(sh.id);
-                                    }}
-                                  >
-                                    {sh.cwd.split('/').filter(Boolean).pop() ?? 'shell'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="ws-tab-close"
-                                    title={t('app.tab.closeTerminal')}
-                                    aria-label={t('app.tab.closeTerminal')}
-                                    data-testid={`close-shell-${sh.id}`}
-                                    onClick={() => closeShell(sh.id)}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))}
-                              <button
-                                type="button"
-                                className="ws-tab-add"
-                                title={t('app.tab.newTerminal')}
-                                aria-label={t('app.tab.newTerminal')}
-                                data-testid="tab-add"
-                                onClick={addShell}
-                              >
-                                +
-                              </button>
-                              {conflictWorktreeId === selectedId && (
+                                <button
+                                  type="button"
+                                  role="tab"
+                                  className="ws-tab"
+                                  aria-selected={paneMode !== 'conflict'}
+                                  data-testid="tab-terminal"
+                                  onClick={() => setPaneMode('terminal')}
+                                >
+                                  {t('app.tab.terminal')}
+                                </button>
                                 <button
                                   type="button"
                                   role="tab"
@@ -814,63 +764,37 @@ export function App(): React.JSX.Element {
                                 >
                                   {t('app.tab.conflicts')}
                                 </button>
-                              )}
-                            </div>
-                            {/* All terminals stay MOUNTED (live PTYs); only the active tab is shown.
-                                Each fills the (resizable) pane via flex:1 so xterm fits the cell. */}
+                              </div>
+                            )}
+                            {/* The multi-terminal tile panel: agent + $SHELL terminals, drag a tab
+                                onto a tile edge to split (up to 4), layout persisted per worktree.
+                                Hidden (kept mounted) only while the conflict view is up. */}
                             <div
                               style={{
-                                display: paneMode === 'terminal' ? 'flex' : 'none',
+                                display: paneMode === 'conflict' ? 'none' : 'flex',
                                 flexDirection: 'column',
                                 flex: 1,
                                 minHeight: 0,
                               }}
                             >
-                              <div
-                                style={{
-                                  display: activeTermTab === 'agent' ? 'flex' : 'none',
-                                  flexDirection: 'column',
-                                  flex: 1,
-                                  minHeight: 0,
-                                }}
+                              <Suspense
+                                fallback={
+                                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                    {t('app.loadingTerminal')}
+                                  </p>
+                                }
                               >
-                                <Suspense
-                                  fallback={
-                                    <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                                      {t('app.loadingTerminal')}
-                                    </p>
+                                <TerminalPanel
+                                  key={selectedId}
+                                  worktreeId={selectedId}
+                                  worktreePath={selectedWorktree?.path ?? selectedId}
+                                  continueAgent={
+                                    !sessionRecords.loading && sessionRecords.has(selectedId)
                                   }
-                                >
-                                  <AgentTerminal
-                                    key={selectedId}
-                                    worktreeId={selectedId}
-                                    continueSession={
-                                      !sessionRecords.loading && sessionRecords.has(selectedId)
-                                    }
-                                  />
-                                </Suspense>
-                              </div>
-                              {shells.map((sh) => (
-                                <div
-                                  key={sh.id}
-                                  style={{
-                                    display: activeTermTab === sh.id ? 'flex' : 'none',
-                                    flexDirection: 'column',
-                                    flex: 1,
-                                    minHeight: 0,
-                                  }}
-                                >
-                                  <Suspense
-                                    fallback={
-                                      <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                                        {t('app.loadingTerminal')}
-                                      </p>
-                                    }
-                                  >
-                                    <ShellTerminal terminalId={sh.id} cwd={sh.cwd} />
-                                  </Suspense>
-                                </div>
-                              ))}
+                                  persisted={settings.terminalLayouts?.[selectedId]}
+                                  onPersist={(layout) => onTerminalPersist(selectedId, layout)}
+                                />
+                              </Suspense>
                             </div>
                             {paneMode === 'diff' && (
                               <Suspense

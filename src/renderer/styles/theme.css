@@ -802,6 +802,82 @@ a {
   color: var(--accent);
   background: transparent;
 }
+.term-conflict-switch {
+  flex: none;
+}
+
+/* ── multi-terminal tile panel (A2g) ── */
+.term-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* dragging a tab should not select tab text */
+.term-panel .ws-tab {
+  user-select: none;
+  touch-action: none;
+}
+/* the stage: a stable relative box; tiles are absolutely positioned by computeRects */
+.term-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 6px;
+}
+.term-tile {
+  /* position/left/top/width/height come from inline style (the tile rect or display:none) */
+  overflow: hidden;
+  border-radius: 5px;
+}
+.term-tile--focused {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1px;
+}
+.term-tile-untile {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  border: none;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  cursor: pointer;
+}
+.term-tile:hover .term-tile-untile {
+  opacity: 0.85;
+}
+.term-tile-untile:hover {
+  background: var(--err);
+}
+.term-tile-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* the live drop target preview (the half that becomes the new tile) */
+.term-drop-preview {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+}
 
 /* ── In-app update UI: a bottom-right CARD announces an update; a bottom BAR shows the
  *    active download/verify/install (and any error). ── */
