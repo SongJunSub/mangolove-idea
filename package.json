@@ -1,6 +1,6 @@
 {
   "name": "mangolove-idea",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "author": "JunSub_Dev",
   "description": "Local dev orchestrator for parallel git-worktree work beside IntelliJ IDEA.",
   "private": true,
