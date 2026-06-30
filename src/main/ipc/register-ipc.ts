@@ -1262,7 +1262,8 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       // and dirty the session/server managers. The guard is intentionally narrow (paneLayout ONLY)
       // so every existing settings flow stays byte-identical.
       const keys = Object.keys(partial);
-      const uiGeometryOnly = keys.length > 0 && keys.every((k) => k === 'paneLayout');
+      const uiGeometryOnly =
+        keys.length > 0 && keys.every((k) => k === 'paneLayout' || k === 'terminalLayouts');
       if (!uiGeometryOnly) {
         ctx.mergeRunner = undefined;
         ctx.diffViewer = undefined;

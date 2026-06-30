@@ -2,6 +2,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AppSettings } from '../../shared/types';
 import { coercePaneLayout } from '../../shared/pane-layout';
+import { coerceTerminalLayouts } from '../../shared/terminal-layout';
 
 /**
  * Resolves the default settings.json path under Electron's userData dir. Kept
@@ -120,6 +121,14 @@ export class SettingsStore {
         delete merged.paneLayout; // present-but-invalid -> unset (revert to CSS defaults)
       }
     }
+    if ('terminalLayouts' in source) {
+      const layouts = coerceTerminalLayouts(source.terminalLayouts);
+      if (layouts) {
+        merged.terminalLayouts = layouts;
+      } else {
+        delete merged.terminalLayouts; // present-but-invalid / empty -> unset (default single tile)
+      }
+    }
     this.write(merged as AppSettings);
     return merged as AppSettings;
   }
@@ -146,6 +155,8 @@ export class SettingsStore {
     }
     const layout = sanitizePaneLayout(source.paneLayout);
     if (layout) out.paneLayout = layout;
+    const terminalLayouts = coerceTerminalLayouts(source.terminalLayouts);
+    if (terminalLayouts) out.terminalLayouts = terminalLayouts;
     return out as AppSettings;
   }
 

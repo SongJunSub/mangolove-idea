@@ -205,4 +205,51 @@ describe('SettingsStore — recentRepos (multi-window)', () => {
       expect(new SettingsStore(file).get().paneLayout).toEqual(L);
     });
   });
+
+  describe('terminalLayouts (per-worktree tile layout)', () => {
+    const layout = {
+      root: {
+        dir: 'row' as const,
+        ratio: 0.5,
+        a: { kind: 'agent' as const },
+        b: { kind: 'shell' as const, cwd: '/repo/wt' },
+      },
+    };
+
+    it('persists a valid per-worktree map and reads it back', () => {
+      const store = new SettingsStore(file);
+      const merged = store.set({ terminalLayouts: { '/wt': layout } });
+      expect(merged.terminalLayouts).toEqual({ '/wt': layout });
+      expect(new SettingsStore(file).get().terminalLayouts).toEqual({ '/wt': layout });
+    });
+
+    it('drops invalid entries (multi-agent, >4 leaves, cwd-less shell) and clamps ratio on read', () => {
+      writeFileSync(
+        file,
+        JSON.stringify({
+          terminalLayouts: {
+            '/ok': {
+              root: { dir: 'col', ratio: 9, a: { kind: 'agent' }, b: { kind: 'shell', cwd: '/x' } },
+            },
+            '/bad': {
+              root: { dir: 'row', ratio: 0.5, a: { kind: 'agent' }, b: { kind: 'agent' } },
+            },
+          },
+        }),
+      );
+      const got = new SettingsStore(file).get().terminalLayouts;
+      expect(Object.keys(got!)).toEqual(['/ok']);
+      expect((got!['/ok'].root as { ratio: number }).ratio).toBe(0.9); // clamped
+    });
+
+    it('treats a non-object / all-invalid terminalLayouts as unset', () => {
+      writeFileSync(file, JSON.stringify({ terminalLayouts: 'nope' }));
+      expect(new SettingsStore(file).get().terminalLayouts).toBeUndefined();
+      const store = new SettingsStore(file);
+      const merged = store.set({
+        terminalLayouts: { '/wt': { root: { kind: 'shell' } } } as never,
+      });
+      expect(merged.terminalLayouts).toBeUndefined();
+    });
+  });
 });

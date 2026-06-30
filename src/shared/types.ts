@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // src/shared/types.ts  —  imported by BOTH main and renderer. No side effects.
 // ─────────────────────────────────────────────────────────────────────────────
+import type { TerminalLayout } from './terminal-layout';
 
 /** A git worktree managed by MangoLove IDEA. */
 export interface Worktree {
@@ -640,6 +641,13 @@ export interface AppSettings {
    * value can never collapse a pane.
    */
   readonly paneLayout?: PaneLayout;
+  /**
+   * Per-worktree terminal TILE layout (multi-terminal panel, A2g), keyed by worktreeId. Stores
+   * the STRUCTURE + leaf kind (agent | shell+cwd) + split ratios — never the live terminalIds /
+   * PTYs. Coerced + clamped on read AND write by the shared sanitizer (single-agent, <=4 leaves);
+   * see shared/terminal-layout.ts. Unset for a worktree => a single agent tile (the default).
+   */
+  readonly terminalLayouts?: Record<string, TerminalLayout>;
 }
 
 /**
