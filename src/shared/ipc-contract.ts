@@ -10,6 +10,11 @@ import type {
   SessionResizeRequest,
   SessionOutputEvent,
   SessionExitEvent,
+  TermSpawnRequest,
+  TermInputRequest,
+  TermResizeRequest,
+  TermOutputEvent,
+  TermExitEvent,
   ServerStatus,
   StartServerRequest,
   StopServerRequest,
@@ -95,6 +100,16 @@ export interface MangoApi {
     onOutput(cb: (e: SessionOutputEvent) => void): Unsubscribe;
     onExit(cb: (e: SessionExitEvent) => void): Unsubscribe;
     onStatus(cb: (s: AgentSession) => void): Unsubscribe;
+  };
+
+  /** Plain shell terminals (multi-terminal panel) — ephemeral $SHELL PTYs keyed by terminalId. */
+  term: {
+    spawn(req: TermSpawnRequest): Promise<Ack>;
+    sendInput(req: TermInputRequest): void; // fire-and-forget
+    resize(req: TermResizeRequest): void; // fire-and-forget
+    kill(terminalId: string): Promise<Ack>;
+    onOutput(cb: (e: TermOutputEvent) => void): Unsubscribe;
+    onExit(cb: (e: TermExitEvent) => void): Unsubscribe;
   };
   crossMachine: {
     /** All machines' published session pointers; [] when opted out or on a sync error. */

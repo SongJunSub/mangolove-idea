@@ -36,6 +36,14 @@ const api: MangoApi = {
     onExit: (cb) => subscribe(IPC.SESSION_EXIT, cb),
     onStatus: (cb) => subscribe(IPC.SESSION_STATUS, cb),
   },
+  term: {
+    spawn: (req) => ipcRenderer.invoke(IPC.TERM_SPAWN, req),
+    sendInput: (req) => ipcRenderer.send(IPC.TERM_INPUT, req),
+    resize: (req) => ipcRenderer.send(IPC.TERM_RESIZE, req),
+    kill: (terminalId) => ipcRenderer.invoke(IPC.TERM_KILL, terminalId),
+    onOutput: (cb) => subscribe(IPC.TERM_OUTPUT, cb),
+    onExit: (cb) => subscribe(IPC.TERM_EXIT, cb),
+  },
   crossMachine: {
     fetch: () => ipcRenderer.invoke(IPC.CROSS_MACHINE_FETCH),
     startHere: (branch) => ipcRenderer.invoke(IPC.CROSS_MACHINE_START_HERE, { branch }),

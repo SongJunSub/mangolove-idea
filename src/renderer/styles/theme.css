@@ -770,6 +770,38 @@ a {
   color: var(--warn);
   border-bottom-color: var(--warn);
 }
+/* a shell tab = its label button + a close (×); the "+" adds a shell. All scoped under
+   .ws-tabs (0,3,0) so they beat the global button + button:hover rules. */
+.ws-tab-shell {
+  display: inline-flex;
+  align-items: stretch;
+}
+.ws-tabs .ws-tab-close,
+.ws-tabs .ws-tab-add {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--faint);
+  line-height: 1;
+  cursor: pointer;
+}
+.ws-tabs .ws-tab-close {
+  font-size: 14px;
+  padding: 0 7px 0 2px;
+}
+.ws-tabs .ws-tab-add {
+  font-size: 16px;
+  padding: 4px 9px;
+  color: var(--muted);
+}
+.ws-tabs .ws-tab-close:hover {
+  color: var(--err);
+  background: transparent;
+}
+.ws-tabs .ws-tab-add:hover {
+  color: var(--accent);
+  background: transparent;
+}
 
 /* ── In-app update UI: a bottom-right CARD announces an update; a bottom BAR shows the
  *    active download/verify/install (and any error). ── */

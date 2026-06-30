@@ -136,6 +136,7 @@ describe('rebindCtxRepo (in-place repo switch)', () => {
   const REPO_SCOPED = [
     'worktreeManager',
     'sessionManager',
+    'shellManager',
     'sessionPublisher',
     'serverManager',
     'logStore',
@@ -159,6 +160,7 @@ describe('rebindCtxRepo (in-place repo switch)', () => {
       // live-process managers (spied — must be torn down). rebind uses sessionManager.dispose()
       // (killAll + sessions.clear), NOT bare killAll, since the window stays alive across reload.
       sessionManager: { dispose: () => calls.push('sessionDispose') } as never,
+      shellManager: { dispose: () => calls.push('shellDispose') } as never,
       serverManager: { dispose: () => calls.push('serverDispose') } as never,
       lspManager: { dispose: () => calls.push('lspDispose') } as never,
       fanoutManager: {
@@ -194,7 +196,13 @@ describe('rebindCtxRepo (in-place repo switch)', () => {
 
     rebindCtxRepo(ctx, '/new/repo');
 
-    expect(calls.sort()).toEqual(['abort', 'lspDispose', 'serverDispose', 'sessionDispose']);
+    expect(calls.sort()).toEqual([
+      'abort',
+      'lspDispose',
+      'serverDispose',
+      'sessionDispose',
+      'shellDispose',
+    ]);
     for (const key of REPO_SCOPED) {
       expect(ctx[key], key).toBeUndefined();
     }

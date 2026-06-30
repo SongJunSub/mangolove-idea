@@ -73,12 +73,13 @@ export function aggregateUnsavedCount(contexts: Map<number, IpcContext>): number
   return total;
 }
 
-/** killAll() + dispose() EVERY window's managers (no orphan claude/server anywhere). */
+/** killAll() + dispose() EVERY window's managers (no orphan claude/server/shell anywhere). */
 export function sweepAll(contexts: Map<number, IpcContext>): void {
   for (const ctx of contexts.values()) {
     ctx.sessionManager?.killAll();
     ctx.serverManager?.dispose();
     ctx.lspManager?.dispose();
+    ctx.shellManager?.dispose();
   }
 }
 
@@ -93,6 +94,7 @@ export function teardownWindow(contexts: Map<number, IpcContext>, id: number): v
   ctx.sessionManager?.killAll();
   ctx.serverManager?.dispose();
   ctx.lspManager?.dispose();
+  ctx.shellManager?.dispose();
   contexts.delete(id);
 }
 
@@ -121,10 +123,12 @@ export function rebindCtxRepo(ctx: IpcContext, newRoot: string): void {
   ctx.sessionManager?.dispose();
   ctx.serverManager?.dispose();
   ctx.lspManager?.dispose();
+  ctx.shellManager?.dispose();
   void ctx.fanoutManager?.abort();
   // 2. Null every repo-scoped manager so the lazy getters rebuild against the new root.
   ctx.worktreeManager = undefined;
   ctx.sessionManager = undefined;
+  ctx.shellManager = undefined;
   ctx.sessionPublisher = undefined;
   ctx.serverManager = undefined;
   ctx.logStore = undefined; // built with serverManager — null together

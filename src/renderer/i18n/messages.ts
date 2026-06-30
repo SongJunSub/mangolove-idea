@@ -317,6 +317,9 @@ export const en = {
   'tree.empty': 'Empty directory',
   // agent terminal
   'terminal.claudeExited': 'claude exited: code {code}',
+  'terminal.shellExited': 'shell exited: code {code}',
+  'app.tab.newTerminal': 'New terminal',
+  'app.tab.closeTerminal': 'Close terminal',
 } as const;
 
 /** Every message key, derived from the English catalog (the single source of truth). */
@@ -613,6 +616,9 @@ export const ko: Record<MessageKey, string> = {
   'tree.loading': '불러오는 중…',
   'tree.empty': '폴더가 비어 있어요',
   'terminal.claudeExited': 'claude가 종료됐어요 (코드 {code})',
+  'terminal.shellExited': '셸이 종료됐어요 (코드 {code})',
+  'app.tab.newTerminal': '새 터미널',
+  'app.tab.closeTerminal': '터미널 닫기',
 };
 
 /** The two catalogs, keyed by resolved locale. */

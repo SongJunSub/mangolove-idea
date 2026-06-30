@@ -135,6 +135,37 @@ export interface SessionExitEvent {
   readonly signal?: number;
 }
 
+// ── plain shell terminals (multi-terminal panel) — keyed by a renderer-generated terminalId ──
+export interface TermSpawnRequest {
+  readonly terminalId: string;
+  /** Absolute cwd the $SHELL starts in (a worktree path, or the repo root). */
+  readonly cwd: string;
+  readonly cols: number;
+  readonly rows: number;
+}
+
+export interface TermInputRequest {
+  readonly terminalId: string;
+  readonly data: string;
+}
+
+export interface TermResizeRequest {
+  readonly terminalId: string;
+  readonly cols: number;
+  readonly rows: number;
+}
+
+export interface TermOutputEvent {
+  readonly terminalId: string;
+  readonly data: string;
+}
+
+export interface TermExitEvent {
+  readonly terminalId: string;
+  readonly exitCode: number;
+  readonly signal?: number;
+}
+
 export interface StartServerRequest {
   readonly worktreeId: string;
   // NOTE: no renderer-supplied command override — the command comes only from
