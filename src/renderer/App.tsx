@@ -41,7 +41,6 @@ import { I18nContext } from './i18n/i18n-context';
 import { makeT, type TranslateFn } from './i18n/messages';
 import { resolveLocale } from './i18n/resolve-locale';
 import { WorktreeList } from './components/sidebar/worktree-list';
-import { LogPanel } from './components/logs/log-panel';
 import { detectServerUrl } from './lib/detect-server-url';
 import { BrowserPane } from './components/browser/browser-pane';
 
@@ -283,7 +282,9 @@ export function App(): React.JSX.Element {
   const onFindUsages = useCallback((list: UsageLocation[] | null, loading: boolean): void => {
     setUsagesLoading(loading);
     if (!loading) setUsages(list ?? []);
-    setPaneMode('references');
+    // The references view is hidden for now (the terminal pane shows ONLY the terminal), so
+    // find-usages no longer hijacks the pane. Re-enable setPaneMode('references') when the
+    // usages view is brought back.
   }, []);
 
   /** Back: return to the previously-jumped-from location through the dirty-guard. */
@@ -722,6 +723,8 @@ export function App(): React.JSX.Element {
                               aria-label={t('app.worktreeView')}
                               className="ws-tabs"
                             >
+                              {/* Diff / Browser / Usages tabs are hidden for now — the pane shows
+                                  ONLY the terminal (the views stay in the code, just unreachable). */}
                               <button
                                 type="button"
                                 role="tab"
@@ -731,36 +734,6 @@ export function App(): React.JSX.Element {
                                 onClick={() => setPaneMode('terminal')}
                               >
                                 {t('app.tab.terminal')}
-                              </button>
-                              <button
-                                type="button"
-                                role="tab"
-                                className="ws-tab"
-                                aria-selected={paneMode === 'diff'}
-                                data-testid="tab-diff"
-                                onClick={() => setPaneMode('diff')}
-                              >
-                                {t('app.tab.diff')}
-                              </button>
-                              <button
-                                type="button"
-                                role="tab"
-                                className="ws-tab"
-                                aria-selected={paneMode === 'browser'}
-                                data-testid="tab-browser"
-                                onClick={() => setPaneMode('browser')}
-                              >
-                                {t('app.tab.browser')}
-                              </button>
-                              <button
-                                type="button"
-                                role="tab"
-                                className="ws-tab"
-                                aria-selected={paneMode === 'references'}
-                                data-testid="tab-references"
-                                onClick={() => setPaneMode('references')}
-                              >
-                                {t('app.tab.usages')}
                               </button>
                               {conflictWorktreeId === selectedId && (
                                 <button
@@ -866,7 +839,6 @@ export function App(): React.JSX.Element {
                             {t('app.selectWorktree')}
                           </p>
                         )}
-                        <LogPanel lines={logLines} />
                       </section>
                     </div>
                   }
