@@ -25,16 +25,19 @@ export function WorktreeList({
 }: WorktreeListProps): React.JSX.Element {
   const { t } = useI18n();
   return (
-    <section data-testid="worktree-list">
-      <h2 style={{ fontSize: 14, margin: '8px 0' }}>{t('app.worktrees')}</h2>
-      {error && (
-        <pre style={{ color: 'var(--err)', fontSize: 12 }}>{t('worktree.error', { error })}</pre>
-      )}
-      {loading && <p style={{ fontSize: 12, color: 'var(--muted)' }}>{t('worktree.loading')}</p>}
-      {!loading && worktrees.length === 0 && (
-        <p style={{ fontSize: 12, color: 'var(--muted)' }}>{t('worktree.empty')}</p>
-      )}
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+    <section className="wt-list" data-testid="worktree-list">
+      <div className="wt-list-head">
+        <span className="wt-list-title">{t('app.worktrees')}</span>
+        {!loading && !error && (
+          <span className="wt-count" data-testid="worktree-count">
+            {worktrees.length}
+          </span>
+        )}
+      </div>
+      {error && <pre className="wt-error">{t('worktree.error', { error })}</pre>}
+      {loading && <p className="wt-empty">{t('worktree.loading')}</p>}
+      {!loading && worktrees.length === 0 && <p className="wt-empty">{t('worktree.empty')}</p>}
+      <ul className="wt-list-ul">
         {worktrees.map((wt) => {
           const status = statuses.get(wt.id);
           return (

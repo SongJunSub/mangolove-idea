@@ -1,6 +1,7 @@
 import type { RecentRepo } from '../../../shared/types';
 import { useI18n } from '../../i18n/i18n-context';
 import { FolderIcon } from '../tree/tree-icons';
+import { CheckIcon } from '../icons';
 
 export interface RepoListProps {
   /** Known repos (most-recent first); exactly one may be `active`. */
@@ -59,6 +60,9 @@ export function RepoList({ repos, onOpen, onAdd }: RepoListProps): React.JSX.Ele
               <FolderIcon open={r.active} />
             </span>
             <span className="repo-item-name">{repoName(r.path)}</span>
+            <span className="repo-item-check" aria-hidden="true">
+              <CheckIcon />
+            </span>
           </button>
         ))}
       </div>
