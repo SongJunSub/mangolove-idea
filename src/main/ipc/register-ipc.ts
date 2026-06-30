@@ -14,6 +14,9 @@ import type {
   SpawnSessionRequest,
   SessionInputRequest,
   SessionResizeRequest,
+  TermSpawnRequest,
+  TermInputRequest,
+  TermResizeRequest,
   AgentSession,
   ServerStatus,
   StartServerRequest,
@@ -74,6 +77,7 @@ import { getOrCreateMachineIdentity } from '../sync/machine-identity';
 import { SessionPublisher, type LiveSession } from '../sync/session-publisher';
 import { WorktreeManager } from '../managers/worktree-manager';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
+import { ShellManager } from '../managers/shell-manager';
 import { ServerManager, type ServerEmitter } from '../managers/server-manager';
 import { LogStore, type LogEmitter } from '../managers/log-store';
 import { NodeProcessRunner, type IProcLike } from '../proc/process-runner';
@@ -332,6 +336,27 @@ function getSessionManager(ctx: IpcContext): SessionManager {
     },
   });
   return ctx.sessionManager;
+}
+
+/**
+ * Resolves the ShellManager: prefer ctx (tests inject a fake); else lazily build one with the
+ * node-pty factory and the user's login $SHELL, emitting TERM_OUTPUT/TERM_EXIT to this window.
+ * SYNCHRONOUS so TERM_INPUT/TERM_RESIZE on-handlers write/resize synchronously.
+ */
+function getShellManager(ctx: IpcContext): ShellManager {
+  if (ctx.shellManager) return ctx.shellManager;
+  const send = (channel: string, payload: unknown): void => {
+    const win = ctx.mainWindow;
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  };
+  ctx.shellManager = new ShellManager({
+    factory: new NodePtyFactory(),
+    shellPath: process.env.SHELL ?? '/bin/zsh',
+    emitOutput: (terminalId, data) => send(IPC.TERM_OUTPUT, { terminalId, data }),
+    emitExit: (terminalId, exitCode, signal) =>
+      send(IPC.TERM_EXIT, { terminalId, exitCode, signal }),
+  });
+  return ctx.shellManager;
 }
 
 /**
@@ -880,6 +905,26 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   ipcMain.on(IPC.SESSION_RESIZE, (event, req: SessionResizeRequest) => {
     const ctx = requireCtx(event);
     getSessionManager(ctx).resize(req);
+  });
+
+  ipcMain.handle(IPC.TERM_SPAWN, async (event, req: TermSpawnRequest): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    return getShellManager(ctx).spawn(req);
+  });
+
+  ipcMain.handle(IPC.TERM_KILL, async (event, terminalId: string): Promise<Ack> => {
+    const ctx = requireCtx(event);
+    return getShellManager(ctx).kill(terminalId);
+  });
+
+  ipcMain.on(IPC.TERM_INPUT, (event, req: TermInputRequest) => {
+    const ctx = requireCtx(event);
+    getShellManager(ctx).input(req);
+  });
+
+  ipcMain.on(IPC.TERM_RESIZE, (event, req: TermResizeRequest) => {
+    const ctx = requireCtx(event);
+    getShellManager(ctx).resize(req);
   });
 
   ipcMain.handle(

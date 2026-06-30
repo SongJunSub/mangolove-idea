@@ -20,6 +20,15 @@ export const IPC = {
   SESSION_STOP_ALL_BACKGROUND: 'session:stop-all-background', // invoke (-> Ack; b-full kill-switch)
   SESSION_PERSISTENCE_INFO: 'session:persistence-info', // invoke (-> SessionPersistenceInfo; loud fallback)
 
+  // plain shell terminals (multi-terminal panel) — ephemeral $SHELL PTYs keyed by terminalId,
+  // separate from the agent session machinery above (no abduco/b-full/cross-machine).
+  TERM_SPAWN: 'term:spawn', // invoke ({terminalId, cwd, cols, rows} -> Ack)
+  TERM_INPUT: 'term:input', // renderer -> main, fire-and-forget (on)
+  TERM_RESIZE: 'term:resize', // renderer -> main, fire-and-forget (on)
+  TERM_KILL: 'term:kill', // invoke (terminalId -> Ack)
+  TERM_OUTPUT: 'term:output', // main -> renderer, event
+  TERM_EXIT: 'term:exit', // main -> renderer, event
+
   // server (ONE per worktree, concurrent)
   SERVER_START: 'server:start', // invoke (worktreeId)
   SERVER_STOP: 'server:stop', // invoke (worktreeId)

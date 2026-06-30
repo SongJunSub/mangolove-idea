@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import type { WorktreeManager } from '../managers/worktree-manager';
 import type { SessionManager } from '../managers/session-manager';
+import type { ShellManager } from '../managers/shell-manager';
 import type { ServerManager } from '../managers/server-manager';
 import type { LogStore } from '../managers/log-store';
 import type { MergeRunner } from '../git/merge-runner';
@@ -36,6 +37,12 @@ export interface IpcContext {
   worktreeManager?: WorktreeManager;
   /** Lazily constructed in register-ipc; injectable in tests. */
   sessionManager?: SessionManager;
+  /**
+   * Lazily constructed in register-ipc — the multi-terminal panel's plain $SHELL PTYs (keyed
+   * by terminalId). Owns live OS processes, so it MUST be killed on window teardown / repo
+   * rebind / quit (like sessionManager). Ephemeral: not nulled on SETTINGS_SET.
+   */
+  shellManager?: ShellManager;
   /**
    * Lazily constructed in register-ipc (V2 cross-machine sessions). Publishes this
    * machine's session pointers on lifecycle changes when crossMachineSessions==='on';
