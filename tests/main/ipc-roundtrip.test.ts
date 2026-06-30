@@ -531,7 +531,12 @@ describe('registerIpc — settings (V2 E)', () => {
     };
     const { handlers, fakeEvent } = registerIpcForTest(ctx);
     await handlers.get('settings:set')!(fakeEvent, {
-      paneLayout: { leftColWidth: 300, topRowFraction: 1.5 },
+      paneLayout: {
+        topRowFraction: 0.5,
+        topLeftWidth: 300,
+        bottomLeftWidth: 280,
+        repoFraction: 0.3,
+      },
     });
     // A pane drag must NOT drop diff/merge caches or touch the session/server managers.
     expect(ctx.mergeRunner).toEqual({ tag: 'merge' });

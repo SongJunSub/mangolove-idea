@@ -602,24 +602,32 @@ export interface AppSettings {
    */
   readonly lastDismissedUpdateVersion?: string;
   /**
-   * User-adjusted sizes of the 2x2 workspace splitters (drag-to-resize). Unset =>
-   * the CSS defaults win (264px left column / 1.25:1 top:bottom rows). Persisted on
-   * drag-end only (SETTINGS_SET is heavyweight). Always clamped on read AND write by
-   * the shared sanitizer so a hand-edited/stale value can never collapse a pane.
+   * User-adjusted sizes of the workspace's FOUR independent splitters (drag-to-resize).
+   * Unset => the CSS defaults win. Persisted on drag-end only (SETTINGS_SET is heavyweight).
+   * Always coerced + clamped on read AND write by the shared sanitizer, which also MIGRATES
+   * the legacy 2-field `{leftColWidth, topRowFraction(fr)}` shape, so a hand-edited/stale/old
+   * value can never collapse a pane.
    */
   readonly paneLayout?: PaneLayout;
 }
 
 /**
- * Geometry of the 2x2 workspace's two shared splitters (A2c). `leftColWidth` is the
- * tree/worktree column width in px; `topRowFraction` is the top row's flex share with
- * the bottom row pinned at 1fr (so gridTemplateRows = `${topRowFraction}fr 1fr`). Both
- * are clamped to safe ranges (see shared/pane-layout.ts) — the single source of truth
- * for bounds, shared by the main-process sanitizer and the renderer drag handlers.
+ * Geometry of the workspace's FOUR independent splitters (A2d). The layout nests:
+ * a top region over a bottom region (split by `topRowFraction`), each region split into a
+ * left column over the editor/terminal, and the top-left column itself split into the repo
+ * list over the file tree. The two column widths are INDEPENDENT (top vs bottom). All four
+ * are clamped to safe ranges (see shared/pane-layout.ts) — the single source of truth for
+ * bounds, shared by the main-process sanitizer and the renderer Split drag handlers.
  */
 export interface PaneLayout {
-  readonly leftColWidth: number;
+  /** Top region height as a fraction (0..1) of the workspace height. */
   readonly topRowFraction: number;
+  /** Top-left (repo list + file tree) column width in px. */
+  readonly topLeftWidth: number;
+  /** Bottom-left (worktree list) column width in px — independent of topLeftWidth. */
+  readonly bottomLeftWidth: number;
+  /** Repo-list height as a fraction (0..1) of the top-left column height. */
+  readonly repoFraction: number;
 }
 
 /**

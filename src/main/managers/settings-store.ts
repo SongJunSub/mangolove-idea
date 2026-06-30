@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AppSettings, PaneLayout } from '../../shared/types';
-import { clampPaneLayout } from '../../shared/pane-layout';
+import type { AppSettings } from '../../shared/types';
+import { coercePaneLayout } from '../../shared/pane-layout';
 
 /**
  * Resolves the default settings.json path under Electron's userData dir. Kept
@@ -40,18 +40,12 @@ function sanitizeStringArray(raw: unknown): string[] {
 }
 
 /**
- * Projects an unknown to a clamped PaneLayout, or undefined when it is not a valid
- * layout object (so a present-but-invalid value is treated as UNSET — same delete-on-
- * invalid rule as the string keys, falling back to the CSS defaults). Requires an
- * object with two FINITE numbers before clamping (NaN/Infinity/strings -> undefined).
+ * Projects an unknown to a clamped PaneLayout (delegating to the shared coercer, which also
+ * MIGRATES the legacy 2-field shape), or undefined when it is unrecognizable — so a present-
+ * but-invalid value is treated as UNSET, the same delete-on-invalid rule as the string keys.
  */
-function sanitizePaneLayout(raw: unknown): PaneLayout | undefined {
-  if (raw === null || typeof raw !== 'object') return undefined;
-  const o = raw as Record<string, unknown>;
-  const { leftColWidth, topRowFraction } = o;
-  if (typeof leftColWidth !== 'number' || !Number.isFinite(leftColWidth)) return undefined;
-  if (typeof topRowFraction !== 'number' || !Number.isFinite(topRowFraction)) return undefined;
-  return clampPaneLayout({ leftColWidth, topRowFraction });
+function sanitizePaneLayout(raw: unknown): AppSettings['paneLayout'] {
+  return coercePaneLayout(raw);
 }
 
 /**

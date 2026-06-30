@@ -219,83 +219,75 @@ a {
   margin-right: 4px;
 }
 
-/* ---- 2x2 workspace grid (A2b): tree | editor / worktrees | terminal ----
-   Track sizes are the DEFAULTS; when the user drags a splitter, App.tsx overrides
-   grid-template-columns/-rows via an inline style from the persisted paneLayout (A2c).
-   position:relative anchors the two absolutely-positioned splitter handles below. */
+/* ---- workspace: four INDEPENDENT splitters (A2d) ----
+   The 2x2 grid is gone: the workspace holds a single nested <Split> tree (App.tsx). Each
+   pane fills its Split slot (flex:1); the gutters (.split-gutter) are now the visible
+   dividers, so the panes no longer carry their own border-right/bottom. */
 .workspace {
-  display: grid;
-  grid-template-columns: 264px 1fr;
-  grid-template-rows: 1.25fr 1fr;
+  display: flex;
   height: 100%;
   min-height: 0;
-  position: relative;
 }
-/* ---- drag-resize splitter handles (A2c) ----
-   Thin invisible hit areas overlaying the +-shaped grid divider. A 1px accent line
-   appears on hover/drag. The column handle spans full height at left=leftColWidth; the
-   row handle spans full width at top=<topRowFraction ratio>. touch-action:none lets
-   Pointer Events drive the drag without the browser hijacking it for scroll/zoom. */
-.ws-split {
-  position: absolute;
-  z-index: 6;
+/* ---- split gutter (A2d): a thin hit area showing a 1px line that brightens to the accent
+   on hover/drag. touch-action:none lets Pointer Events drive the drag without the browser
+   hijacking it for scroll/zoom. */
+.split-gutter {
+  flex: none;
+  position: relative;
   background: transparent;
   touch-action: none;
+  z-index: 4;
 }
-.ws-split::before {
+.split-gutter::before {
   content: '';
   position: absolute;
+  background: var(--border);
+  transition: background 0.12s ease;
+}
+.split-gutter:hover::before,
+.split-gutter:active::before {
   background: var(--accent);
-  opacity: 0;
-  transition: opacity 0.12s ease;
 }
-.ws-split:hover::before,
-.ws-split:active::before {
-  opacity: 0.7;
-}
-.ws-split-col {
-  top: 0;
-  bottom: 0;
-  width: 9px;
-  margin-left: -5px; /* center the 9px hit area on the 1px grid border */
+.split-gutter-x {
+  width: 6px;
   cursor: col-resize;
 }
-.ws-split-col::before {
+.split-gutter-x::before {
   top: 0;
   bottom: 0;
-  left: 4px;
+  left: 50%;
   width: 1px;
+  transform: translateX(-50%);
 }
-.ws-split-row {
-  left: 0;
-  right: 0;
-  height: 9px;
-  margin-top: -5px;
+.split-gutter-x:hover::before,
+.split-gutter-x:active::before {
+  width: 2px;
+}
+.split-gutter-y {
+  height: 6px;
   cursor: row-resize;
 }
-.ws-split-row::before {
+.split-gutter-y::before {
   left: 0;
   right: 0;
-  top: 4px;
+  top: 50%;
   height: 1px;
+  transform: translateY(-50%);
+}
+.split-gutter-y:hover::before,
+.split-gutter-y:active::before {
+  height: 2px;
 }
 .ws-pane {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
-.ws-tree {
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
 .ws-editor {
-  border-bottom: 1px solid var(--border);
   background: var(--code-bg);
-}
-.ws-worktrees {
-  border-right: 1px solid var(--border);
 }
 .pane-head {
   flex: none;
@@ -583,6 +575,18 @@ a {
 }
 .repo-launcher .repo-list-body {
   max-height: 240px;
+}
+/* In the resizable top-left pane (A2d) the repo list FILLS its pane — the ① splitter sets the
+   height — and its body scrolls within, unlike the fixed-height empty-gate launcher above. */
+.ws-repos .repo-list {
+  flex: 1;
+  min-height: 0;
+  border-bottom: none;
+}
+.ws-repos .repo-list-body {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ── In-app update UI: a bottom-right CARD announces an update; a bottom BAR shows the
