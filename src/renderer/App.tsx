@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { QuitWarningEvent, SessionPersistenceInfo, Worktree } from '../shared/types';
+import type { QuitWarningEvent, SessionPersistenceInfo } from '../shared/types';
 import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
@@ -15,7 +15,6 @@ import { useServer } from './hooks/use-server';
 import { useLogs } from './hooks/use-logs';
 import { useWorktreeStatus } from './hooks/use-worktree-status';
 import { isRepoBusy } from './state/app-store';
-import { useMerge } from './hooks/use-merge';
 import { useSessionRecords } from './hooks/use-session-records';
 import { useSettings } from './hooks/use-settings';
 import { useCrossMachine } from './hooks/use-cross-machine';
@@ -41,12 +40,7 @@ import { openExternal } from './lib/open-external';
 import { I18nContext } from './i18n/i18n-context';
 import { makeT, type TranslateFn } from './i18n/messages';
 import { resolveLocale } from './i18n/resolve-locale';
-import { Toolbar } from './components/toolbar/toolbar';
 import { WorktreeList } from './components/sidebar/worktree-list';
-import { ServerControls } from './components/toolbar/server-controls';
-import { MergeControls } from './components/toolbar/merge-controls';
-import { GhStatusPanel } from './components/toolbar/gh-status-panel';
-import { useGhStatus } from './hooks/use-gh-status';
 import { LogPanel } from './components/logs/log-panel';
 import { detectServerUrl } from './lib/detect-server-url';
 import { BrowserPane } from './components/browser/browser-pane';
@@ -114,19 +108,15 @@ export function App(): React.JSX.Element {
   const repo = useRepo();
   const recentRepos = useRecentRepos();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { worktrees, loading, error, create, remove, refresh } = useWorktrees();
-  const { servers, start: startServer, stop: stopServer } = useServer();
+  const { worktrees, loading, error, remove, refresh } = useWorktrees();
+  // `servers` still feeds the worktree status dots; the start/stop controls were removed from
+  // the worktree pane (the list shows ONLY worktrees now). selectedServer + detectedServerUrl
+  // still drive the browser-pane auto-open + BrowserPane.
+  const { servers } = useServer();
   const selectedServer = selectedId ? (servers.get(selectedId) ?? null) : null;
   const logLines = useLogs(selectedId);
   const detectedServerUrl = detectServerUrl(logLines);
   const statuses = useWorktreeStatus(worktrees, servers);
-  const { progress: mergeProgress, running: merging, run: runMerge } = useMerge();
-  const {
-    status: ghStatus,
-    loading: ghLoading,
-    error: ghError,
-    refresh: refreshGh,
-  } = useGhStatus(selectedId);
 
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
@@ -446,34 +436,6 @@ export function App(): React.JSX.Element {
   const selectedWorktree = worktrees.find((w) => w.id === selectedId) ?? null;
   const baseBranch = settings.baseBranch ?? 'main';
 
-  const onMerge = useCallback(
-    async (worktree: Worktree): Promise<void> => {
-      const result = await runMerge({
-        worktreeId: worktree.id,
-        targetBranch: baseBranch,
-        runVerifyHook: true,
-        cleanup: true,
-      });
-      if (result.status === 'conflict') {
-        // There is exactly ONE global MERGE_HEAD. A second merge while one is paused
-        // re-surfaces the EXISTING conflict, which may belong to a DIFFERENT worktree
-        // than the one just clicked. Attribute the Conflicts pane to the TRUE owner —
-        // ask merge.owner() rather than trusting worktree.id — so Continue never
-        // commits one worktree's merge and cleans up another's tree/branch. Only flip
-        // to the Conflicts pane when the owner is the worktree currently selected.
-        const ownerId = (await window.mango.merge.owner()) ?? result.worktreeId;
-        setConflictWorktreeId(ownerId);
-        if (ownerId === selectedId) setPaneMode('conflict');
-        return;
-      }
-      if (result.merged) {
-        if (worktree.id === selectedId) requestSelectWorktree(null);
-        await refresh();
-      }
-    },
-    [runMerge, refresh, selectedId, baseBranch, requestSelectWorktree],
-  );
-
   // Repo-picker gate: until a git repo is selected, show a centered empty-state
   // INSTEAD of the worktree UI. While loading the initial REPO_GET, render nothing
   // (avoids a flash of the empty-state before a persisted repo resolves).
@@ -723,38 +685,18 @@ export function App(): React.JSX.Element {
                   testId="split-col-bottom"
                   first={
                     <div className="ws-pane ws-worktrees">
-                      <div className="pane-head">
+                      <div className="pane-head pane-head--count">
                         <span className="pane-head-ico">
                           <BranchIcon />
                         </span>
                         {t('app.worktrees')}
+                        {!loading && (
+                          <span className="wt-count" data-testid="worktree-count">
+                            {worktrees.length}
+                          </span>
+                        )}
                       </div>
                       <div className="pane-body">
-                        <div className="wt-controls">
-                          <Toolbar onCreate={create} />
-                          <ServerControls
-                            selectedId={selectedId}
-                            status={selectedServer}
-                            serverUrl={detectedServerUrl}
-                            onStart={(id) => void startServer(id)}
-                            onStop={(id) => void stopServer(id)}
-                            onOpen={() => setPaneMode('browser')}
-                          />
-                          <MergeControls
-                            selected={selectedWorktree}
-                            running={merging}
-                            progress={mergeProgress}
-                            onMerge={(wt) => void onMerge(wt)}
-                          />
-                          <GhStatusPanel
-                            selectedId={selectedId}
-                            status={ghStatus}
-                            loading={ghLoading}
-                            error={ghError}
-                            onRefresh={refreshGh}
-                            onOpen={openExternal}
-                          />
-                        </div>
                         <WorktreeList
                           worktrees={worktrees}
                           loading={loading}

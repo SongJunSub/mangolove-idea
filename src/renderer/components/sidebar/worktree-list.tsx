@@ -26,14 +26,6 @@ export function WorktreeList({
   const { t } = useI18n();
   return (
     <section className="wt-list" data-testid="worktree-list">
-      <div className="wt-list-head">
-        <span className="wt-list-title">{t('app.worktrees')}</span>
-        {!loading && !error && (
-          <span className="wt-count" data-testid="worktree-count">
-            {worktrees.length}
-          </span>
-        )}
-      </div>
       {error && <pre className="wt-error">{t('worktree.error', { error })}</pre>}
       {loading && <p className="wt-empty">{t('worktree.loading')}</p>}
       {!loading && worktrees.length === 0 && <p className="wt-empty">{t('worktree.empty')}</p>}
