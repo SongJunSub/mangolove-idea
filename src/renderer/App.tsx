@@ -27,6 +27,8 @@ import { FolderIcon } from './components/tree/tree-icons';
 import { RepoList } from './components/sidebar/repo-list';
 import { useRecentRepos } from './hooks/use-recent-repos';
 import { usePaneLayout } from './hooks/use-pane-layout';
+import { Split } from './components/layout/split';
+import { DEFAULT_PANE_LAYOUT, PANE_BOUNDS } from '../shared/pane-layout';
 import { SettingsModal } from './components/settings/settings-modal';
 import { UpdateBanner, UpdateProgressInline } from './components/update/update-banner';
 import { StatusBar } from './components/statusbar/status-bar';
@@ -127,7 +129,7 @@ export function App(): React.JSX.Element {
 
   const sessionRecords = useSessionRecords();
   const { settings, loading: settingsLoading, save: saveSettings } = useSettings();
-  // Drag-resizable 2x2 workspace splitters (A2c): live geometry + persist-on-drag-end.
+  // Four independent drag-resizable workspace splitters (A2d): live geometry + persist-on-end.
   const paneLayout = usePaneLayout(
     settings.paneLayout,
     (l) => void saveSettings({ paneLayout: l }),
@@ -557,307 +559,365 @@ export function App(): React.JSX.Element {
           }
         />
         <main className="app-body">
-          <div className="workspace" ref={paneLayout.workspaceRef} style={paneLayout.gridStyle}>
-            {/* top-left: repo switcher + project file tree (A3) */}
-            <div className="ws-pane ws-tree">
-              <RepoList
-                repos={recentRepos.repos}
-                onOpen={requestRepoSwitch}
-                onAdd={() =>
-                  void repo.pick().then((r) => {
-                    if (r.ok) void recentRepos.refresh();
-                  })
-                }
-              />
-              <div className="pane-head">
-                <span className="pane-head-ico">
-                  <FolderIcon open={false} />
-                </span>
-                {t('app.project')}
-              </div>
-              <FileTree
-                worktreeId={selectedId}
-                selectedFile={selectedFile}
-                onOpenFile={requestOpenFile}
-              />
-            </div>
-            {/* top-right: code editor (A4) — edit + ⌘S save */}
-            <div className="ws-pane ws-editor">
-              <div className="pane-head">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <NavBack canGoBack={canGoBack} onBack={onNavBack} />
-                  {t('app.editor')}
-                </span>
-                {selectedFile && selectedId && !editor.readOnly && (
-                  <button
-                    type="button"
-                    data-testid="editor-save"
-                    className="editor-save-btn"
-                    disabled={!editor.dirty || editor.saving}
-                    title={t('app.saveTip')}
-                    onClick={() => void editor.save()}
-                  >
-                    {editor.saving ? t('app.saving') : t('app.save')}
-                  </button>
-                )}
-              </div>
-              {!selectedFile || !selectedId ? (
-                <div className="pane-placeholder">{t('app.editorEmpty')}</div>
-              ) : editor.loadError ? (
-                <div className="pane-placeholder" data-testid="editor-load-error">
-                  {t('app.loadError', { error: editor.loadError })}
-                </div>
-              ) : (
-                <div
-                  className="pane-body"
-                  style={{ display: 'flex', flexDirection: 'column', minHeight: 0, gap: 6 }}
-                >
-                  {editor.readOnly && (
-                    <div className="editor-banner" data-testid="editor-readonly">
-                      {readOnlyReason(editor.reason, t)} — {t('app.readonly.default')}
-                    </div>
-                  )}
-                  {editor.saveError && (
-                    <div className="editor-banner err" data-testid="editor-save-error">
-                      {t('app.saveError', { error: editor.saveError })}
-                    </div>
-                  )}
-                  <Suspense
-                    fallback={<div className="pane-placeholder">{t('app.editorLoading')}</div>}
-                  >
-                    <CodeEditor
-                      worktreeId={selectedId}
-                      relPath={selectedFile}
-                      theme={resolvedTheme}
-                      content={editor.content}
-                      readOnly={editor.readOnly}
-                      dirty={editor.dirty}
-                      reveal={
-                        pendingReveal?.relPath === selectedFile
-                          ? { line: pendingReveal.line, column: pendingReveal.column }
-                          : null
+          {/* Four INDEPENDENT splitters (A2d): a main horizontal row split, and INSIDE each
+              row its own vertical column split, plus a repo/tree split inside the top-left.
+              Each <Split> owns its own drag + ResizeObserver re-clamp; the hook owns the 4
+              persisted sizes. Monaco (automaticLayout) and the terminal (its own ResizeObserver)
+              re-fit when their pane changes. */}
+          <div className="workspace">
+            <Split
+              axis="y"
+              unit="fraction"
+              size={paneLayout.topRow.size}
+              onResize={paneLayout.topRow.onResize}
+              onResizeEnd={paneLayout.topRow.onResizeEnd}
+              min={PANE_BOUNDS.minRowFraction}
+              max={PANE_BOUNDS.maxRowFraction}
+              minFirstPx={200}
+              minSecondPx={160}
+              defaultSize={DEFAULT_PANE_LAYOUT.topRowFraction}
+              label={t('app.resizeRows')}
+              testId="split-row-main"
+              first={
+                <Split
+                  axis="x"
+                  unit="px"
+                  size={paneLayout.topLeft.size}
+                  onResize={paneLayout.topLeft.onResize}
+                  onResizeEnd={paneLayout.topLeft.onResizeEnd}
+                  min={PANE_BOUNDS.minWidth}
+                  max={PANE_BOUNDS.maxWidth}
+                  minSecondPx={240}
+                  defaultSize={DEFAULT_PANE_LAYOUT.topLeftWidth}
+                  label={t('app.resizeColumns')}
+                  testId="split-col-top"
+                  first={
+                    <Split
+                      axis="y"
+                      unit="fraction"
+                      size={paneLayout.repo.size}
+                      onResize={paneLayout.repo.onResize}
+                      onResizeEnd={paneLayout.repo.onResizeEnd}
+                      min={PANE_BOUNDS.minRepoFraction}
+                      max={PANE_BOUNDS.maxRepoFraction}
+                      minFirstPx={72}
+                      minSecondPx={100}
+                      defaultSize={DEFAULT_PANE_LAYOUT.repoFraction}
+                      label={t('app.resizeRepoTree')}
+                      testId="split-repo"
+                      first={
+                        <div className="ws-pane ws-repos">
+                          <RepoList
+                            repos={recentRepos.repos}
+                            onOpen={requestRepoSwitch}
+                            onAdd={() =>
+                              void repo.pick().then((r) => {
+                                if (r.ok) void recentRepos.refresh();
+                              })
+                            }
+                          />
+                        </div>
                       }
-                      onChange={editor.setValue}
-                      onSaveRequested={() => void editor.save()}
-                      onCursor={(line, column) => {
-                        currentPosRef.current = { line, column };
-                      }}
-                      onUsages={onFindUsages}
+                      second={
+                        <div className="ws-pane ws-tree">
+                          <div className="pane-head">
+                            <span className="pane-head-ico">
+                              <FolderIcon open={false} />
+                            </span>
+                            {t('app.project')}
+                          </div>
+                          <FileTree
+                            worktreeId={selectedId}
+                            selectedFile={selectedFile}
+                            onOpenFile={requestOpenFile}
+                          />
+                        </div>
+                      }
                     />
-                  </Suspense>
-                </div>
-              )}
-            </div>
-            {/* bottom-left: worktree management (create + list + per-worktree controls) */}
-            <div className="ws-pane ws-worktrees">
-              <div className="pane-head">🌿 {t('app.worktrees')}</div>
-              <div className="pane-body">
-                <Toolbar onCreate={create} />
-                <ServerControls
-                  selectedId={selectedId}
-                  status={selectedServer}
-                  serverUrl={detectedServerUrl}
-                  onStart={(id) => void startServer(id)}
-                  onStop={(id) => void stopServer(id)}
-                  onOpen={() => setPaneMode('browser')}
-                />
-                <MergeControls
-                  selected={selectedWorktree}
-                  running={merging}
-                  progress={mergeProgress}
-                  onMerge={(wt) => void onMerge(wt)}
-                />
-                <GhStatusPanel
-                  selectedId={selectedId}
-                  status={ghStatus}
-                  loading={ghLoading}
-                  error={ghError}
-                  onRefresh={refreshGh}
-                  onOpen={openExternal}
-                />
-                <WorktreeList
-                  worktrees={worktrees}
-                  loading={loading}
-                  error={error}
-                  selectedId={selectedId}
-                  statuses={statuses}
-                  onSelect={requestSelectWorktree}
-                  onRemove={(id) => void remove(id)}
-                />
-              </div>
-            </div>
-            {/* bottom-right: terminal / diff / browser / conflict + logs */}
-            <div className="ws-pane ws-terminal">
-              <section
-                className="pane-body"
-                style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
-              >
-                {selectedId ? (
-                  <>
-                    <div
-                      role="tablist"
-                      aria-label={t('app.worktreeView')}
-                      style={{ display: 'flex', gap: 4, marginBottom: 8 }}
-                    >
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={paneMode === 'terminal'}
-                        data-testid="tab-terminal"
-                        onClick={() => setPaneMode('terminal')}
-                      >
-                        {t('app.tab.terminal')}
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={paneMode === 'diff'}
-                        data-testid="tab-diff"
-                        onClick={() => setPaneMode('diff')}
-                      >
-                        {t('app.tab.diff')}
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={paneMode === 'browser'}
-                        data-testid="tab-browser"
-                        onClick={() => setPaneMode('browser')}
-                      >
-                        {t('app.tab.browser')}
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={paneMode === 'references'}
-                        data-testid="tab-references"
-                        onClick={() => setPaneMode('references')}
-                      >
-                        {t('app.tab.usages')}
-                      </button>
-                      {conflictWorktreeId === selectedId && (
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={paneMode === 'conflict'}
-                          data-testid="tab-conflict"
-                          style={{ color: 'var(--warn)' }}
-                          onClick={() => setPaneMode('conflict')}
+                  }
+                  second={
+                    <div className="ws-pane ws-editor">
+                      <div className="pane-head">
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <NavBack canGoBack={canGoBack} onBack={onNavBack} />
+                          {t('app.editor')}
+                        </span>
+                        {selectedFile && selectedId && !editor.readOnly && (
+                          <button
+                            type="button"
+                            data-testid="editor-save"
+                            className="editor-save-btn"
+                            disabled={!editor.dirty || editor.saving}
+                            title={t('app.saveTip')}
+                            onClick={() => void editor.save()}
+                          >
+                            {editor.saving ? t('app.saving') : t('app.save')}
+                          </button>
+                        )}
+                      </div>
+                      {!selectedFile || !selectedId ? (
+                        <div className="pane-placeholder">{t('app.editorEmpty')}</div>
+                      ) : editor.loadError ? (
+                        <div className="pane-placeholder" data-testid="editor-load-error">
+                          {t('app.loadError', { error: editor.loadError })}
+                        </div>
+                      ) : (
+                        <div
+                          className="pane-body"
+                          style={{ display: 'flex', flexDirection: 'column', minHeight: 0, gap: 6 }}
                         >
-                          {t('app.tab.conflicts')}
-                        </button>
+                          {editor.readOnly && (
+                            <div className="editor-banner" data-testid="editor-readonly">
+                              {readOnlyReason(editor.reason, t)} — {t('app.readonly.default')}
+                            </div>
+                          )}
+                          {editor.saveError && (
+                            <div className="editor-banner err" data-testid="editor-save-error">
+                              {t('app.saveError', { error: editor.saveError })}
+                            </div>
+                          )}
+                          <Suspense
+                            fallback={
+                              <div className="pane-placeholder">{t('app.editorLoading')}</div>
+                            }
+                          >
+                            <CodeEditor
+                              worktreeId={selectedId}
+                              relPath={selectedFile}
+                              theme={resolvedTheme}
+                              content={editor.content}
+                              readOnly={editor.readOnly}
+                              dirty={editor.dirty}
+                              reveal={
+                                pendingReveal?.relPath === selectedFile
+                                  ? { line: pendingReveal.line, column: pendingReveal.column }
+                                  : null
+                              }
+                              onChange={editor.setValue}
+                              onSaveRequested={() => void editor.save()}
+                              onCursor={(line, column) => {
+                                currentPosRef.current = { line, column };
+                              }}
+                              onUsages={onFindUsages}
+                            />
+                          </Suspense>
+                        </div>
                       )}
                     </div>
-                    {/* Terminal stays mounted (live PTY) but hidden when Diff is active.
+                  }
+                />
+              }
+              second={
+                <Split
+                  axis="x"
+                  unit="px"
+                  size={paneLayout.bottomLeft.size}
+                  onResize={paneLayout.bottomLeft.onResize}
+                  onResizeEnd={paneLayout.bottomLeft.onResizeEnd}
+                  min={PANE_BOUNDS.minWidth}
+                  max={PANE_BOUNDS.maxWidth}
+                  minSecondPx={240}
+                  defaultSize={DEFAULT_PANE_LAYOUT.bottomLeftWidth}
+                  label={t('app.resizeColumns')}
+                  testId="split-col-bottom"
+                  first={
+                    <div className="ws-pane ws-worktrees">
+                      <div className="pane-head">🌿 {t('app.worktrees')}</div>
+                      <div className="pane-body">
+                        <Toolbar onCreate={create} />
+                        <ServerControls
+                          selectedId={selectedId}
+                          status={selectedServer}
+                          serverUrl={detectedServerUrl}
+                          onStart={(id) => void startServer(id)}
+                          onStop={(id) => void stopServer(id)}
+                          onOpen={() => setPaneMode('browser')}
+                        />
+                        <MergeControls
+                          selected={selectedWorktree}
+                          running={merging}
+                          progress={mergeProgress}
+                          onMerge={(wt) => void onMerge(wt)}
+                        />
+                        <GhStatusPanel
+                          selectedId={selectedId}
+                          status={ghStatus}
+                          loading={ghLoading}
+                          error={ghError}
+                          onRefresh={refreshGh}
+                          onOpen={openExternal}
+                        />
+                        <WorktreeList
+                          worktrees={worktrees}
+                          loading={loading}
+                          error={error}
+                          selectedId={selectedId}
+                          statuses={statuses}
+                          onSelect={requestSelectWorktree}
+                          onRemove={(id) => void remove(id)}
+                        />
+                      </div>
+                    </div>
+                  }
+                  second={
+                    <div className="ws-pane ws-terminal">
+                      <section
+                        className="pane-body"
+                        style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
+                      >
+                        {selectedId ? (
+                          <>
+                            <div
+                              role="tablist"
+                              aria-label={t('app.worktreeView')}
+                              style={{ display: 'flex', gap: 4, marginBottom: 8 }}
+                            >
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={paneMode === 'terminal'}
+                                data-testid="tab-terminal"
+                                onClick={() => setPaneMode('terminal')}
+                              >
+                                {t('app.tab.terminal')}
+                              </button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={paneMode === 'diff'}
+                                data-testid="tab-diff"
+                                onClick={() => setPaneMode('diff')}
+                              >
+                                {t('app.tab.diff')}
+                              </button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={paneMode === 'browser'}
+                                data-testid="tab-browser"
+                                onClick={() => setPaneMode('browser')}
+                              >
+                                {t('app.tab.browser')}
+                              </button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={paneMode === 'references'}
+                                data-testid="tab-references"
+                                onClick={() => setPaneMode('references')}
+                              >
+                                {t('app.tab.usages')}
+                              </button>
+                              {conflictWorktreeId === selectedId && (
+                                <button
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={paneMode === 'conflict'}
+                                  data-testid="tab-conflict"
+                                  style={{ color: 'var(--warn)' }}
+                                  onClick={() => setPaneMode('conflict')}
+                                >
+                                  {t('app.tab.conflicts')}
+                                </button>
+                              )}
+                            </div>
+                            {/* Terminal stays mounted (live PTY) but hidden when Diff is active.
                         When shown it's a flex column that fills the (resizable) pane so the
                         terminal host's flex:1 can grow to the cell height (A2c). */}
-                    <div
-                      style={{
-                        display: paneMode === 'terminal' ? 'flex' : 'none',
-                        flexDirection: 'column',
-                        flex: 1,
-                        minHeight: 0,
-                      }}
-                    >
-                      <Suspense
-                        fallback={
+                            <div
+                              style={{
+                                display: paneMode === 'terminal' ? 'flex' : 'none',
+                                flexDirection: 'column',
+                                flex: 1,
+                                minHeight: 0,
+                              }}
+                            >
+                              <Suspense
+                                fallback={
+                                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                    {t('app.loadingTerminal')}
+                                  </p>
+                                }
+                              >
+                                <AgentTerminal
+                                  key={selectedId}
+                                  worktreeId={selectedId}
+                                  continueSession={
+                                    !sessionRecords.loading && sessionRecords.has(selectedId)
+                                  }
+                                />
+                              </Suspense>
+                            </div>
+                            {paneMode === 'diff' && (
+                              <Suspense
+                                fallback={
+                                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                    {t('app.loadingDiff')}
+                                  </p>
+                                }
+                              >
+                                <DiffView
+                                  key={`diff-${selectedId}`}
+                                  worktreeId={selectedId}
+                                  base={baseBranch}
+                                  theme={resolvedTheme}
+                                />
+                              </Suspense>
+                            )}
+                            {paneMode === 'browser' && (
+                              <BrowserPane
+                                key={`browser-${selectedId}`}
+                                detectedUrl={detectedServerUrl}
+                              />
+                            )}
+                            {paneMode === 'references' && (
+                              <UsagesPanel
+                                usages={usages}
+                                loading={usagesLoading}
+                                onOpen={(relPath, line, column) => {
+                                  if (selectedId)
+                                    onCodeNavOpen(selectedId, relPath, { line, column });
+                                }}
+                              />
+                            )}
+                            {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
+                              <Suspense
+                                fallback={
+                                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                    {t('app.loadingConflicts')}
+                                  </p>
+                                }
+                              >
+                                <ConflictView
+                                  key={`conflict-${selectedId}`}
+                                  worktreeId={selectedId}
+                                  targetBranch={baseBranch}
+                                  cleanup={true}
+                                  theme={resolvedTheme}
+                                  onResolved={(merged) => {
+                                    setConflictWorktreeId(null);
+                                    setPaneMode('terminal');
+                                    if (merged) {
+                                      if (selectedId === selectedWorktree?.id)
+                                        requestSelectWorktree(null);
+                                    }
+                                    void refresh();
+                                  }}
+                                />
+                              </Suspense>
+                            )}
+                          </>
+                        ) : (
                           <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                            {t('app.loadingTerminal')}
+                            {t('app.selectWorktree')}
                           </p>
-                        }
-                      >
-                        <AgentTerminal
-                          key={selectedId}
-                          worktreeId={selectedId}
-                          continueSession={
-                            !sessionRecords.loading && sessionRecords.has(selectedId)
-                          }
-                        />
-                      </Suspense>
+                        )}
+                        <LogPanel lines={logLines} />
+                      </section>
                     </div>
-                    {paneMode === 'diff' && (
-                      <Suspense
-                        fallback={
-                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                            {t('app.loadingDiff')}
-                          </p>
-                        }
-                      >
-                        <DiffView
-                          key={`diff-${selectedId}`}
-                          worktreeId={selectedId}
-                          base={baseBranch}
-                          theme={resolvedTheme}
-                        />
-                      </Suspense>
-                    )}
-                    {paneMode === 'browser' && (
-                      <BrowserPane key={`browser-${selectedId}`} detectedUrl={detectedServerUrl} />
-                    )}
-                    {paneMode === 'references' && (
-                      <UsagesPanel
-                        usages={usages}
-                        loading={usagesLoading}
-                        onOpen={(relPath, line, column) => {
-                          if (selectedId) onCodeNavOpen(selectedId, relPath, { line, column });
-                        }}
-                      />
-                    )}
-                    {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
-                      <Suspense
-                        fallback={
-                          <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                            {t('app.loadingConflicts')}
-                          </p>
-                        }
-                      >
-                        <ConflictView
-                          key={`conflict-${selectedId}`}
-                          worktreeId={selectedId}
-                          targetBranch={baseBranch}
-                          cleanup={true}
-                          theme={resolvedTheme}
-                          onResolved={(merged) => {
-                            setConflictWorktreeId(null);
-                            setPaneMode('terminal');
-                            if (merged) {
-                              if (selectedId === selectedWorktree?.id) requestSelectWorktree(null);
-                            }
-                            void refresh();
-                          }}
-                        />
-                      </Suspense>
-                    )}
-                  </>
-                ) : (
-                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>{t('app.selectWorktree')}</p>
-                )}
-                <LogPanel lines={logLines} />
-              </section>
-            </div>
-            {/* Drag-resizable splitters (A2c): the vertical bar sets the left-column width,
-                the horizontal bar sets the top/bottom row ratio. Both overlay the +-shaped
-                grid divider; double-click resets to defaults. Editor (Monaco automaticLayout)
-                and terminal (ResizeObserver) re-fit themselves when their cell changes. */}
-            <div
-              className="ws-split ws-split-col"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={t('app.resizeColumns')}
-              title={t('app.resizeColumns')}
-              data-testid="ws-split-col"
-              style={{ left: paneLayout.layout.leftColWidth }}
-              {...paneLayout.colHandlers}
-            />
-            <div
-              className="ws-split ws-split-row"
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label={t('app.resizeRows')}
-              title={t('app.resizeRows')}
-              data-testid="ws-split-row"
-              style={{ top: paneLayout.rowHandleTop }}
-              {...paneLayout.rowHandlers}
+                  }
+                />
+              }
             />
           </div>
           {fanoutOpen && (
