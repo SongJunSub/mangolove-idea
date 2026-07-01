@@ -429,7 +429,9 @@ a {
   height: 26px;
   padding: 0 8px;
   border-radius: 7px;
-  cursor: pointer;
+  /* default arrow (NOT a hand): the row body is DOUBLE-click to open/toggle. Only the chevron
+     (.tree-chevron-hit) is single-click, so it keeps cursor:pointer as its affordance. */
+  cursor: default;
   color: var(--text);
   white-space: nowrap;
   user-select: none;
