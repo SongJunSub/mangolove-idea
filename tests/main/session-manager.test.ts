@@ -214,6 +214,154 @@ describe('SessionManager exit + kill', () => {
   });
 });
 
+describe('SessionManager --continue fresh-fallback (no conversation to resume)', () => {
+  // Flush the async respawn kicked off from the (sync) exit callback.
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it('respawns FRESH once when a low-output --continue exits nonzero, with no exit surfaced', async () => {
+    const cont = makeFakePty(1);
+    const fresh = makeFakePty(2);
+    const { mgr, calls, exits, statuses, outputs } = makeManager({ fakes: [cont, fresh] });
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+    expect(calls[0].args).toEqual(['--continue']);
+
+    cont.emitData('No conversation found to continue\n'); // the tell-tale one-liner (< 1KB)
+    cont.emitExit(1);
+    await tick();
+
+    // A second spawn happened, FRESH (no --continue), in the same worktree cwd.
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toMatchObject({ file: 'claude', args: [], cwd: WT });
+    // The failed continue's exit is swallowed — the terminal is driven forward, not killed.
+    expect(exits).toEqual([]);
+    // The terminal is cleared before the fresh session so the "no conversation" line is gone.
+    expect(outputs).toContainEqual({ worktreeId: WT, data: '\x1b[2J\x1b[3J\x1b[H' });
+    expect(statuses.map((s) => s.status)).toEqual(['starting', 'running', 'starting', 'running']);
+    expect(mgr.snapshot(WT)?.status).toBe('running');
+    expect(mgr.snapshot(WT)?.pid).toBe(2);
+  });
+
+  it('does NOT loop: a FRESH fallback that also exits nonzero surfaces its exit normally', async () => {
+    const cont = makeFakePty(1);
+    const fresh = makeFakePty(2);
+    const { mgr, calls, exits } = makeManager({ fakes: [cont, fresh] });
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    cont.emitExit(1);
+    await tick();
+    fresh.emitExit(1); // fresh mode can't re-trigger the fallback
+
+    expect(calls).toHaveLength(2); // no third spawn
+    expect(exits).toEqual([{ worktreeId: WT, exitCode: 1, signal: undefined }]);
+    expect(mgr.snapshot(WT)?.status).toBe('exited');
+  });
+
+  it('does NOT respawn when a --continue session exits with code 0 (clean quit)', async () => {
+    const cont = makeFakePty(1);
+    const { mgr, calls, exits } = makeManager({ fakes: [cont] }); // only one fake: a respawn would throw
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    cont.emitExit(0);
+    await tick();
+
+    expect(calls).toHaveLength(1);
+    expect(exits).toEqual([{ worktreeId: WT, exitCode: 0, signal: undefined }]);
+  });
+
+  it('does NOT respawn a --continue that RESUMED (>= threshold output) then exited nonzero', async () => {
+    const cont = makeFakePty(1);
+    const { mgr, calls, exits } = makeManager({ fakes: [cont] }); // a respawn would throw (only one fake)
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    cont.emitData('x'.repeat(2000)); // resumed transcript redraw — well over RESUME_OUTPUT_BYTES
+    cont.emitExit(1); // later crash: this is a real session dying, not "nothing to resume"
+
+    expect(calls).toHaveLength(1); // surfaced, not respawned
+    expect(exits).toEqual([{ worktreeId: WT, exitCode: 1, signal: undefined }]);
+  });
+
+  it('does NOT respawn a FRESH session that fails (only --continue is eligible)', async () => {
+    const fresh = makeFakePty(1);
+    const { mgr, calls, exits } = makeManager({ fakes: [fresh] });
+    await mgr.spawn({ worktreeId: WT, continueSession: false, cols: 80, rows: 24 });
+
+    fresh.emitExit(1);
+    await tick();
+
+    expect(calls).toHaveLength(1);
+    expect(exits).toEqual([{ worktreeId: WT, exitCode: 1, signal: undefined }]);
+  });
+
+  it('does NOT respawn a DELIBERATELY killed --continue session (nonzero kill exit)', async () => {
+    const cont = makeFakePty(1, 143); // SIGTERM-style nonzero exit on kill
+    const { mgr, calls, exits } = makeManager({ fakes: [cont] }); // a respawn would throw
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    mgr.kill(WT); // user Stop: exited=true is set BEFORE pty.kill → not a "nothing to resume" exit
+    await tick();
+
+    expect(calls).toHaveLength(1); // no self-heal for an intentional kill
+    expect(exits).toEqual([{ worktreeId: WT, exitCode: 143, signal: undefined }]);
+  });
+
+  it('surfaces the ORIGINAL exit when the fresh respawn itself fails (no blank terminal)', async () => {
+    const cont = makeFakePty(1);
+    let calledOnce = false;
+    const { mgr, calls, exits } = makeManager({
+      fakes: [cont], // the fresh respawn never reaches factory.spawn (cwd resolves undefined)
+      resolvePath: async (id) => {
+        if (calledOnce) return undefined; // 2nd resolve (the respawn) → cwd gone
+        calledOnce = true;
+        return id;
+      },
+    });
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    cont.emitExit(1);
+    await tick();
+
+    expect(calls).toHaveLength(1); // fresh spawn short-circuited on missing cwd
+    // The user still sees an honest end (exit surfaced) rather than a frozen blank screen.
+    expect(exits).toEqual([{ worktreeId: WT, exitCode: 1, signal: undefined }]);
+  });
+
+  it('aborts the respawn (kills the unwanted fresh session) if a kill lands in the async gap', async () => {
+    const cont = makeFakePty(1);
+    const fresh = makeFakePty(2);
+    const freshKill = vi.spyOn(fresh, 'kill');
+    let release!: (v: string) => void;
+    const gate = new Promise<string>((r) => (release = r));
+    let n = 0;
+    const { mgr, calls } = makeManager({
+      fakes: [cont, fresh],
+      resolvePath: async (id) => (n++ === 0 ? id : gate), // block the RESPAWN's cwd resolve
+    });
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    cont.emitExit(1); // triggers respawnFresh → suspends awaiting the gated resolvePath
+    mgr.kill(WT); // user closes the worktree during the gap (map is momentarily empty → no-ops)
+    release(WT); // now let the respawn finish
+    await tick();
+
+    expect(calls).toHaveLength(2); // the fresh pty WAS created...
+    expect(freshKill).toHaveBeenCalled(); // ...but immediately killed to honor the close intent
+    expect(mgr.snapshot(WT)?.status).not.toBe('running');
+  });
+
+  it('the fresh-fallback respawn keeps the latest resized geometry', async () => {
+    const cont = makeFakePty(1);
+    const fresh = makeFakePty(2);
+    const { mgr, calls } = makeManager({ fakes: [cont, fresh] });
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+    mgr.resize({ worktreeId: WT, cols: 120, rows: 40 });
+
+    cont.emitExit(1);
+    await tick();
+
+    expect(calls[1]).toMatchObject({ cols: 120, rows: 40 });
+  });
+});
+
 describe('SessionManager onIdle (deferred live-apply hook, V2 E)', () => {
   it('fires onIdle when the last PTY exits naturally', async () => {
     const fake = makeFakePty();
