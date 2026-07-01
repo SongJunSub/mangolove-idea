@@ -95,8 +95,13 @@ export class NodePtyFactory implements PtyFactory {
       cwd: opts.cwd,
       cols: opts.cols,
       rows: opts.rows,
-      env: opts.env ?? process.env,
-      name: opts.name ?? 'xterm-color',
+      // Advertise the terminal's REAL color capability: our renderer is xterm.js, which
+      // supports 256-color + 24-bit truecolor. node-pty's legacy default TERM=xterm-color
+      // is only 16-color, so color-capability detectors (chalk/supports-color in claude,
+      // etc.) downgrade and map brand/accent colors to the nearest ANSI-16 — which is why
+      // claude's orange rendered RED. TERM=xterm-256color + COLORTERM=truecolor fixes it.
+      env: { ...(opts.env ?? process.env), COLORTERM: 'truecolor' },
+      name: opts.name ?? 'xterm-256color',
     });
     return {
       pid: proc.pid,
