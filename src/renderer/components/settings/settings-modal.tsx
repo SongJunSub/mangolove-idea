@@ -5,6 +5,7 @@ import type {
   CodeNavCapabilities,
 } from '../../../shared/types';
 import { useUpdateCheck } from '../../hooks/use-update-check';
+import { useSelfUpdate } from '../../hooks/use-self-update';
 import { useAutoSave } from '../../hooks/use-auto-save';
 import { useI18n } from '../../i18n/i18n-context';
 import { asLocaleSetting } from '../../i18n/resolve-locale';
@@ -73,6 +74,13 @@ export function SettingsModal({
   const [showSaved, setShowSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { status: update, checking: checkingUpdate, check: checkForUpdate } = useUpdateCheck(false);
+  // Same one-click download → verify → install → restart the bottom-right banner uses, so the
+  // Settings action installs automatically instead of just opening the .dmg in the browser.
+  const selfUpdate = useSelfUpdate();
+  // A verified one-click request — present only when the release has BOTH a .dmg and its sha256
+  // (auto-install is refused without the hash). Captured here so the narrowing survives the closure.
+  const oneClickReq =
+    update?.dmgUrl && update.sha256 ? { dmgUrl: update.dmgUrl, sha256: update.sha256 } : null;
 
   const { queue, flush } = useAutoSave<AppSettings>((patch) => {
     onChange(patch);
@@ -412,13 +420,41 @@ export function SettingsModal({
               ) : update.updateAvailable ? (
                 <>
                   {t('settings.updates.available', { version: update.latestVersion ?? '' })}{' '}
-                  <button
-                    type="button"
-                    data-testid="settings-update-download"
-                    onClick={() => openExternal(update.dmgUrl ?? update.releaseUrl)}
-                  >
-                    {t('settings.updates.download')}
-                  </button>
+                  {selfUpdate.state.phase === 'error' ? (
+                    // Auto-install failed → surface it + fall back to a manual .dmg download.
+                    <>
+                      {t('update.failed', { reason: selfUpdate.state.reason })}{' '}
+                      <button
+                        type="button"
+                        data-testid="settings-update-download"
+                        onClick={() => openExternal(update.dmgUrl ?? update.releaseUrl)}
+                      >
+                        {t('settings.updates.download')}
+                      </button>
+                    </>
+                  ) : selfUpdate.state.phase !== 'idle' ? (
+                    <span data-testid="settings-update-installing">
+                      {t('settings.updates.installing')}
+                    </span>
+                  ) : oneClickReq ? (
+                    // One-click: download + verify + swap + restart (like the banner).
+                    <button
+                      type="button"
+                      data-testid="settings-update-download"
+                      onClick={() => selfUpdate.start(oneClickReq)}
+                    >
+                      {t('update.now')}
+                    </button>
+                  ) : (
+                    // No verifiable sha256 → auto-install is refused; offer a manual download.
+                    <button
+                      type="button"
+                      data-testid="settings-update-download"
+                      onClick={() => openExternal(update.dmgUrl ?? update.releaseUrl)}
+                    >
+                      {t('settings.updates.download')}
+                    </button>
+                  )}
                 </>
               ) : (
                 t('settings.updates.upToDate')

@@ -40,6 +40,9 @@ beforeEach(() => {
         sha256: null,
         publishedAt: null,
       })),
+      // useSelfUpdate subscribes on mount and performs on the one-click action.
+      onProgress: vi.fn(() => () => {}),
+      perform: vi.fn(async () => ({ ok: false, reason: 'test' })),
     },
   };
   // window.mango is declared read-only; defineProperty (configurable) installs the stub
@@ -151,5 +154,39 @@ describe('<SettingsModal> cross-machine controls', () => {
     );
     await userEvent.click(screen.getByTestId('settings-cross-machine')); // on -> off
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ crossMachineSessions: 'off' }));
+  });
+});
+
+describe('<SettingsModal> self-update action (Updates section)', () => {
+  const AVAILABLE = {
+    currentVersion: '0.1.1',
+    latestVersion: '0.2.0',
+    updateAvailable: true,
+    releaseUrl: 'https://github.com/o/r/releases/tag/v0.2.0',
+    dmgUrl: 'https://github.com/o/r/releases/download/v0.2.0/App.dmg',
+    sha256: 'deadbeef',
+    publishedAt: null,
+  };
+  const asMock = (fn: unknown) => fn as unknown as ReturnType<typeof vi.fn>;
+
+  it('the one-click button runs the FULL self-update (perform), not just an external download', async () => {
+    asMock(window.mango.update.check).mockResolvedValue(AVAILABLE);
+    renderModal(<SettingsModal settings={{}} onChange={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByTestId('settings-update-check'));
+    await userEvent.click(await screen.findByTestId('settings-update-download'));
+    expect(window.mango.update.perform).toHaveBeenCalledWith({
+      dmgUrl: AVAILABLE.dmgUrl,
+      sha256: AVAILABLE.sha256,
+    });
+    expect(window.mango.app.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a MANUAL .dmg download when the release has no sha256 to verify', async () => {
+    asMock(window.mango.update.check).mockResolvedValue({ ...AVAILABLE, sha256: null });
+    renderModal(<SettingsModal settings={{}} onChange={vi.fn()} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByTestId('settings-update-check'));
+    await userEvent.click(await screen.findByTestId('settings-update-download'));
+    expect(window.mango.app.openExternal).toHaveBeenCalledWith({ url: AVAILABLE.dmgUrl });
+    expect(window.mango.update.perform).not.toHaveBeenCalled();
   });
 });
