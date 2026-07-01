@@ -18,7 +18,7 @@ import {
 } from '../layout/tile-math';
 import { clampSplitFraction } from '../layout/split-math';
 import type { TerminalLayout } from '../../../shared/terminal-layout';
-import { fromPersisted, toPersisted, type LeafKind } from '../../lib/terminal-layout-bridge';
+import { computeInitialLayout, toPersisted, type LeafKind } from '../../lib/terminal-layout-bridge';
 import { AgentTerminal } from './agent-terminal';
 
 // Shells share xterm's chunk; lazy keeps the initial bundle smaller (mirrors AgentTerminal).
@@ -70,26 +70,29 @@ export function TerminalPanel({
 }: TerminalPanelProps): React.JSX.Element {
   const { t } = useI18n();
   const seq = useRef(0);
+  const mintShell = (): string => `sh-${(seq.current += 1)}`;
 
-  // Rehydrate the persisted layout ONCE on mount (the panel is keyed by worktreeId, so a worktree
-  // switch remounts + re-runs this). Default = a single agent tile.
-  const init = useMemo(() => {
-    if (persisted) {
-      const { tree, registry } = fromPersisted(persisted, () => `sh-${(seq.current += 1)}`);
-      const shells: ShellEntry[] = [];
-      for (const [id, k] of registry)
-        if (k.kind === 'shell' && k.cwd) shells.push({ id, cwd: k.cwd });
-      return { tree, shells };
-    }
-    return { tree: { id: 'agent' } as TileNode, shells: [] as ShellEntry[] };
-    // Mount-only: the panel is keyed by worktreeId in App, so a worktree switch remounts + re-inits.
-  }, []);
+  // The managed AGENT (auto-running claude) exists for this worktree ONLY when it has a resumable
+  // session (continueAgent). With no session we open a plain $SHELL instead and never auto-launch
+  // claude — the user runs it themselves when they want. Captured at mount (the panel is keyed by
+  // worktreeId, so a worktree switch remounts; App gates this mount on records having loaded, so
+  // continueAgent is settled — never the loading-window false).
+  const agentPresent = continueAgent;
+
+  // Rehydrate ONCE on mount (the panel is keyed by worktreeId, so a worktree switch remounts).
+  // Default = a single agent tile (session) or a single fresh shell tile (no session).
+  const init = useMemo(
+    () => computeInitialLayout(persisted, agentPresent, worktreePath, mintShell),
+    [],
+  );
 
   const [tree, setTree] = useState<TileNode>(init.tree);
   const treeRef = useRef(tree);
   treeRef.current = tree;
   const [shells, setShells] = useState<readonly ShellEntry[]>(init.shells);
-  const [focused, setFocused] = useState<string>(() => leavesOf(init.tree)[0] ?? 'agent');
+  const [focused, setFocused] = useState<string>(
+    () => leavesOf(init.tree)[0] ?? init.shells[0]?.id ?? 'agent',
+  );
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; id: string } | null>(null);
   // Set on a committed drop so the trailing synthetic `click` (pointer capture re-targets it to
@@ -119,14 +122,17 @@ export function TerminalPanel({
     [persist, shells],
   );
 
-  const allIds = useMemo(() => ['agent', ...shells.map((s) => s.id)], [shells]);
+  const allIds = useMemo(
+    () => [...(agentPresent ? ['agent'] : []), ...shells.map((s) => s.id)],
+    [shells, agentPresent],
+  );
   const tiled = useMemo(() => new Set(leavesOf(tree)), [tree]);
   const rects = useMemo(() => computeRects(tree), [tree]);
   const gutters = useMemo(() => computeGutters(tree), [tree]);
 
   // ── tab actions ──
   // The active TILED leaf to grow from / swap into — never collapses the layout.
-  const slotLeaf = (): string => (tiled.has(focused) ? focused : (leavesOf(tree)[0] ?? 'agent'));
+  const slotLeaf = (): string => (tiled.has(focused) ? focused : (leavesOf(tree)[0] ?? allIds[0]));
 
   // Add a shell: SPLIT the focused tile (up to 4) so the layout GROWS — at the cap it lands as
   // a hidden tab (click it to swap in). Never replaces/collapses the existing arrangement.
@@ -173,16 +179,21 @@ export function TerminalPanel({
   );
 
   // Close a SHELL entirely (kill its PTY via unmount): drop from the layout + the tab list.
+  // Never closes the LAST remaining terminal (a worktree always keeps at least one). When the
+  // closed shell was the only TILED leaf, another terminal is promoted into the tree: the agent
+  // if present, else the first surviving shell.
   const closeShell = useCallback(
     (id: string): void => {
-      const nextTree = removeLeaf(tree, id) ?? { id: 'agent' };
+      if (allIds.length <= 1) return; // can't close the only terminal
       const nextShells = shells.filter((s) => s.id !== id);
+      const fallbackId = agentPresent ? 'agent' : nextShells[0]?.id;
+      const nextTree = removeLeaf(tree, id) ?? (fallbackId ? { id: fallbackId } : tree);
       setTree(nextTree);
       setShells(nextShells);
-      setFocused((f) => (f === id ? (leavesOf(nextTree)[0] ?? 'agent') : f));
+      setFocused((f) => (f === id ? (leavesOf(nextTree)[0] ?? allIds[0]) : f));
       persist(nextTree, nextShells);
     },
-    [tree, shells, persist],
+    [tree, shells, persist, allIds, agentPresent],
   );
 
   // ── drag a tab onto a tile edge ──
@@ -372,7 +383,7 @@ export function TerminalPanel({
             >
               {tabLabel(id)}
             </button>
-            {id !== 'agent' && (
+            {id !== 'agent' && allIds.length > 1 && (
               <button
                 type="button"
                 className="ws-tab-close"
