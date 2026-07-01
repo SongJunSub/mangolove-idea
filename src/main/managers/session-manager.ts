@@ -173,8 +173,13 @@ export class SessionManager {
     this.onIdle = deps.onIdle;
   }
 
-  /** Spawns (or replaces) the PTY for a worktree and returns its AgentSession. */
-  async spawn(args: SpawnArgs): Promise<AgentSession> {
+  /**
+   * Spawns (or replaces) the PTY for a worktree and returns its AgentSession. `opts.skipAttach`
+   * is set ONLY by self-heal respawns: they are recovering from a detached session that just
+   * died, so re-attaching to it is wrong — skipping the liveness probe forces mode to
+   * continue|fresh and makes the self-heal chain (attach→continue→fresh) strictly converge.
+   */
+  async spawn(args: SpawnArgs, opts?: { readonly skipAttach?: boolean }): Promise<AgentSession> {
     const { worktreeId, continueSession, cols, rows } = args;
 
     // Replace-on-respawn: UNMAP the old session BEFORE killing it, so its exit
@@ -204,7 +209,7 @@ export class SessionManager {
     // exists. DirectLauncher exposes no isLiveDetached, so the b-lite path keeps
     // exactly its fresh|continue behavior.
     let mode: LaunchMode = continueSession ? 'continue' : 'fresh';
-    if (this.launcher.isLiveDetached) {
+    if (!opts?.skipAttach && this.launcher.isLiveDetached) {
       try {
         if (await this.launcher.isLiveDetached(worktreeId)) mode = 'attach';
       } catch {
@@ -357,18 +362,22 @@ export class SessionManager {
     session.status = 'exited';
     session.exited = true;
 
-    // Self-heal a `claude --continue` that had no conversation to resume (nonzero exit
-    // with near-zero output). Instead of surfacing a dead "exited" terminal we respawn
-    // ONCE as FRESH; the respawn's mode is 'fresh', which can never satisfy the predicate
-    // again, so this cannot loop. surfaceExit is deferred to respawnFresh's failure path.
+    // Self-heal a session that died a recoverable "nothing to resume" death (nonzero exit,
+    // near-zero output) instead of surfacing a dead terminal. Two cases, each respawning ONCE:
+    //   attach-fail   → the detached session vanished between the liveness probe and re-attach
+    //                   (b-full TOCTOU). Its conversation JSONL may survive, so retry via
+    //                   CONTINUE (which itself self-heals to fresh if there is nothing to resume).
+    //   continue-fail → nothing to resume → go FRESH.
+    // Respawns pass skipAttach, so the chain is strictly attach→continue→fresh and cannot loop
+    // (fresh never satisfies the predicate). surfaceExit is deferred to the respawn's failure path.
     if (!killed && this.shouldSelfHeal(session, e)) {
-      // The record that drove this doomed `--continue` is proven stale (no conversation
-      // existed). In b-lite, drop it so the NEXT reopen goes straight to fresh — this
-      // self-corrects records written eagerly by older builds. NOT in b-full: there the
-      // reopen mode is chosen by OS liveness (isLiveDetached), never by the record, so the
-      // record is purely reap bookkeeping — removing it would only orphan a detached master.
-      if (!this.launcher.isLiveDetached) this.store?.remove?.(worktreeId);
-      void this.respawnFresh(worktreeId, session, e);
+      const retryContinue = session.mode === 'attach';
+      // A doomed b-lite `--continue` proves its record stale — drop it so the next reopen skips
+      // straight to fresh (self-corrects records written eagerly by older builds). NOT for
+      // attach-fail (b-full only) nor any b-full record: there the reopen mode is chosen by OS
+      // liveness, never by the record, so the record is purely reap bookkeeping.
+      if (!retryContinue && !this.launcher.isLiveDetached) this.store?.remove?.(worktreeId);
+      void this.respawn(worktreeId, session, e, retryContinue);
       return;
     }
     this.surfaceExit(worktreeId, session, e);
@@ -382,26 +391,31 @@ export class SessionManager {
   }
 
   /**
-   * Respawns a worktree FRESH after its `--continue` found nothing to resume. Robust to
-   * three failure modes the review surfaced: (1) if the fresh spawn itself fails (cwd
-   * gone / rejects), the ORIGINAL exit is surfaced so the terminal shows an honest end
-   * instead of a blank screen; (2) if the user killed or the manager was disposed during
-   * the spawn's async gap (where the map is momentarily empty, so kill() no-ops), the
-   * intent is honored by killing the just-created session rather than orphaning a live
-   * claude the user asked to close. Fire-and-forget from the sync exit callback.
+   * Self-heal respawn of a worktree after a recoverable death (see handleExit). Respawns as
+   * CONTINUE (attach-fail: the JSONL may survive) or FRESH (continue-fail), always with
+   * skipAttach so it can never re-attach to the session that just died — which is what bounds
+   * the attach→continue→fresh chain. Robust to the failure modes the review surfaced:
+   * (1) if the respawn itself fails (cwd gone / rejects), the ORIGINAL exit is surfaced so the
+   * terminal shows an honest end instead of a blank screen; (2) if the user killed or the
+   * manager was disposed during the spawn's async gap (map momentarily empty, so kill()
+   * no-ops), that intent is honored by killing the just-created session rather than orphaning
+   * a live claude the user asked to close. Fire-and-forget from the sync exit callback.
    */
-  private async respawnFresh(worktreeId: string, prev: Session, e: PtyExitEvent): Promise<void> {
+  private async respawn(
+    worktreeId: string,
+    prev: Session,
+    e: PtyExitEvent,
+    continueSession: boolean,
+  ): Promise<void> {
     const gen = this.killGen.get(worktreeId) ?? 0;
-    // Wipe the stray "No conversation found to continue" line so fresh opens clean.
+    // Wipe the stray "No conversation found"/"no session" line so the retry opens clean.
     this.emitter.emitOutput({ worktreeId, data: '\x1b[2J\x1b[3J\x1b[H' });
-    let fresh: AgentSession;
+    let next: AgentSession;
     try {
-      fresh = await this.spawn({
-        worktreeId,
-        continueSession: false,
-        cols: prev.cols,
-        rows: prev.rows,
-      });
+      next = await this.spawn(
+        { worktreeId, continueSession, cols: prev.cols, rows: prev.rows },
+        { skipAttach: true },
+      );
     } catch {
       this.surfaceExit(worktreeId, prev, e);
       return;
@@ -411,19 +425,22 @@ export class SessionManager {
       this.kill(worktreeId);
       return;
     }
-    // The fresh spawn couldn't start (e.g. the worktree cwd is gone) — surface the exit.
-    if (fresh.status === 'error') this.surfaceExit(worktreeId, prev, e);
+    // The respawn couldn't start (e.g. the worktree cwd is gone) — surface the exit.
+    if (next.status === 'error') this.surfaceExit(worktreeId, prev, e);
   }
 
   /**
-   * True iff `session` is a `--continue` spawn that died the "nothing to resume" way:
-   * nonzero exit having produced less than RESUME_OUTPUT_BYTES of output. A `--continue`
-   * that actually resumed a conversation redraws the transcript (far more output), so a
-   * later nonzero exit is above the threshold and surfaces normally instead of respawning.
+   * True iff `session` died the recoverable "nothing to resume" way: a `--continue` that found
+   * no conversation, OR an `attach` whose detached session vanished between the liveness probe
+   * and re-attach (b-full TOCTOU) — both exit nonzero having produced less than
+   * RESUME_OUTPUT_BYTES. A `--continue`/`attach` that actually resumed redraws the transcript
+   * (far more output), so a later nonzero exit is above the threshold and surfaces normally.
    */
   private shouldSelfHeal(session: Session, e: PtyExitEvent): boolean {
     return (
-      session.mode === 'continue' && e.exitCode !== 0 && session.outputBytes < RESUME_OUTPUT_BYTES
+      (session.mode === 'continue' || session.mode === 'attach') &&
+      e.exitCode !== 0 &&
+      session.outputBytes < RESUME_OUTPUT_BYTES
     );
   }
 
