@@ -527,3 +527,73 @@ describe('SessionManager turn detection (output-activity heuristic, V2 C)', () =
     expect(mgr.activeTurnWorktreeIds().sort()).toEqual(['/wt/a']);
   });
 });
+
+describe('SessionManager attach TOCTOU self-heal (b-full, M2)', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  /** A b-full manager whose launcher records each launch mode; isLiveDetached is controllable. */
+  function makeBFull(fakes: FakePtyHandle[], isLiveDetached: () => Promise<boolean>) {
+    const modes: string[] = [];
+    const { factory } = makeFakeFactory(fakes);
+    const { emitter, exits, statuses } = makeSpyEmitter();
+    const mgr = new SessionManager({
+      factory,
+      emitter,
+      resolvePath: async (id) => id,
+      launcher: {
+        resolveLaunch: (ctx) => {
+          modes.push(ctx.mode);
+          return { file: 'abduco', args: [] };
+        },
+        isLiveDetached,
+      },
+    });
+    return { mgr, modes, exits, statuses };
+  }
+
+  it('attach fast-fail (detached session vanished) retries via CONTINUE, never re-attaching', async () => {
+    const attach = makeFakePty(1);
+    const cont = makeFakePty(2);
+    const { mgr, modes, exits } = makeBFull([attach, cont], async () => true);
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+    expect(modes).toEqual(['attach']); // live probe → attach
+
+    attach.emitExit(1); // session vanished between probe and `abduco -a` → fast nonzero, no output
+    await tick();
+
+    // Recovery retries CONTINUE (skipAttach forces it even though isLiveDetached still says true),
+    // never re-attaching to the dead session and never surfacing a dead terminal.
+    expect(modes).toEqual(['attach', 'continue']);
+    expect(exits).toEqual([]);
+    expect(mgr.snapshot(WT)?.pid).toBe(2);
+  });
+
+  it('attach→continue→fresh converges when the continue retry also finds nothing (loop-free)', async () => {
+    const attach = makeFakePty(1);
+    const cont = makeFakePty(2);
+    const fresh = makeFakePty(3);
+    const { mgr, modes, exits } = makeBFull([attach, cont, fresh], async () => true);
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    attach.emitExit(1); // attach-fail → continue
+    await tick();
+    cont.emitExit(1); // continue-fail → fresh
+    await tick();
+
+    expect(modes).toEqual(['attach', 'continue', 'fresh']); // strictly converges, no re-attach
+    expect(exits).toEqual([]);
+    expect(mgr.snapshot(WT)?.pid).toBe(3);
+  });
+
+  it('a SUCCESSFUL attach that later exits nonzero with real output is NOT self-healed', async () => {
+    const attach = makeFakePty(1);
+    const { mgr, modes, exits } = makeBFull([attach], async () => true); // one fake: a respawn throws
+    await mgr.spawn({ worktreeId: WT, continueSession: true, cols: 80, rows: 24 });
+
+    attach.emitData('x'.repeat(2000)); // re-attached to a live agent → transcript redraw
+    attach.emitExit(1); // a real later crash, above the output threshold
+
+    expect(modes).toEqual(['attach']); // surfaced, not respawned
+    expect(exits).toEqual([{ worktreeId: WT, exitCode: 1, signal: undefined }]);
+  });
+});
