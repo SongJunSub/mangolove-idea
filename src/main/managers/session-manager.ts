@@ -25,6 +25,27 @@ const ACTIVE_TURN_MS = 1500;
  */
 const RESUME_OUTPUT_BYTES = 1024;
 
+/** Matches a complete xterm bracketed-paste envelope (ESC[200~ … ESC[201~), non-greedy.
+ *  The ESC (0x1b) control byte is the literal terminal-escape prefix — matching it is the point. */
+// eslint-disable-next-line no-control-regex
+const BRACKETED_PASTE = /\x1b\[200~[\s\S]*?\x1b\[201~/g;
+
+/**
+ * True when PTY input carries a real user SUBMIT (a CR/LF), not merely a terminal auto-reply.
+ * xterm fires onData for its OWN replies to claude's startup queries — cursor-position (DSR
+ * `ESC[6n`), device-attributes (DA1 `ESC[c`), OSC color probes — with NO keystroke; those are
+ * escape sequences that never contain CR/LF (verified against xterm.js source). So gating the
+ * b-lite session record on CR/LF marks a worktree resumable only once the user actually sends a
+ * line — also exactly when claude persists a conversation to `--continue` — instead of the
+ * instant claude probes the terminal. The bracketed-paste envelope is stripped first because
+ * xterm rewrites pasted `\n`→`\r`, so a multi-line PASTE (not yet submitted with Enter) would
+ * otherwise false-positive; a real Enter after a paste arrives outside the envelope and still
+ * counts. (All bytes are still forwarded to the PTY; only the RECORD trigger is gated.)
+ */
+function isUserSubmit(data: string): boolean {
+  return /[\r\n]/.test(data.replace(BRACKETED_PASTE, ''));
+}
+
 /** Plan-2 spawn input (mirrors SpawnSessionRequest minus transport concerns). */
 export interface SpawnArgs {
   readonly worktreeId: string;
@@ -36,6 +57,8 @@ export interface SpawnArgs {
 /** Structural port for the SessionStore (Plan 5) — only what SessionManager calls. */
 export interface SessionRecordSink {
   upsert(record: SessionRecord): void;
+  /** Drops a stale record (a worktree whose `--continue` found no conversation). Optional. */
+  remove?(worktreePath: string): void;
 }
 
 /** Where SessionManager publishes main->renderer events (injected, so tests spy). */
@@ -88,6 +111,15 @@ interface Session {
   readonly mode: LaunchMode;
   /** Total output bytes streamed by this pty — the self-heal "did it resume?" signal. */
   outputBytes: number;
+  /**
+   * True once hadActiveSession has been persisted for this session. In b-lite it flips on
+   * the user's FIRST input — NOT at spawn — because only real interaction produces a
+   * conversation claude can `--continue` (recording at spawn marked opened-but-never-used
+   * worktrees resumable, so every reopen ran a doomed `--continue`). In b-full it is set at
+   * spawn (boot-reap tracks detached sessions by record). Either way it guards the record to
+   * fire exactly once — no per-keystroke disk write.
+   */
+  recorded: boolean;
   /** Last known geometry, so a fresh-fallback respawn keeps the terminal's size. */
   cols: number;
   rows: number;
@@ -189,6 +221,7 @@ export class SessionManager {
       continued: continueSession,
       mode,
       outputBytes: 0,
+      recorded: false,
       cols,
       rows,
       exited: false,
@@ -209,7 +242,16 @@ export class SessionManager {
     const running = this.buildSession(worktreeId, 'running', pty.pid, continueSession);
     this.emitter.emitStatus(running);
 
-    await this.recordActive(worktreeId);
+    // b-full detached sessions survive quit and are boot-reaped BY RECORD (abduco-reap only
+    // reaps sessions it has a record for; unrecognized live sessions are spared). So a b-full
+    // spawn must be recorded IMMEDIATELY — even before any input — or a never-typed session
+    // whose worktree is later deleted could never be reaped. b-lite has no reaping, so it
+    // defers the record to first input (write()) to avoid marking an opened-but-never-used
+    // worktree resumable. The `recorded` flag then keeps write() from recording a second time.
+    if (this.launcher.isLiveDetached) {
+      session.recorded = true;
+      await this.recordActive(worktreeId);
+    }
 
     return running;
   }
@@ -217,7 +259,16 @@ export class SessionManager {
   /** Writes raw input to a worktree's PTY (no-op if none). */
   write(req: { worktreeId: string; data: string }): void {
     const s = this.sessions.get(req.worktreeId);
-    if (s && !s.exited) s.pty.write(req.data);
+    if (!s || s.exited) return;
+    s.pty.write(req.data); // ALL bytes reach the pty (claude needs its query replies too)
+    // First real user SUBMIT ⇒ persist hadActiveSession so a reopen offers `--continue`.
+    // Recording HERE (not at spawn), and only on a CR/LF submit (not a stray xterm auto-reply
+    // to claude's startup queries), means an opened-but-never-typed worktree never gets a
+    // record, so its reopen goes straight to a fresh session — no doomed continue attempt.
+    if (!s.recorded && isUserSubmit(req.data)) {
+      s.recorded = true;
+      void this.recordActive(req.worktreeId).catch(() => {});
+    }
   }
 
   /** Resizes a worktree's PTY (no-op if none). */
@@ -311,6 +362,12 @@ export class SessionManager {
     // ONCE as FRESH; the respawn's mode is 'fresh', which can never satisfy the predicate
     // again, so this cannot loop. surfaceExit is deferred to respawnFresh's failure path.
     if (!killed && this.shouldSelfHeal(session, e)) {
+      // The record that drove this doomed `--continue` is proven stale (no conversation
+      // existed). In b-lite, drop it so the NEXT reopen goes straight to fresh — this
+      // self-corrects records written eagerly by older builds. NOT in b-full: there the
+      // reopen mode is chosen by OS liveness (isLiveDetached), never by the record, so the
+      // record is purely reap bookkeeping — removing it would only orphan a detached master.
+      if (!this.launcher.isLiveDetached) this.store?.remove?.(worktreeId);
       void this.respawnFresh(worktreeId, session, e);
       return;
     }
