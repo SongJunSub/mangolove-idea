@@ -33,13 +33,14 @@ export const en = {
   'settings.baseBranch': 'base branch',
   'settings.autoDetect': '(auto-detect)',
 
-  // Settings — b-full session persistence
-  'settings.persist.label': 'Keep the agent running in the background after quit (b-full)',
+  // Settings — background session persistence (internal: sessionPersistence 'full')
+  'settings.persist.label': 'Keep agents running in the background after quit',
   'settings.persist.hint':
-    'Wraps the agent in an abduco session so an in-flight turn survives quit/crash and re-attaches on reopen. macOS only.',
+    'Keeps an in-flight turn alive after you quit or crash and reconnects it when you reopen. macOS only.',
   'settings.persist.missing':
-    '⚠ abduco not found — b-full is disabled and sessions fall back to lite. Install it:',
-  'settings.persist.active': '✓ b-full active — agents survive quit/crash; reopen re-attaches.',
+    '⚠ abduco not found — background sessions are off, so quitting also stops its agents. Install it:',
+  'settings.persist.active':
+    '✓ Background sessions on — agents survive quit/crash and reconnect when you reopen.',
   'settings.stopAll': 'Stop all background agents',
   'settings.stopping': 'Stopping…',
   'settings.stoppedNote': 'All background agents stopped.',
@@ -350,12 +351,13 @@ export const ko: Record<MessageKey, string> = {
   'settings.baseBranch': '기준 브랜치',
   'settings.autoDetect': '(자동으로 찾아요)',
 
-  'settings.persist.label': '종료해도 에이전트를 백그라운드에서 계속 켜둬요 (b-full)',
+  'settings.persist.label': '종료해도 에이전트를 백그라운드에서 계속 켜둬요',
   'settings.persist.hint':
-    '에이전트를 abduco 세션으로 감싸서, 종료하거나 꺼져도 하던 작업이 이어지고 다시 열면 연결돼요. macOS에서만 돼요.',
-  'settings.persist.missing': '⚠ abduco가 없어서 b-full을 못 켜고 lite로 동작해요. 설치하기:',
+    '하던 작업(진행 중인 턴)을 종료하거나 꺼져도 살려두고, 다시 열면 그대로 연결해요. macOS에서만 돼요.',
+  'settings.persist.missing':
+    '⚠ abduco가 없어서 백그라운드 유지를 못 켜요. 지금은 앱을 닫으면 에이전트도 함께 종료돼요. 설치하기:',
   'settings.persist.active':
-    '✓ b-full이 켜져 있어요 — 종료하거나 꺼져도 에이전트가 유지되고, 다시 열면 연결돼요.',
+    '✓ 백그라운드 유지가 켜졌어요 — 앱을 종료하거나 꺼져도 에이전트가 살아있고, 다시 열면 이어서 연결돼요.',
   'settings.stopAll': '백그라운드 에이전트 모두 끄기',
   'settings.stopping': '끄는 중…',
   'settings.stoppedNote': '백그라운드 에이전트를 모두 껐어요.',
