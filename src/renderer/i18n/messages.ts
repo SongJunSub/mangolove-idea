@@ -67,6 +67,7 @@ export const en = {
   'settings.updates.checking': 'Checking…',
   'settings.updates.available': 'v{version} is available.',
   'settings.updates.download': 'Download',
+  'settings.updates.installing': 'Downloading & installing… the app will restart shortly.',
   'settings.updates.upToDate': "You're on the latest version.",
   'settings.updates.failed': "Couldn't check ({reason}) — try again later.",
   'settings.updates.unsignedHint':
@@ -382,6 +383,7 @@ export const ko: Record<MessageKey, string> = {
   'settings.updates.checking': '확인하고 있어요…',
   'settings.updates.available': 'v{version} 버전을 받을 수 있어요.',
   'settings.updates.download': '다운로드',
+  'settings.updates.installing': '내려받아 설치하고 있어요… 잠시 후 앱이 다시 시작돼요.',
   'settings.updates.upToDate': '최신 버전을 쓰고 있어요.',
   'settings.updates.failed': '확인하지 못했어요 ({reason}) — 잠시 후 다시 시도해 주세요.',
   'settings.updates.unsignedHint':
