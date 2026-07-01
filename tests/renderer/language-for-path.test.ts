@@ -19,9 +19,30 @@ describe('languageForPath', () => {
     expect(languageForPath('build.gradle.kts')).toBe('kotlin');
   });
 
+  it('maps common non-nav languages for syntax highlighting (colors, no nav)', () => {
+    expect(languageForPath('README.md')).toBe('markdown');
+    expect(languageForPath('pkg/config.json')).toBe('json');
+    expect(languageForPath('a.yaml')).toBe('yaml');
+    expect(languageForPath('styles.css')).toBe('css');
+    expect(languageForPath('main.py')).toBe('python');
+    expect(languageForPath('server.go')).toBe('go');
+    expect(languageForPath('lib.rs')).toBe('rust');
+    expect(languageForPath('index.html')).toBe('html');
+    expect(languageForPath('run.sh')).toBe('shell');
+    expect(languageForPath('schema.sql')).toBe('sql');
+    // none of these are nav languages
+    for (const p of ['README.md', 'config.json', 'main.py'])
+      expect(NAV_LANGUAGES.has(languageForPath(p))).toBe(false);
+  });
+
+  it('maps common extensionless files by name (Dockerfile, Gemfile)', () => {
+    expect(languageForPath('Dockerfile')).toBe('dockerfile');
+    expect(languageForPath('services/Gemfile')).toBe('ruby');
+  });
+
   it('falls back to plaintext for unknown extensions, dotfiles, and no extension', () => {
-    expect(languageForPath('README.md')).toBe('plaintext');
-    expect(languageForPath('Makefile')).toBe('plaintext');
+    expect(languageForPath('Makefile')).toBe('plaintext'); // no monaco grammar
+    expect(languageForPath('notes.unknownext')).toBe('plaintext');
     expect(languageForPath('.gitignore')).toBe('plaintext'); // leading dot is not an extension
     expect(languageForPath('dir.with.dots/file')).toBe('plaintext');
   });
@@ -29,6 +50,7 @@ describe('languageForPath', () => {
   it('is case-insensitive on the extension', () => {
     expect(languageForPath('A.TS')).toBe('typescript');
     expect(languageForPath('X.Java')).toBe('java');
+    expect(languageForPath('READ.MD')).toBe('markdown');
   });
 
   it('NAV_LANGUAGES + TSJS_LANGUAGES describe the participating sets', () => {

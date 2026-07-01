@@ -3,6 +3,7 @@ import * as monaco from 'monaco-editor';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangedFile, FileDiff } from '../../../shared/types';
 import { useDiff } from '../../hooks/use-diff';
+import { languageForPath } from '../../lib/language-for-path';
 import { useI18n } from '../../i18n/i18n-context';
 
 export interface DiffViewProps {
@@ -71,11 +72,10 @@ export function DiffView({ worktreeId, base, theme }: DiffViewProps): React.JSX.
         const editor = editorRef.current;
         if (cancelled || !editor) return;
         const prev = editor.getModel();
-        // A1 uses 'plaintext' for every file — this avoids monaco's heavier
-        // LANGUAGE workers (ts/json/css/html) per file; the base editor.worker
-        // still loads on first render (same-origin, allowed by worker-src 'self').
-        // Per-extension syntax highlighting is a future enhancement.
-        const lang = 'plaintext';
+        // Syntax-highlight the diff by the file's language (grammars are registered by the full
+        // `import 'monaco-editor'`). The base editor.worker still loads on first render (same-origin,
+        // allowed by worker-src 'self'); the ts/json/css/html language workers load lazily per language.
+        const lang = languageForPath(selectedPath);
         const original = monaco.editor.createModel(
           d.binary ? tRef.current('diff.binaryNotShown') : d.original,
           lang,
