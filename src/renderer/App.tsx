@@ -784,16 +784,23 @@ export function App(): React.JSX.Element {
                                   </p>
                                 }
                               >
-                                <TerminalPanel
-                                  key={selectedId}
-                                  worktreeId={selectedId}
-                                  worktreePath={selectedWorktree?.path ?? selectedId}
-                                  continueAgent={
-                                    !sessionRecords.loading && sessionRecords.has(selectedId)
-                                  }
-                                  persisted={settings.terminalLayouts?.[selectedId]}
-                                  onPersist={(layout) => onTerminalPersist(selectedId, layout)}
-                                />
+                                {sessionRecords.loading ? (
+                                  // Wait for the session records before mounting: the panel decides
+                                  // agent-vs-shell from continueAgent at mount, and a loading-window
+                                  // false would wrongly open a shell for a worktree that has a session.
+                                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                    {t('app.loadingTerminal')}
+                                  </p>
+                                ) : (
+                                  <TerminalPanel
+                                    key={selectedId}
+                                    worktreeId={selectedId}
+                                    worktreePath={selectedWorktree?.path ?? selectedId}
+                                    continueAgent={sessionRecords.has(selectedId)}
+                                    persisted={settings.terminalLayouts?.[selectedId]}
+                                    onPersist={(layout) => onTerminalPersist(selectedId, layout)}
+                                  />
+                                )}
                               </Suspense>
                             </div>
                             {paneMode === 'diff' && (
