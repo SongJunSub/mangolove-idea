@@ -24,7 +24,9 @@ export async function makeTempGitRepo(): Promise<TempGitRepo> {
   return {
     dir,
     git,
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    // maxRetries/retryDelay: git may still be flushing .git/objects when cleanup runs, so a
+    // recursive rmSync can transiently hit ENOTEMPTY/EBUSY on CI — retry instead of flaking.
+    cleanup: () => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
   };
 }
 
