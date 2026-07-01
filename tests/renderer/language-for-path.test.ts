@@ -40,6 +40,16 @@ describe('languageForPath', () => {
     expect(languageForPath('services/Gemfile')).toBe('ruby');
   });
 
+  it('maps common dotfiles + .env variants', () => {
+    expect(languageForPath('.bashrc')).toBe('shell');
+    expect(languageForPath('project/.zshrc')).toBe('shell');
+    expect(languageForPath('.editorconfig')).toBe('ini');
+    expect(languageForPath('.npmrc')).toBe('ini');
+    expect(languageForPath('.env')).toBe('ini');
+    expect(languageForPath('.env.production')).toBe('ini');
+    expect(languageForPath('.envrc')).toBe('plaintext'); // direnv (shell), NOT an env file → not 'ini'
+  });
+
   it('falls back to plaintext for unknown extensions, dotfiles, and no extension', () => {
     expect(languageForPath('Makefile')).toBe('plaintext'); // no monaco grammar
     expect(languageForPath('notes.unknownext')).toBe('plaintext');
