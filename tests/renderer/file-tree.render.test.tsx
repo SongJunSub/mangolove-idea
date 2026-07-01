@@ -33,22 +33,81 @@ describe('<FileTree>', () => {
     expect(screen.getByTestId('tree-node-README.md')).toBeInTheDocument();
   });
 
-  it('expands a folder on click and shows its children', async () => {
-    render(wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={vi.fn()} />));
-    fireEvent.click(await screen.findByTestId('tree-node-src'));
-    expect(await screen.findByTestId('tree-node-src/App.tsx')).toBeInTheDocument();
-  });
-
-  it('clicking a FILE calls onOpenFile with its relPath (folders do not)', async () => {
+  it('single-click SELECTS a row without opening or expanding (IntelliJ-style)', async () => {
     const onOpenFile = vi.fn();
     render(
       wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />),
     );
     fireEvent.click(await screen.findByTestId('tree-node-README.md'));
+    expect(onOpenFile).not.toHaveBeenCalled(); // no open on single-click
+    expect(screen.getByTestId('tree-node-README.md')).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByTestId('tree-node-src')); // folder: select only, no expand
+    expect(screen.queryByTestId('tree-node-src/App.tsx')).not.toBeInTheDocument();
+  });
+
+  it('DOUBLE-click opens a file / toggles a folder', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />),
+    );
+    fireEvent.doubleClick(await screen.findByTestId('tree-node-README.md'));
     expect(onOpenFile).toHaveBeenCalledWith('README.md');
 
-    fireEvent.click(screen.getByTestId('tree-node-src')); // a folder => no onOpenFile
-    await waitFor(() => expect(screen.getByTestId('tree-node-src/App.tsx')).toBeInTheDocument());
-    expect(onOpenFile).toHaveBeenCalledTimes(1);
+    fireEvent.doubleClick(screen.getByTestId('tree-node-src')); // folder expands
+    expect(await screen.findByTestId('tree-node-src/App.tsx')).toBeInTheDocument();
+    expect(onOpenFile).toHaveBeenCalledTimes(1); // the folder did NOT open a file
+  });
+
+  it('clicking the chevron toggles the folder (without opening a file)', async () => {
+    render(wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={vi.fn()} />));
+    fireEvent.click(await screen.findByTestId('tree-chevron-src'));
+    expect(await screen.findByTestId('tree-node-src/App.tsx')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tree-chevron-src')); // collapse
+    await waitFor(() =>
+      expect(screen.queryByTestId('tree-node-src/App.tsx')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('keyboard: focus lands the cursor, ↓ moves it, Enter opens the focused file', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />),
+    );
+    const tree = await screen.findByTestId('file-tree');
+    fireEvent.focus(tree); // cursor → first row (src)
+    expect(screen.getByTestId('tree-node-src')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(tree, { key: 'ArrowDown' }); // → README.md
+    expect(screen.getByTestId('tree-node-README.md')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(tree, { key: 'Enter' });
+    expect(onOpenFile).toHaveBeenCalledWith('README.md');
+  });
+
+  it('keyboard: → expands a folder then steps into its child, ← collapses / goes to parent', async () => {
+    render(wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={vi.fn()} />));
+    const tree = await screen.findByTestId('file-tree');
+    fireEvent.focus(tree); // cursor → src
+    fireEvent.keyDown(tree, { key: 'ArrowRight' }); // expand src
+    expect(await screen.findByTestId('tree-node-src/App.tsx')).toBeInTheDocument();
+    fireEvent.keyDown(tree, { key: 'ArrowRight' }); // step into first child
+    expect(screen.getByTestId('tree-node-src/App.tsx')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(tree, { key: 'ArrowLeft' }); // child (a file) → parent
+    expect(screen.getByTestId('tree-node-src')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(tree, { key: 'ArrowLeft' }); // parent (expanded dir) → collapse
+    await waitFor(() =>
+      expect(screen.queryByTestId('tree-node-src/App.tsx')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('keyboard: Enter on a folder toggles it (does not open a file)', async () => {
+    const onOpenFile = vi.fn();
+    render(
+      wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />),
+    );
+    const tree = await screen.findByTestId('file-tree');
+    fireEvent.focus(tree); // cursor → src (folder)
+    fireEvent.keyDown(tree, { key: 'Enter' });
+    expect(await screen.findByTestId('tree-node-src/App.tsx')).toBeInTheDocument();
+    expect(onOpenFile).not.toHaveBeenCalled();
   });
 });

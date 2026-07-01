@@ -316,6 +316,7 @@ export const en = {
   'tree.loadError': 'Failed to load tree: {error}',
   'tree.loading': 'Loading…',
   'tree.empty': 'Empty directory',
+  'tree.ariaLabel': 'File explorer',
   // agent terminal
   'terminal.claudeExited': 'claude exited: code {code}',
   'terminal.shellExited': 'shell exited: code {code}',
@@ -619,6 +620,7 @@ export const ko: Record<MessageKey, string> = {
   'tree.loadError': '트리를 못 불러왔어요: {error}',
   'tree.loading': '불러오는 중…',
   'tree.empty': '폴더가 비어 있어요',
+  'tree.ariaLabel': '파일 탐색기',
   'terminal.claudeExited': 'claude가 종료됐어요 (코드 {code})',
   'terminal.shellExited': '셸이 종료됐어요 (코드 {code})',
   'app.tab.newTerminal': '새 터미널',

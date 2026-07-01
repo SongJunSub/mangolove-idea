@@ -446,6 +446,30 @@ a {
 .tree-node.sel .tree-chevron {
   color: var(--accent);
 }
+/* the keyboard cursor / clicked row (distinct from .sel, the open file). An outline so it
+   can coexist with .sel's inset accent bar; brightens to accent when the tree has focus. */
+.tree-node--active {
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+}
+.tree:focus-visible {
+  outline: none;
+}
+.tree:focus-visible .tree-node--active {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1px;
+}
+/* the chevron's click target — a bit larger than the glyph so it's easy to hit */
+.tree-chevron-hit {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: -2px 0;
+  cursor: pointer;
+}
 /* faint vertical nesting guide, one per depth level */
 .tree-guide {
   position: absolute;
