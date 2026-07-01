@@ -11,6 +11,20 @@ import { DirectLauncher, type AgentLauncher, type LaunchMode } from '../pty/agen
  */
 const ACTIVE_TURN_MS = 1500;
 
+/**
+ * A `claude --continue` that finds no conversation to resume prints one short line
+ * ("No conversation found to continue") and exits NONZERO. A `--continue` that DID
+ * resume redraws the whole prior transcript first — orders of magnitude more output.
+ * So OUTPUT VOLUME (not elapsed time) is the reliable discriminator: a 'continue'
+ * that exits nonzero having emitted fewer than this many bytes is the "nothing to
+ * resume" case and is self-healed by respawning FRESH; one that streamed a real
+ * conversation and then failed is above the threshold and surfaces its exit normally.
+ * Time-based gating was rejected — it both over-triggers (a resumed session that
+ * crashes fast is wrongly restarted, losing the crash) and under-triggers (a slow/
+ * cold-start "no conversation" failure past the window is not healed).
+ */
+const RESUME_OUTPUT_BYTES = 1024;
+
 /** Plan-2 spawn input (mirrors SpawnSessionRequest minus transport concerns). */
 export interface SpawnArgs {
   readonly worktreeId: string;
@@ -65,6 +79,18 @@ interface Session {
   readonly pty: IPtyLike;
   status: AgentStatus;
   readonly continued: boolean;
+  /**
+   * The RESOLVED launch mode of THIS pty (not the caller's intent): only a
+   * 'continue' spawn passed `claude --continue`, so only it is eligible for the
+   * fresh-fallback self-heal. A 'fresh' respawn can never re-enter that branch,
+   * which is what makes the fallback loop-free.
+   */
+  readonly mode: LaunchMode;
+  /** Total output bytes streamed by this pty — the self-heal "did it resume?" signal. */
+  outputBytes: number;
+  /** Last known geometry, so a fresh-fallback respawn keeps the terminal's size. */
+  cols: number;
+  rows: number;
   /** Guards against double exit emission (kill then natural exit). */
   exited: boolean;
   /**
@@ -92,6 +118,14 @@ export class SessionManager {
   private readonly clock: () => number;
   private readonly onIdle?: () => void;
   private readonly sessions = new Map<string, Session>();
+  /**
+   * Per-worktree kill counter, bumped on every kill(). A self-heal respawn samples it
+   * before its async spawn and re-checks after: a change means a kill landed in the gap
+   * (where the map was momentarily empty and kill() no-oped), so the respawn is aborted.
+   */
+  private readonly killGen = new Map<string, number>();
+  /** Set once dispose() runs — a self-heal respawn in flight must not resurrect a session. */
+  private disposed = false;
 
   constructor(deps: SessionManagerDeps) {
     this.factory = deps.factory;
@@ -153,6 +187,10 @@ export class SessionManager {
       pty,
       status: 'running',
       continued: continueSession,
+      mode,
+      outputBytes: 0,
+      cols,
+      rows,
       exited: false,
       // Count a just-spawned (still-loading, no-output-yet) session as active until
       // it goes quiet for ACTIVE_TURN_MS — better to warn than silently kill spin-up.
@@ -161,8 +199,9 @@ export class SessionManager {
     this.sessions.set(worktreeId, session);
 
     pty.onData((data) => {
-      // Stamp every output byte: this is the whole turn-detection signal.
+      // Stamp every output byte: turn-detection signal + the self-heal volume signal.
       session.lastOutputAt = this.clock();
+      session.outputBytes += data.length;
       this.emitter.emitOutput({ worktreeId, data });
     });
     pty.onExit((e) => this.handleExit(worktreeId, session, e));
@@ -184,11 +223,18 @@ export class SessionManager {
   /** Resizes a worktree's PTY (no-op if none). */
   resize(req: { worktreeId: string; cols: number; rows: number }): void {
     const s = this.sessions.get(req.worktreeId);
-    if (s && !s.exited) s.pty.resize(req.cols, req.rows);
+    if (s && !s.exited) {
+      s.cols = req.cols;
+      s.rows = req.rows;
+      s.pty.resize(req.cols, req.rows);
+    }
   }
 
   /** Kills a worktree's PTY. Returns ok:false if there was no session. */
   kill(worktreeId: string): Ack {
+    // Record the kill even when it no-ops: a self-heal respawn awaiting its fresh spawn
+    // (map momentarily empty) samples this counter and aborts if it changed in the gap.
+    this.killGen.set(worktreeId, (this.killGen.get(worktreeId) ?? 0) + 1);
     const s = this.sessions.get(worktreeId);
     if (!s) return { ok: false, error: `no session for ${worktreeId}` };
     if (!s.exited) {
@@ -220,6 +266,7 @@ export class SessionManager {
 
   /** Alias for killAll so a future disposer can call either. */
   dispose(): void {
+    this.disposed = true;
     this.killAll();
     this.sessions.clear();
   }
@@ -253,11 +300,74 @@ export class SessionManager {
     // is the discriminator, so this holds whether the exit arrives synchronously
     // (fake kill) or asynchronously (real node-pty arriving after the new spawn).
     if (this.sessions.get(worktreeId) !== session) return;
+    // kill()/killAll() set exited=true BEFORE pty.kill(), so a true value here means
+    // this exit was DELIBERATE (user Stop / quit sweep / dispose) — never self-heal it.
+    const killed = session.exited;
     session.status = 'exited';
     session.exited = true;
+
+    // Self-heal a `claude --continue` that had no conversation to resume (nonzero exit
+    // with near-zero output). Instead of surfacing a dead "exited" terminal we respawn
+    // ONCE as FRESH; the respawn's mode is 'fresh', which can never satisfy the predicate
+    // again, so this cannot loop. surfaceExit is deferred to respawnFresh's failure path.
+    if (!killed && this.shouldSelfHeal(session, e)) {
+      void this.respawnFresh(worktreeId, session, e);
+      return;
+    }
+    this.surfaceExit(worktreeId, session, e);
+  }
+
+  /** Emits the terminal exit + 'exited' status and fires the idle hook (normal end-of-life). */
+  private surfaceExit(worktreeId: string, session: Session, e: PtyExitEvent): void {
     this.emitter.emitExit({ worktreeId, exitCode: e.exitCode, signal: e.signal });
     this.emitStatus(worktreeId, 'exited', undefined, session.continued);
     this.notifyIfIdle();
+  }
+
+  /**
+   * Respawns a worktree FRESH after its `--continue` found nothing to resume. Robust to
+   * three failure modes the review surfaced: (1) if the fresh spawn itself fails (cwd
+   * gone / rejects), the ORIGINAL exit is surfaced so the terminal shows an honest end
+   * instead of a blank screen; (2) if the user killed or the manager was disposed during
+   * the spawn's async gap (where the map is momentarily empty, so kill() no-ops), the
+   * intent is honored by killing the just-created session rather than orphaning a live
+   * claude the user asked to close. Fire-and-forget from the sync exit callback.
+   */
+  private async respawnFresh(worktreeId: string, prev: Session, e: PtyExitEvent): Promise<void> {
+    const gen = this.killGen.get(worktreeId) ?? 0;
+    // Wipe the stray "No conversation found to continue" line so fresh opens clean.
+    this.emitter.emitOutput({ worktreeId, data: '\x1b[2J\x1b[3J\x1b[H' });
+    let fresh: AgentSession;
+    try {
+      fresh = await this.spawn({
+        worktreeId,
+        continueSession: false,
+        cols: prev.cols,
+        rows: prev.rows,
+      });
+    } catch {
+      this.surfaceExit(worktreeId, prev, e);
+      return;
+    }
+    // A kill/close/dispose landed during the await — honor it, don't leave a live orphan.
+    if (this.disposed || (this.killGen.get(worktreeId) ?? 0) !== gen) {
+      this.kill(worktreeId);
+      return;
+    }
+    // The fresh spawn couldn't start (e.g. the worktree cwd is gone) — surface the exit.
+    if (fresh.status === 'error') this.surfaceExit(worktreeId, prev, e);
+  }
+
+  /**
+   * True iff `session` is a `--continue` spawn that died the "nothing to resume" way:
+   * nonzero exit having produced less than RESUME_OUTPUT_BYTES of output. A `--continue`
+   * that actually resumed a conversation redraws the transcript (far more output), so a
+   * later nonzero exit is above the threshold and surfaces normally instead of respawning.
+   */
+  private shouldSelfHeal(session: Session, e: PtyExitEvent): boolean {
+    return (
+      session.mode === 'continue' && e.exitCode !== 0 && session.outputBytes < RESUME_OUTPUT_BYTES
+    );
   }
 
   /**

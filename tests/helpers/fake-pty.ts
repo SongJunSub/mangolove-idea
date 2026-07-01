@@ -13,8 +13,12 @@ export interface FakePtyHandle {
   emitExit(exitCode: number, signal?: number): void;
 }
 
-/** Builds an EventEmitter-backed fake PTY for windowless session tests. */
-export function makeFakePty(pid = 4242): FakePtyHandle {
+/**
+ * Builds an EventEmitter-backed fake PTY for windowless session tests. `killExitCode`
+ * models a real pty's exit on kill (SIGTERM commonly yields a NONZERO code) — default 0
+ * preserves the historical fakes; pass nonzero to exercise deliberate-kill code paths.
+ */
+export function makeFakePty(pid = 4242, killExitCode = 0): FakePtyHandle {
   const bus = new EventEmitter();
   let killed = false;
   return {
@@ -23,7 +27,7 @@ export function makeFakePty(pid = 4242): FakePtyHandle {
     resize: () => {},
     kill: () => {
       killed = true;
-      bus.emit('exit', { exitCode: 0 });
+      bus.emit('exit', { exitCode: killExitCode });
     },
     onData: (cb) => void bus.on('data', cb),
     onExit: (cb) => void bus.on('exit', cb),
