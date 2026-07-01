@@ -3,6 +3,7 @@ import * as monaco from 'monaco-editor';
 import { useEffect, useRef, useState } from 'react';
 import type { ConflictFileVersions } from '../../../shared/types';
 import { useConflicts } from '../../hooks/use-conflicts';
+import { languageForPath } from '../../lib/language-for-path';
 import { useI18n } from '../../i18n/i18n-context';
 
 export interface ConflictViewProps {
@@ -24,7 +25,8 @@ export interface ConflictViewProps {
  * Continue (enabled only when zero conflicts remain) + always-available Abort.
  * monaco 0.55.1 has NO merge editor — this is the supported single-editor approach.
  * Disposes model + editor + content disposable on unmount and on every file switch
- * (mirrors DiffView). Plaintext only, so just editor.worker loads (lazy chunk).
+ * (mirrors DiffView). Highlighted by the file's language; the ts/json/css/html workers
+ * load lazily per language (the base editor.worker still loads on first render).
  */
 export function ConflictView({
   worktreeId,
@@ -83,7 +85,9 @@ export function ConflictView({
         const editor = editorRef.current;
         if (!editor) return;
         const prev = editor.getModel();
-        const model = monaco.editor.createModel(v.working, 'plaintext');
+        // Highlight by the conflicted file's language — the code between git's <<<< ==== >>>>
+        // markers colorizes; the marker lines just tokenize inertly (single-editor merge approach).
+        const model = monaco.editor.createModel(v.working, languageForPath(selectedPath));
         editor.setModel(model);
         prev?.dispose();
       } catch (e) {

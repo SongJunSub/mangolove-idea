@@ -105,13 +105,27 @@ const BY_EXT: Readonly<Record<string, string>> = {
   sql: 'sql',
 };
 
-/** Whole (lowercased) filename -> languageId, for common extensionless files. */
+/** Whole (lowercased) filename -> languageId, for common extensionless files + dotfiles. */
 const BY_NAME: Readonly<Record<string, string>> = {
+  // build / project files
   dockerfile: 'dockerfile',
   gemfile: 'ruby',
   rakefile: 'ruby',
   podfile: 'ruby',
   brewfile: 'ruby',
+  vagrantfile: 'ruby',
+  // dotfiles (a leading '.' is not an extension, so match by name)
+  '.editorconfig': 'ini',
+  '.npmrc': 'ini',
+  '.yarnrc': 'ini',
+  '.gitconfig': 'ini',
+  '.bashrc': 'shell',
+  '.bash_profile': 'shell',
+  '.bash_aliases': 'shell',
+  '.zshrc': 'shell',
+  '.zprofile': 'shell',
+  '.zshenv': 'shell',
+  '.profile': 'shell',
 };
 
 /** Languages that participate in Phase B code navigation. */
@@ -128,8 +142,10 @@ export const TSJS_LANGUAGES: ReadonlySet<string> = new Set(['typescript', 'javas
 /** Returns the monaco languageId for a relPath, or 'plaintext' when unknown. */
 export function languageForPath(relPath: string): string {
   const base = relPath.slice(relPath.lastIndexOf('/') + 1);
-  const byName = BY_NAME[base.toLowerCase()];
-  if (byName) return byName; // extensionless files (Dockerfile, Gemfile, …)
+  const lower = base.toLowerCase();
+  const byName = BY_NAME[lower];
+  if (byName) return byName; // extensionless files (Dockerfile, Gemfile, .bashrc, …)
+  if (/^\.env(\..+)?$/.test(lower)) return 'ini'; // .env, .env.local, .env.production … (not .envrc)
   const dot = base.lastIndexOf('.');
   if (dot <= 0) return 'plaintext'; // no extension, or a dotfile like '.gitignore'
   const ext = base.slice(dot + 1).toLowerCase();
