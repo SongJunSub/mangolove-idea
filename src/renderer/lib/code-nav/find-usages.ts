@@ -28,6 +28,8 @@ const MAX_USAGES = 1000;
 interface ReferenceEntryLike {
   readonly fileName: string;
   readonly textSpan: { readonly start: number; readonly length: number };
+  /** TS flags the declaration site; we exclude it so the count is real USAGES (IntelliJ-style). */
+  readonly isDefinition?: boolean;
 }
 interface TsWorkerClient {
   getReferencesAtPosition(
@@ -65,7 +67,8 @@ async function collectTsUsages(
   const getWorker = await host.getTypeScriptWorker();
   const client = await getWorker(model.uri);
   const offset = model.getOffsetAt(position);
-  const refs = (await client.getReferencesAtPosition(model.uri.toString(), offset)) ?? [];
+  const all = (await client.getReferencesAtPosition(model.uri.toString(), offset)) ?? [];
+  const refs = all.filter((r) => !r.isDefinition); // usages only — drop the declaration site
   const out: UsageLocation[] = [];
   for (const ref of refs.slice(0, MAX_USAGES)) {
     const uri = monaco.Uri.parse(ref.fileName);
@@ -90,7 +93,7 @@ async function collectLspUsages(
     relPath: ctx.relPath,
     line: position.lineNumber - 1, // monaco 1-based -> LSP 0-based
     character: position.column - 1,
-    includeDeclaration: true,
+    includeDeclaration: false, // usages only — exclude the declaration (IntelliJ "Find Usages")
   });
   return res.locations.slice(0, MAX_USAGES).map((loc) => {
     const target = monaco.editor.getModel(

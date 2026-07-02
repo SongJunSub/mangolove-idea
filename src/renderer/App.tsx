@@ -5,8 +5,9 @@ import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
 import { NavBack } from './components/editor/nav-back';
-import { UsagesPanel } from './components/editor/usages-panel';
+import { UsagesOverlay } from './components/editor/usages-overlay';
 import type { UsageLocation } from './lib/code-nav/find-usages';
+import { decideUsages } from './lib/code-nav/usages-routing';
 import { registerCodeNav } from './lib/code-nav/register-code-nav';
 import { applyTsconfigToNav } from './lib/code-nav/ts-nav';
 import { loadTsconfigNav } from './lib/code-nav/tsconfig-loader';
@@ -152,9 +153,9 @@ export function App(): React.JSX.Element {
   // Effective session-persistence mode (b-full). Drives the quit dialog's wording:
   // under 'full' a quit does NOT lose the turn — it keeps running in the background.
   const [persistenceInfo, setPersistenceInfo] = useState<SessionPersistenceInfo | null>(null);
-  const [paneMode, setPaneMode] = useState<
-    'terminal' | 'diff' | 'conflict' | 'browser' | 'references'
-  >('terminal');
+  const [paneMode, setPaneMode] = useState<'terminal' | 'diff' | 'conflict' | 'browser'>(
+    'terminal',
+  );
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
   // relPath of the file open in the editor pane (A4 edits + saves it), or null.
@@ -209,6 +210,8 @@ export function App(): React.JSX.Element {
     // open the wrong worktree's path (stale cross-worktree nav).
     setUsages([]);
     setUsagesLoading(false);
+    setUsagesOverlayOpen(false);
+    usagesPendingRef.current = false; // drop any in-flight find-usages so its late result can't nav
   }, []);
 
   const applyPending = useCallback(
@@ -278,17 +281,48 @@ export function App(): React.JSX.Element {
     [],
   );
 
-  // Find-usages panel (Phase B). CodeEditor reports loading, then the results; a row click
-  // routes back through onCodeNavOpen (dirty-guard + reveal + Back history).
+  // Find-usages (Phase B) shown in a FLOATING overlay (IntelliJ "Show Usages") that never
+  // hijacks the terminal pane. CodeEditor reports loading then results; exactly one usage jumps
+  // straight there, 0/2+ open the overlay. A row (click or Enter) routes through onCodeNavOpen.
   const [usages, setUsages] = useState<readonly UsageLocation[]>([]);
   const [usagesLoading, setUsagesLoading] = useState(false);
-  const onFindUsages = useCallback((list: UsageLocation[] | null, loading: boolean): void => {
-    setUsagesLoading(loading);
-    if (!loading) setUsages(list ?? []);
-    // The references view is hidden for now (the terminal pane shows ONLY the terminal), so
-    // find-usages no longer hijacks the pane. Re-enable setPaneMode('references') when the
-    // usages view is brought back.
+  const [usagesOverlayOpen, setUsagesOverlayOpen] = useState(false);
+  // True while a find-usages request is in flight AND still wanted. collectUsages is async with no
+  // cancellation, so a result that resolves AFTER the user dismissed the loading popup or switched
+  // worktrees must be DROPPED — otherwise it re-opens the popup (stealing focus behind the backdrop)
+  // or force-jumps the editor, possibly to the OLD worktree's paths. Dismiss / switch clears this.
+  const usagesPendingRef = useRef(false);
+  const closeUsages = useCallback((): void => {
+    usagesPendingRef.current = false;
+    setUsagesOverlayOpen(false);
   }, []);
+  const onFindUsages = useCallback(
+    (list: UsageLocation[] | null, loading: boolean): void => {
+      if (loading) {
+        usagesPendingRef.current = true;
+        setUsagesLoading(true);
+        setUsages([]);
+        setUsagesOverlayOpen(true);
+        return;
+      }
+      if (!usagesPendingRef.current) return; // dismissed or superseded while loading → drop the result
+      usagesPendingRef.current = false;
+      setUsagesLoading(false);
+      const action = decideUsages(list ?? []);
+      if (action.kind === 'jump') {
+        setUsagesOverlayOpen(false);
+        const wt = navSelRef.current.selectedId;
+        if (wt) {
+          const target = action.target;
+          onCodeNavOpen(wt, target.relPath, { line: target.line, column: target.column });
+        }
+        return;
+      }
+      setUsages(action.usages);
+      setUsagesOverlayOpen(true);
+    },
+    [onCodeNavOpen],
+  );
 
   /** Back: return to the previously-jumped-from location through the dirty-guard. */
   const onNavBack = useCallback((): void => {
@@ -825,16 +859,8 @@ export function App(): React.JSX.Element {
                                 detectedUrl={detectedServerUrl}
                               />
                             )}
-                            {paneMode === 'references' && (
-                              <UsagesPanel
-                                usages={usages}
-                                loading={usagesLoading}
-                                onOpen={(relPath, line, column) => {
-                                  if (selectedId)
-                                    onCodeNavOpen(selectedId, relPath, { line, column });
-                                }}
-                              />
-                            )}
+                            {/* Find-usages is shown in a floating overlay (mounted below), not
+                                this pane — the terminal pane stays terminal-only. */}
                             {paneMode === 'conflict' && conflictWorktreeId === selectedId && (
                               <Suspense
                                 fallback={
@@ -1085,6 +1111,16 @@ export function App(): React.JSX.Element {
             }
           }}
         />
+        {usagesOverlayOpen && (
+          <UsagesOverlay
+            usages={usages}
+            loading={usagesLoading}
+            onOpen={(relPath, line, column) => {
+              if (selectedId) onCodeNavOpen(selectedId, relPath, { line, column });
+            }}
+            onClose={closeUsages}
+          />
+        )}
       </div>
     </I18nContext.Provider>
   );

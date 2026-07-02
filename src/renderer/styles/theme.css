@@ -1002,6 +1002,96 @@ a {
   background: var(--accent-soft);
 }
 
+/* Find-usages floating popup (IntelliJ "Show Usages"): a backdrop + a centered card that
+   floats OVER the editor, so it never hijacks the terminal pane. */
+.usages-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.28);
+}
+.usages-card {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 90vw);
+  max-height: 60vh;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  outline: none;
+}
+.usages-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.usages-card__close {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.usages-card__close:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.usages-card__list {
+  overflow-y: auto;
+}
+.usages-file {
+  position: sticky;
+  top: 0;
+  padding: 4px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--elevated);
+  border-top: 1px solid var(--border);
+}
+.usage-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 3px 10px 3px 22px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+}
+.usage-row--active {
+  background: var(--accent-soft);
+}
+.usage-row__loc {
+  flex: none;
+  min-width: 52px;
+  color: var(--muted);
+}
+.usage-row__preview {
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+
 /* Bottom-right notification CARD (update available) */
 .update-card {
   position: fixed;
