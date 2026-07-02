@@ -20,16 +20,23 @@ export interface LspDetectProbe {
 /** Homebrew-arm64, Homebrew-intel, system — ABSOLUTE dirs only, never $PATH. */
 const PROBE_DIRS: readonly string[] = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'];
 
-/** The wrapper executable each toolchain installs (Homebrew formula names). */
-const SERVER_BIN: Readonly<Record<NavServerLanguage, string>> = {
-  java: 'jdtls',
-  kotlin: 'kotlin-language-server',
+/**
+ * The launcher executable(s) each toolchain installs, in PREFERENCE order (Homebrew names).
+ * Kotlin prefers JetBrains' `kotlin-lsp` (the IntelliJ analysis engine — resolves modern
+ * Gradle/multi-module classpaths) over the unmaintained `kotlin-language-server`, whose
+ * Gradle init-script classpath resolution is broken by Gradle 8/9 (no classpath => no
+ * cross-file definitions). The first candidate that exists wins.
+ */
+const SERVER_BINS: Readonly<Record<NavServerLanguage, readonly string[]>> = {
+  java: ['jdtls'],
+  kotlin: ['kotlin-lsp', 'kotlin-language-server'],
 };
 
 /**
- * Returns the absolute path to the language server for `lang`, or null when it is not
- * installed in a known location (and no valid override is set). An override path is
- * honored ONLY if it exists (a stale override degrades, never silently runs nothing).
+ * Returns the absolute path to the (preferred) language server for `lang`, or null when none
+ * is installed in a known location (and no valid override is set). An override path is honored
+ * ONLY if it exists (a stale override degrades, never silently runs nothing). Preference
+ * dominates location: `kotlin-lsp` anywhere beats `kotlin-language-server` anywhere.
  */
 export function resolveLspServerPath(
   lang: NavServerLanguage,
@@ -37,16 +44,17 @@ export function resolveLspServerPath(
 ): string | null {
   const override = probe.overrides?.[lang];
   if (override) return probe.exists(override) ? override : null;
-  const bin = SERVER_BIN[lang];
-  for (const dir of PROBE_DIRS) {
-    const p = `${dir}/${bin}`;
-    if (probe.exists(p)) return p;
+  for (const bin of SERVER_BINS[lang]) {
+    for (const dir of PROBE_DIRS) {
+      const p = `${dir}/${bin}`;
+      if (probe.exists(p)) return p;
+    }
   }
   return null;
 }
 
 /** A short, safe reason string for the Settings degradation surface (no fs paths). */
 export function unavailableReason(lang: NavServerLanguage): string {
-  const bin = SERVER_BIN[lang];
+  const bin = SERVER_BINS[lang][0]; // the preferred launcher
   return `${bin} not found — install it (e.g. \`brew install ${bin}\`) or set its path in Settings`;
 }

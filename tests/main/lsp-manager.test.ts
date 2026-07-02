@@ -177,8 +177,9 @@ describe('LspManager', () => {
     ]);
   });
 
-  it('launchArgsFor gives jdtls a -data dir and kotlin none', () => {
-    expect(launchArgsFor('java', '/d')).toEqual(['-data', '/d']);
-    expect(launchArgsFor('kotlin', '/d')).toEqual([]);
+  it('launchArgsFor: jdtls -data dir; kotlin-lsp --stdio; kotlin-language-server none', () => {
+    expect(launchArgsFor('java', '/d', '/opt/homebrew/bin/jdtls')).toEqual(['-data', '/d']);
+    expect(launchArgsFor('kotlin', '/d', '/opt/homebrew/bin/kotlin-lsp')).toEqual(['--stdio']);
+    expect(launchArgsFor('kotlin', '/d', '/opt/homebrew/bin/kotlin-language-server')).toEqual([]);
   });
 });
