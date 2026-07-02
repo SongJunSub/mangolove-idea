@@ -16,6 +16,22 @@ describe('resolveLspServerPath', () => {
     );
   });
 
+  it('kotlin prefers JetBrains kotlin-lsp, falling back to kotlin-language-server', () => {
+    // both installed -> kotlin-lsp wins (preference dominates location)
+    const both = (p: string) =>
+      p === '/opt/homebrew/bin/kotlin-lsp' || p === '/opt/homebrew/bin/kotlin-language-server';
+    expect(resolveLspServerPath('kotlin', { exists: both })).toBe('/opt/homebrew/bin/kotlin-lsp');
+    // kotlin-lsp preferred even when it lives in a later probe dir than the old server
+    const split = (p: string) =>
+      p === '/usr/bin/kotlin-lsp' || p === '/opt/homebrew/bin/kotlin-language-server';
+    expect(resolveLspServerPath('kotlin', { exists: split })).toBe('/usr/bin/kotlin-lsp');
+    // only the old server present -> fall back to it
+    const onlyOld = (p: string) => p === '/opt/homebrew/bin/kotlin-language-server';
+    expect(resolveLspServerPath('kotlin', { exists: onlyOld })).toBe(
+      '/opt/homebrew/bin/kotlin-language-server',
+    );
+  });
+
   it('honors a Settings override ONLY if it exists', () => {
     const probe = {
       exists: (p: string) => p === '/custom/jdtls',
@@ -39,6 +55,6 @@ describe('resolveLspServerPath', () => {
 
   it('unavailableReason mentions the binary + how to fix, no fs path leak', () => {
     expect(unavailableReason('java')).toMatch(/jdtls/);
-    expect(unavailableReason('kotlin')).toMatch(/kotlin-language-server/);
+    expect(unavailableReason('kotlin')).toMatch(/kotlin-lsp/); // recommends the preferred server
   });
 });

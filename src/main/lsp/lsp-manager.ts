@@ -1,4 +1,5 @@
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { basename } from 'node:path';
 import { encodeMessage, JsonRpcReader } from './jsonrpc-framer';
 import type { NavServerLanguage } from './lsp-detect';
 import type { IRpcProc } from '../proc/process-runner';
@@ -23,11 +24,21 @@ const INIT_TIMEOUT_MS = 90 * 1000;
 const IDLE_TTL_MS = 5 * 60 * 1000;
 const KILL_GRACE_MS = 3000; // JVMs are slow; SIGTERM then SIGKILL after a grace
 
+/** The launcher basename that identifies JetBrains' kotlin-lsp (needs an explicit stdio flag). */
+const KOTLIN_LSP_BIN = 'kotlin-lsp';
+
 /** Builds the launch argv for a language server given its resolved absolute path. */
-export function launchArgsFor(lang: NavServerLanguage, dataDir: string): string[] {
-  // The Homebrew wrappers self-locate the JVM. jdtls takes a per-workspace -data dir;
-  // kotlin-language-server reads the rootUri from the initialize handshake (no args).
-  return lang === 'java' ? ['-data', dataDir] : [];
+export function launchArgsFor(
+  lang: NavServerLanguage,
+  dataDir: string,
+  serverPath: string,
+): string[] {
+  // jdtls takes a per-workspace -data dir. For Kotlin there are two servers with DIFFERENT
+  // launch contracts: JetBrains' kotlin-lsp speaks LSP over stdio only with `--stdio` (without
+  // it, it opens a socket and our stdin/stdout pipe receives nothing), while the older
+  // kotlin-language-server takes no args and reads the rootUri from the initialize handshake.
+  if (lang === 'java') return ['-data', dataDir];
+  return basename(serverPath) === KOTLIN_LSP_BIN ? ['--stdio'] : [];
 }
 
 interface Pending {
@@ -263,7 +274,11 @@ export class LspManager {
     let server = this.servers.get(key);
     if (!server) {
       const dataDir = this.deps.dataDir(worktreeId, lang);
-      const proc = this.deps.spawnRpc(serverPath, launchArgsFor(lang, dataDir), worktreeId);
+      const proc = this.deps.spawnRpc(
+        serverPath,
+        launchArgsFor(lang, dataDir, serverPath),
+        worktreeId,
+      );
       server = new LspServer(proc, worktreeId, this.deps.readFileText, lang, () =>
         this.disposeServer(key),
       );
