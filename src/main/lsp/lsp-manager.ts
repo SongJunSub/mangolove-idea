@@ -13,7 +13,13 @@ import type { RawLocation, LspQueryInner } from '../codenav/code-nav-service';
  * is a manual smoke gated on the dev installing the toolchain.
  */
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 15000;
+/**
+ * `initialize` gets a MUCH longer budget than a normal request: a cold jdtls JVM + Equinox/OSGi
+ * boot (and kotlin-language-server's classpath resolution) routinely exceeds 8s, and a timed-out
+ * initialize used to reject-and-CACHE the handshake promise forever (poisoning every later query).
+ */
+const INIT_TIMEOUT_MS = 90 * 1000;
 const IDLE_TTL_MS = 5 * 60 * 1000;
 const KILL_GRACE_MS = 3000; // JVMs are slow; SIGTERM then SIGKILL after a grace
 
@@ -79,31 +85,44 @@ class LspServer {
     this.proc.write(encodeMessage({ jsonrpc: '2.0', method, params }));
   }
 
-  private request<T>(method: string, params: unknown): Promise<T> {
+  private request<T>(method: string, params: unknown, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
     const id = this.nextId++;
     this.proc.write(encodeMessage({ jsonrpc: '2.0', id, method, params }));
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`lsp request timed out: ${method}`));
-      }, REQUEST_TIMEOUT_MS);
+      }, timeoutMs);
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
     });
   }
 
   private ensureInitialized(): Promise<void> {
-    if (!this.initialized) {
-      const rootUri = pathToFileURL(this.rootPath).toString();
-      this.initialized = this.request('initialize', {
-        processId: process.pid,
-        rootUri,
-        capabilities: {},
-        workspaceFolders: [{ uri: rootUri, name: 'worktree' }],
-      }).then(() => {
-        this.send('initialized', {});
-      });
-    }
+    if (!this.initialized) this.initialized = this.doInitialize();
     return this.initialized;
+  }
+
+  private async doInitialize(): Promise<void> {
+    const rootUri = pathToFileURL(this.rootPath).toString();
+    try {
+      await this.request(
+        'initialize',
+        {
+          processId: process.pid,
+          rootUri,
+          capabilities: {},
+          workspaceFolders: [{ uri: rootUri, name: 'worktree' }],
+        },
+        INIT_TIMEOUT_MS,
+      );
+    } catch (err) {
+      // A failed/timed-out initialize must NOT poison this server forever (the rejected promise was
+      // being cached, and touch() kept the idle-killer from ever respawning). Tear it down so the
+      // NEXT query spawns a fresh server instead of replaying the cached rejection.
+      this.onIdleDispose();
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+    this.send('initialized', {});
   }
 
   private ensureOpen(absPath: string): void {
