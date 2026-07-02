@@ -679,6 +679,12 @@ async function getCodeNavService(ctx: IpcContext): Promise<CodeNavService> {
       mkdirSync(dir, { recursive: true });
       return dir;
     },
+    onStatus: (status) => {
+      // Push server lifecycle to THIS window so an empty nav is distinguishable from a
+      // starting/indexing/failed server (the renderer shows it in the status bar).
+      const win = ctx.mainWindow;
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.CODENAV_STATUS, status);
+    },
   });
   ctx.lspManager = lspManager;
   ctx.codeNavService = new CodeNavService({

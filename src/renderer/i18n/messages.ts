@@ -284,6 +284,10 @@ export const en = {
   'usages.count': '{count} usage(s) in {files} file(s)',
   'usages.title': 'Usages',
   'usages.close': 'Close',
+  // code-nav status badge (status bar)
+  'nav.indexing': '{lang}: indexing…',
+  'nav.failed': '{lang}: nav failed',
+  'nav.unavailable': '{lang}: LSP not installed',
   // fanout-view
   'fanout.title': 'Multimodel Fan-out',
   'fanout.promptPlaceholder': 'One prompt, sent to every selected model in its own worktree…',
@@ -591,6 +595,10 @@ export const ko: Record<MessageKey, string> = {
   'usages.count': '파일 {files}개에서 사용처 {count}개',
   'usages.title': '사용처',
   'usages.close': '닫기',
+  // code-nav status badge (status bar)
+  'nav.indexing': '{lang} 인덱싱 중…',
+  'nav.failed': '{lang} 코드 이동 오류',
+  'nav.unavailable': '{lang} LSP 미설치',
   // fanout-view
   'fanout.title': '멀티모델 Fan-out',
   'fanout.promptPlaceholder': '선택한 모델마다 각자 워크트리에서 이 프롬프트 하나를 실행해요…',

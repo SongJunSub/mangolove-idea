@@ -464,6 +464,22 @@ export interface CodeNavCapabilities {
   readonly kotlin: CodeNavLangStatus;
 }
 
+/**
+ * Runtime state of a Java/Kotlin language server, pushed to the renderer so a nav that returns
+ * [] is no longer indistinguishable from "no result": `starting` (spawned, initializing),
+ * `indexing` (importing the project — results are empty until done), `ready`, or `failed`.
+ */
+export type CodeNavRuntimeState = 'starting' | 'indexing' | 'ready' | 'failed';
+
+/** A per-(worktree, language) server-state change (event-pushed on CODENAV_STATUS). */
+export interface CodeNavStatus {
+  readonly worktreeId: string;
+  readonly lang: 'java' | 'kotlin';
+  readonly state: CodeNavRuntimeState;
+  /** Short, safe reason when state is 'failed' (e.g. "exited (code 1)"); omitted otherwise. */
+  readonly detail?: string;
+}
+
 export interface DiffFileRequest {
   readonly worktreeId: string;
   readonly base?: string;

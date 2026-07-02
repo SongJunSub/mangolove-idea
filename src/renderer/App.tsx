@@ -6,8 +6,11 @@ import { useFileEditor } from './hooks/use-file-editor';
 import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
 import { NavBack } from './components/editor/nav-back';
 import { UsagesOverlay } from './components/editor/usages-overlay';
+import { NavStatusBadge, type NavIndicatorState } from './components/statusbar/nav-status-badge';
 import type { UsageLocation } from './lib/code-nav/find-usages';
 import { decideUsages } from './lib/code-nav/usages-routing';
+import { languageForPath } from './lib/language-for-path';
+import type { CodeNavStatus, CodeNavCapabilities } from '../shared/types';
 import { registerCodeNav } from './lib/code-nav/register-code-nav';
 import { applyTsconfigToNav } from './lib/code-nav/ts-nav';
 import { loadTsconfigNav } from './lib/code-nav/tsconfig-loader';
@@ -342,6 +345,35 @@ export function App(): React.JSX.Element {
     registerCodeNav({ onOpen: onCodeNavOpen });
   }, [onCodeNavOpen]);
 
+  // Java/Kotlin LSP status surface: a nav that returns [] is otherwise indistinguishable from a
+  // starting/indexing/failed server. Track the latest per-(worktree,lang) runtime state (pushed
+  // on CODENAV_STATUS) + the selected worktree's capabilities (for the "not installed" case).
+  const [navStatus, setNavStatus] = useState<Record<string, CodeNavStatus>>({});
+  const [navCaps, setNavCaps] = useState<CodeNavCapabilities | null>(null);
+  useEffect(() => {
+    return window.mango.codenav.onStatus((s) => {
+      setNavStatus((prev) => ({ ...prev, [`${s.worktreeId}:${s.lang}`]: s }));
+    });
+  }, []);
+  useEffect(() => {
+    if (!selectedId) {
+      setNavCaps(null);
+      return;
+    }
+    let cancelled = false;
+    window.mango.codenav
+      .capabilities(selectedId)
+      .then((c) => {
+        if (!cancelled) setNavCaps(c);
+      })
+      .catch(() => {
+        /* capability probe failure just leaves the badge silent */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
   // Seed first-party TS/JS models for the selected worktree (cross-file nav); dispose on switch.
   // Also layer this worktree's tsconfig path aliases onto the shared TS service so '@/foo'
   // style imports resolve. The compiler options are process-global, so this re-applies per
@@ -530,6 +562,20 @@ export function App(): React.JSX.Element {
       </I18nContext.Provider>
     );
   }
+
+  // Code-nav status badge: the active file's LSP language (Java/Kotlin only) + its current state.
+  // Runtime status (from CODENAV_STATUS) wins; else fall back to "not installed" from capabilities.
+  const navFileLang = selectedFile ? languageForPath(selectedFile) : null;
+  const navLang: 'java' | 'kotlin' | null =
+    navFileLang === 'java' || navFileLang === 'kotlin' ? navFileLang : null;
+  const navIndicator: { state: NavIndicatorState | null; detail?: string } = (() => {
+    if (!navLang || !selectedId) return { state: null };
+    const runtime = navStatus[`${selectedId}:${navLang}`];
+    if (runtime) return { state: runtime.state, detail: runtime.detail };
+    const cap = navCaps?.[navLang];
+    if (cap && !cap.available) return { state: 'unavailable', detail: cap.reason };
+    return { state: null };
+  })();
 
   return (
     <I18nContext.Provider value={i18n}>
@@ -1079,11 +1125,18 @@ export function App(): React.JSX.Element {
         </main>
         <StatusBar
           left={
-            <UsageWidget
-              status={usage.status}
-              loading={usage.loading}
-              onRefresh={() => void usage.refresh()}
-            />
+            <>
+              <UsageWidget
+                status={usage.status}
+                loading={usage.loading}
+                onRefresh={() => void usage.refresh()}
+              />
+              <NavStatusBadge
+                lang={navLang}
+                state={navIndicator.state}
+                detail={navIndicator.detail}
+              />
+            </>
           }
           right={
             <UpdateProgressInline

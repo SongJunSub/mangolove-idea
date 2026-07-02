@@ -72,6 +72,7 @@ export const IPC = {
   CODENAV_CAPABILITIES: 'codenav:capabilities', // invoke ({worktreeId} -> CodeNavCapabilities)
   CODENAV_DEFINITION: 'codenav:definition', // invoke (CodeNavQuery -> CodeNavResult)
   CODENAV_REFERENCES: 'codenav:references', // invoke (CodeNavReferencesQuery -> CodeNavResult)
+  CODENAV_STATUS: 'codenav:status', // push (main -> renderer: CodeNavStatus on server-state change)
 
   // PR/CI status panel (V2) — read-only gh-backed status + the open-in-browser action
   GH_STATUS: 'gh:status', // invoke (worktreeId -> GhStatus)

@@ -46,6 +46,7 @@ import type {
   CodeNavReferencesQuery,
   CodeNavResult,
   CodeNavCapabilities,
+  CodeNavStatus,
   AppSettings,
   SessionPersistenceInfo,
   CrossMachineSessionPointer,
@@ -185,6 +186,8 @@ export interface MangoApi {
     definition(req: CodeNavQuery): Promise<CodeNavResult>;
     /** Java/Kotlin find-references; targets confined to the worktree ([] when degraded). */
     references(req: CodeNavReferencesQuery): Promise<CodeNavResult>;
+    /** Subscribe to server-state changes (starting/indexing/ready/failed). Returns an unsubscribe. */
+    onStatus(cb: (status: CodeNavStatus) => void): () => void;
   };
   settings: {
     /** Current persisted settings (every field optional; unset => env/default). */
