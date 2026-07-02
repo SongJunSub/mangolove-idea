@@ -86,6 +86,7 @@ const api: MangoApi = {
     capabilities: (worktreeId) => ipcRenderer.invoke(IPC.CODENAV_CAPABILITIES, { worktreeId }),
     definition: (req) => ipcRenderer.invoke(IPC.CODENAV_DEFINITION, req),
     references: (req) => ipcRenderer.invoke(IPC.CODENAV_REFERENCES, req),
+    onStatus: (cb) => subscribe(IPC.CODENAV_STATUS, cb),
   },
   gh: {
     status: (req) => ipcRenderer.invoke(IPC.GH_STATUS, req),

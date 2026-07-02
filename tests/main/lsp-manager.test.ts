@@ -34,12 +34,23 @@ class FakeProc implements IRpcProc {
       }
     }
   }
+  private exitCb: ((e: { code: number | null; signal: NodeJS.Signals | null }) => void) | undefined;
   onStdout(cb: (chunk: Buffer) => void): void {
     this.stdoutCb = cb;
   }
   onStderr(): void {}
-  onExit(): void {}
+  onExit(cb: (e: { code: number | null; signal: NodeJS.Signals | null }) => void): void {
+    this.exitCb = cb;
+  }
   onError(): void {}
+  /** Test helper: push a server-initiated notification (no id). */
+  emit(method: string, params: unknown): void {
+    this.stdoutCb?.(encodeMessage({ jsonrpc: '2.0', method, params }));
+  }
+  /** Test helper: simulate the child process exiting (crash / Gatekeeper block). */
+  triggerExit(code: number): void {
+    this.exitCb?.({ code, signal: null });
+  }
 }
 
 function makeManager(replies: Record<string, unknown>, over: Partial<LspManagerDeps> = {}) {
@@ -175,6 +186,131 @@ describe('LspManager', () => {
         endCharacter: 8,
       },
     ]);
+  });
+
+  it('emits status: starting -> indexing on a java handshake, then ready on ServiceReady', async () => {
+    const statuses: { worktreeId: string; lang: string; state: string; detail?: string }[] = [];
+    const { mgr, procs } = makeManager(
+      { initialize: { capabilities: {} }, 'textDocument/definition': [] },
+      { onStatus: (s) => statuses.push(s) },
+    );
+    await mgr.query('definition', '/repo/wt', 'java', {
+      absPath: '/repo/wt/A.java',
+      line: 0,
+      character: 0,
+      includeDeclaration: false,
+    });
+    // spawn -> 'starting'; initialize resolves but jdtls keeps importing -> 'indexing'
+    expect(statuses.map((s) => s.state)).toEqual(['starting', 'indexing']);
+    expect(statuses[0]).toMatchObject({ worktreeId: '/repo/wt', lang: 'java' });
+    // jdtls signals real readiness via language/status
+    procs[0].emit('language/status', { type: 'ServiceReady', message: 'ServiceReady' });
+    expect(statuses[statuses.length - 1].state).toBe('ready');
+    // a running $/progress flips it back to indexing; end -> ready (dedup: no duplicate states)
+    procs[0].emit('$/progress', { token: 't', value: { kind: 'begin', title: 'Importing' } });
+    procs[0].emit('$/progress', { token: 't', value: { kind: 'end' } });
+    expect(statuses.map((s) => s.state)).toEqual([
+      'starting',
+      'indexing',
+      'ready',
+      'indexing',
+      'ready',
+    ]);
+  });
+
+  it('emits status: starting -> failed(detail) when initialize fails', async () => {
+    const statuses: { state: string; detail?: string }[] = [];
+    const procs: FakeProc[] = [];
+    const spawnRpc = vi.fn((): IRpcProc => {
+      const p = new FakeProc({}, ['initialize']); // errors the handshake
+      procs.push(p);
+      return p;
+    });
+    const mgr = new LspManager({
+      spawnRpc,
+      resolveServer: (l) => (l === 'java' ? '/opt/homebrew/bin/jdtls' : null),
+      readFileText: () => 'class X {}',
+      dataDir: () => '/tmp/jdtls-data',
+      onStatus: (s) => statuses.push(s),
+    });
+    await expect(
+      mgr.query('definition', '/repo/wt', 'java', {
+        absPath: '/repo/wt/A.java',
+        line: 0,
+        character: 0,
+        includeDeclaration: false,
+      }),
+    ).rejects.toThrow();
+    expect(statuses.map((s) => s.state)).toEqual(['starting', 'failed']);
+    expect(statuses[1].detail).toBeTruthy(); // a reason is surfaced, not silent
+  });
+
+  it('emits failed when the server process exits (crash / Gatekeeper block)', async () => {
+    const statuses: { state: string; detail?: string }[] = [];
+    const { mgr, procs } = makeManager(
+      { initialize: { capabilities: {} }, 'textDocument/definition': [] },
+      { onStatus: (s) => statuses.push(s) },
+    );
+    await mgr.query('definition', '/repo/wt', 'java', {
+      absPath: '/repo/wt/A.java',
+      line: 0,
+      character: 0,
+      includeDeclaration: false,
+    });
+    const q = {
+      absPath: '/repo/wt/A.java',
+      line: 0,
+      character: 0,
+      includeDeclaration: false,
+    };
+    procs[0].triggerExit(1);
+    const last = statuses[statuses.length - 1];
+    expect(last.state).toBe('failed');
+    expect(last.detail).toMatch(/exited/);
+    // A post-init crash must DROP the dead server so the next query respawns (badge un-sticks).
+    await mgr.query('definition', '/repo/wt', 'java', q);
+    expect(procs).toHaveLength(2); // a fresh child, not the dead one
+    expect(statuses.filter((s) => s.state === 'starting')).toHaveLength(2); // 'starting' re-emitted
+  });
+
+  it('a graceful dispose does NOT emit failed but stops the busy spinner', async () => {
+    const statuses: { state: string }[] = [];
+    const { mgr, procs } = makeManager(
+      { initialize: { capabilities: {} }, 'textDocument/definition': [] },
+      { onStatus: (s) => statuses.push(s) },
+    );
+    await mgr.query('definition', '/repo/wt', 'java', {
+      absPath: '/repo/wt/A.java',
+      line: 0,
+      character: 0,
+      includeDeclaration: false,
+    });
+    expect(statuses[statuses.length - 1].state).toBe('indexing'); // java stays indexing pre-teardown
+    mgr.dispose(); // idle/teardown while indexing -> stop the spinner, but NOT a failure
+    procs[0].triggerExit(143);
+    expect(statuses.some((s) => s.state === 'failed')).toBe(false);
+    expect(statuses[statuses.length - 1].state).toBe('ready'); // spinner cleared (badge hidden)
+  });
+
+  it('$/progress stays indexing until ALL work-done tokens close', async () => {
+    const statuses: { state: string }[] = [];
+    const { mgr, procs } = makeManager(
+      { initialize: { capabilities: {} }, 'textDocument/definition': [] },
+      { onStatus: (s) => statuses.push(s) },
+    );
+    await mgr.query('definition', '/repo/wt', 'java', {
+      absPath: '/repo/wt/A.java',
+      line: 0,
+      character: 0,
+      includeDeclaration: false,
+    });
+    procs[0].emit('language/status', { type: 'ServiceReady' }); // -> ready
+    procs[0].emit('$/progress', { token: 'a', value: { kind: 'begin' } }); // -> indexing
+    procs[0].emit('$/progress', { token: 'b', value: { kind: 'begin' } });
+    procs[0].emit('$/progress', { token: 'a', value: { kind: 'end' } }); // 'b' still open
+    expect(statuses[statuses.length - 1].state).toBe('indexing'); // NOT cleared prematurely
+    procs[0].emit('$/progress', { token: 'b', value: { kind: 'end' } }); // all closed
+    expect(statuses[statuses.length - 1].state).toBe('ready');
   });
 
   it('launchArgsFor: jdtls -data dir; kotlin-lsp --stdio; kotlin-language-server none', () => {
