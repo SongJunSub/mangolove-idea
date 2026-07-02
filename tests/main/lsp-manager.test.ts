@@ -9,15 +9,26 @@ class FakeProc implements IRpcProc {
   readonly kills: (NodeJS.Signals | undefined)[] = [];
   private readonly reader = new JsonRpcReader();
   private stdoutCb: ((b: Buffer) => void) | undefined;
-  constructor(private readonly replies: Record<string, unknown>) {}
+  constructor(
+    private readonly replies: Record<string, unknown>,
+    /** Methods this fake answers with an LSP error (to simulate a failed handshake). */
+    private readonly errorMethods: readonly string[] = [],
+  ) {}
   kill(signal?: NodeJS.Signals): void {
     this.kills.push(signal);
   }
   write(data: Buffer): void {
     for (const msg of this.reader.append(data)) {
       const m = msg as { id?: number; method?: string };
-      if (typeof m.id === 'number' && m.method && m.method in this.replies) {
-        const id = m.id;
+      if (typeof m.id !== 'number' || !m.method) continue;
+      const id = m.id;
+      if (this.errorMethods.includes(m.method)) {
+        queueMicrotask(() =>
+          this.stdoutCb?.(
+            encodeMessage({ jsonrpc: '2.0', id, error: { code: -32603, message: 'boom' } }),
+          ),
+        );
+      } else if (m.method in this.replies) {
         const result = this.replies[m.method];
         queueMicrotask(() => this.stdoutCb?.(encodeMessage({ jsonrpc: '2.0', id, result })));
       }
@@ -123,6 +134,47 @@ describe('LspManager', () => {
     expect(procs).toHaveLength(1);
     mgr.dispose();
     expect(procs[0].kills).toContain('SIGTERM');
+  });
+
+  it('a FAILED initialize disposes the server so the NEXT query respawns (no permanent poison)', async () => {
+    const good = { initialize: { capabilities: {} }, 'textDocument/definition': [defLoc] };
+    const procs: FakeProc[] = [];
+    let call = 0;
+    const spawnRpc = vi.fn((): IRpcProc => {
+      // 1st server FAILS 'initialize' (cold-boot failure); later servers answer everything.
+      const p = call++ === 0 ? new FakeProc({}, ['initialize']) : new FakeProc(good);
+      procs.push(p);
+      return p;
+    });
+    const mgr = new LspManager({
+      spawnRpc,
+      resolveServer: (l) => (l === 'java' ? '/opt/homebrew/bin/jdtls' : null),
+      readFileText: () => 'class X {}',
+      dataDir: () => '/tmp/jdtls-data',
+    });
+    const q = {
+      absPath: '/repo/wt/src/Main.java',
+      line: 4,
+      character: 6,
+      includeDeclaration: false,
+    };
+
+    await expect(mgr.query('definition', '/repo/wt', 'java', q)).rejects.toThrow();
+    expect(procs[0].kills).toContain('SIGTERM'); // the poisoned server was torn down
+    expect(spawnRpc).toHaveBeenCalledTimes(1);
+
+    // The NEXT query must spawn a FRESH server and succeed — not replay the cached rejection.
+    const r2 = await mgr.query('definition', '/repo/wt', 'java', q);
+    expect(spawnRpc).toHaveBeenCalledTimes(2);
+    expect(r2).toEqual([
+      {
+        absPath: '/repo/wt/src/Other.java',
+        startLine: 1,
+        startCharacter: 2,
+        endLine: 1,
+        endCharacter: 8,
+      },
+    ]);
   });
 
   it('launchArgsFor gives jdtls a -data dir and kotlin none', () => {
