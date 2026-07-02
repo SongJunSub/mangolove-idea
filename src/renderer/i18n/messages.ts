@@ -282,6 +282,8 @@ export const en = {
   'usages.loading': 'Finding usages…',
   'usages.empty': 'No usages found. Place the cursor on a symbol and run “Find All Usages”.',
   'usages.count': '{count} usage(s) in {files} file(s)',
+  'usages.title': 'Usages',
+  'usages.close': 'Close',
   // fanout-view
   'fanout.title': 'Multimodel Fan-out',
   'fanout.promptPlaceholder': 'One prompt, sent to every selected model in its own worktree…',
@@ -587,6 +589,8 @@ export const ko: Record<MessageKey, string> = {
   'usages.loading': '사용처를 찾고 있어요…',
   'usages.empty': '사용처를 찾지 못했어요. 심볼에 커서를 두고 “사용처 모두 찾기”를 실행해 주세요.',
   'usages.count': '파일 {files}개에서 사용처 {count}개',
+  'usages.title': '사용처',
+  'usages.close': '닫기',
   // fanout-view
   'fanout.title': '멀티모델 Fan-out',
   'fanout.promptPlaceholder': '선택한 모델마다 각자 워크트리에서 이 프롬프트 하나를 실행해요…',
