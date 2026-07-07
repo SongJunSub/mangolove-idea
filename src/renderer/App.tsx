@@ -755,7 +755,7 @@ export function App(): React.JSX.Element {
                               theme={resolvedTheme}
                               content={editor.content}
                               readOnly={editor.readOnly}
-                              dirty={editor.dirty}
+                              openPaths={openTabs.tabs}
                               reveal={
                                 pendingReveal?.relPath === selectedFile
                                   ? { line: pendingReveal.line, column: pendingReveal.column }

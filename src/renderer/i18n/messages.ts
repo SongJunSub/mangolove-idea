@@ -266,7 +266,6 @@ export const en = {
     'Missing index stage ({code}) — content ours/theirs unavailable; edit manually or keep/remove the file.',
   // code-editor
   'editor.findAllUsages': 'Find All Usages',
-  'editor.unsavedChanges': 'unsaved changes',
   'editor.closeTab': 'Close {name}',
   // nav-back
   'editor.navBack': 'Back (⌘[)',
@@ -569,7 +568,6 @@ export const ko: Record<MessageKey, string> = {
     '인덱스 스테이지가 없어요 ({code}) — ours/theirs 내용을 가져올 수 없어요. 직접 편집하거나 파일을 유지/삭제해 주세요.',
   // code-editor
   'editor.findAllUsages': '사용처 모두 찾기',
-  'editor.unsavedChanges': '저장 안 한 변경사항',
   'editor.closeTab': '{name} 닫기',
   // nav-back
   'editor.navBack': '뒤로 (⌘[)',
