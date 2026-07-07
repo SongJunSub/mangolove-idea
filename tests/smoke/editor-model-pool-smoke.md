@@ -1,8 +1,15 @@
-# Editor model pool — cursor/scroll/undo preservation smoke (manual)
+# Editor model pool — cursor/scroll/undo preservation smoke
 
 The pool's monaco glue (saveViewState/restoreViewState, keep-alive, dispose-on-close) needs a real
 editor, so it isn't unit-tested (jsdom has no layout/view state); `modelPoolEvictions` IS unit-tested
-(`tests/renderer/model-pool.test.ts`). This documents the exact reproduction to confirm approach A.
+(`tests/renderer/model-pool.test.ts`).
+
+**Automated** (`npm run build && npm run smoke:editor`, `tests/e2e/tab-editor.smoke.mjs`): covers
+tabs open, the preview (italic) tab, an edit surviving a tab switch, and — the key approach-A
+contract — undo still working after a tab switch. Screenshots land in `tests/e2e/screenshots/`.
+
+The steps below cover what the automated smoke does not yet drive (scroll position, cross-file nav
+after closing a TS/JS tab, worktree-switch cleanup, quit) — run them manually via `npm run dev`.
 
 Setup: `npm run dev`, select a worktree with several TS/JS files plus at least one non-TS/JS file
 (e.g. a `.md` or `.java`).
