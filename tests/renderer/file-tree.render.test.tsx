@@ -33,26 +33,28 @@ describe('<FileTree>', () => {
     expect(screen.getByTestId('tree-node-README.md')).toBeInTheDocument();
   });
 
-  it('single-click SELECTS a row without opening or expanding (IntelliJ-style)', async () => {
+  it('single-click PREVIEWS a file (temporary tab); a folder just selects, no open/expand', async () => {
     const onOpenFile = vi.fn();
     render(
       wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />),
     );
     fireEvent.click(await screen.findByTestId('tree-node-README.md'));
-    expect(onOpenFile).not.toHaveBeenCalled(); // no open on single-click
+    expect(onOpenFile).toHaveBeenCalledWith('README.md', { preview: true }); // single-click = preview
     expect(screen.getByTestId('tree-node-README.md')).toHaveAttribute('aria-selected', 'true');
 
-    fireEvent.click(screen.getByTestId('tree-node-src')); // folder: select only, no expand
+    onOpenFile.mockClear();
+    fireEvent.click(screen.getByTestId('tree-node-src')); // folder: select only, no open, no expand
+    expect(onOpenFile).not.toHaveBeenCalled();
     expect(screen.queryByTestId('tree-node-src/App.tsx')).not.toBeInTheDocument();
   });
 
-  it('DOUBLE-click opens a file / toggles a folder', async () => {
+  it('DOUBLE-click opens a file PINNED / toggles a folder', async () => {
     const onOpenFile = vi.fn();
     render(
       wrapI18n(<FileTree worktreeId="/repo/wt" selectedFile={null} onOpenFile={onOpenFile} />),
     );
     fireEvent.doubleClick(await screen.findByTestId('tree-node-README.md'));
-    expect(onOpenFile).toHaveBeenCalledWith('README.md');
+    expect(onOpenFile).toHaveBeenCalledWith('README.md', { preview: false }); // double-click = pinned
 
     fireEvent.doubleClick(screen.getByTestId('tree-node-src')); // folder expands
     expect(await screen.findByTestId('tree-node-src/App.tsx')).toBeInTheDocument();
@@ -80,7 +82,7 @@ describe('<FileTree>', () => {
     fireEvent.keyDown(tree, { key: 'ArrowDown' }); // → README.md
     expect(screen.getByTestId('tree-node-README.md')).toHaveAttribute('aria-selected', 'true');
     fireEvent.keyDown(tree, { key: 'Enter' });
-    expect(onOpenFile).toHaveBeenCalledWith('README.md');
+    expect(onOpenFile).toHaveBeenCalledWith('README.md', { preview: false }); // Enter = pinned
   });
 
   it('keyboard: → expands a folder then steps into its child, ← collapses / goes to parent', async () => {

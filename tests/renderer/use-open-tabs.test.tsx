@@ -18,9 +18,14 @@ function Harness({
     <div>
       <span data-testid="tabs">{o.tabs.join(',')}</span>
       <span data-testid="active">{o.active ?? ''}</span>
+      <span data-testid="preview">{o.preview ?? ''}</span>
       <button data-testid="open-a" onClick={() => o.open('a.ts')} />
       <button data-testid="open-b" onClick={() => o.open('b.ts')} />
       <button data-testid="open-c" onClick={() => o.open('c.ts')} />
+      <button data-testid="prev-a" onClick={() => o.open('a.ts', { preview: true })} />
+      <button data-testid="prev-b" onClick={() => o.open('b.ts', { preview: true })} />
+      <button data-testid="prev-c" onClick={() => o.open('c.ts', { preview: true })} />
+      <button data-testid="pin-a" onClick={() => o.pin('a.ts')} />
       <button data-testid="act-a" onClick={() => o.activate('a.ts')} />
       <button data-testid="close-b" onClick={() => o.close('b.ts')} />
       <button data-testid="close-active" onClick={() => o.active && o.close(o.active)} />
@@ -30,6 +35,7 @@ function Harness({
 
 const tabs = () => screen.getByTestId('tabs').textContent;
 const active = () => screen.getByTestId('active').textContent;
+const preview = () => screen.getByTestId('preview').textContent;
 
 describe('useOpenTabs', () => {
   it('open appends a tab and activates it; re-opening just activates (no duplicate)', () => {
@@ -129,5 +135,63 @@ describe('useOpenTabs', () => {
     fireEvent.click(screen.getByTestId('open-a'));
     expect(tabs()).toBe('');
     expect(save).not.toHaveBeenCalled();
+  });
+
+  describe('preview tabs', () => {
+    it('a preview open marks the tab as the preview; a pinned open leaves preview null', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('prev-a')); // single-click preview
+      expect(tabs()).toBe('a.ts');
+      expect(preview()).toBe('a.ts');
+      fireEvent.click(screen.getByTestId('open-b')); // double-click pinned
+      expect(tabs()).toBe('a.ts,b.ts');
+      expect(preview()).toBe('a.ts'); // b is pinned, a still the preview
+    });
+
+    it('previewing a new file REPLACES the preview slot in place (no accumulation)', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('open-a')); // pinned a
+      fireEvent.click(screen.getByTestId('prev-b')); // preview b
+      expect(tabs()).toBe('a.ts,b.ts');
+      expect(preview()).toBe('b.ts');
+      fireEvent.click(screen.getByTestId('prev-c')); // preview c replaces b in the SAME slot
+      expect(tabs()).toBe('a.ts,c.ts');
+      expect(preview()).toBe('c.ts');
+      expect(active()).toBe('c.ts');
+    });
+
+    it('pin() promotes the preview tab to pinned', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('prev-a'));
+      expect(preview()).toBe('a.ts');
+      fireEvent.click(screen.getByTestId('pin-a'));
+      expect(preview()).toBe('');
+      expect(tabs()).toBe('a.ts'); // still open, now pinned
+    });
+
+    it('a pinned open of the current preview tab promotes it (double-click a preview)', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('prev-a')); // preview a
+      fireEvent.click(screen.getByTestId('open-a')); // pinned open of a -> promote
+      expect(preview()).toBe('');
+      expect(tabs()).toBe('a.ts');
+    });
+
+    it('closing the preview tab clears the preview slot', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('open-a')); // pinned a
+      fireEvent.click(screen.getByTestId('prev-b')); // preview b (active)
+      expect(preview()).toBe('b.ts');
+      fireEvent.click(screen.getByTestId('close-active')); // close b
+      expect(tabs()).toBe('a.ts');
+      expect(preview()).toBe('');
+    });
+
+    it('preview is in-memory only — persistence still saves just {open, active}', () => {
+      const save = vi.fn();
+      render(<Harness worktreeId="/wt" save={save} />);
+      fireEvent.click(screen.getByTestId('prev-a'));
+      expect(save).toHaveBeenLastCalledWith('/wt', { open: ['a.ts'], active: 'a.ts' });
+    });
   });
 });

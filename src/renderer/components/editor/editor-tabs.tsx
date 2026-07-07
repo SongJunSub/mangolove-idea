@@ -5,11 +5,15 @@ export interface EditorTabsProps {
   readonly tabs: readonly string[];
   /** The active relPath, or null. */
   readonly active: string | null;
+  /** The single preview (temporary) tab, rendered italic; null when all tabs are pinned. */
+  readonly preview: string | null;
   /** The active tab has unsaved edits (auto-save debounce window) — shows a dot. */
   readonly dirty: boolean;
   /** The active tab's last write failed — shows the dot in the error colour. */
   readonly saveError: boolean;
   onActivate(relPath: string): void;
+  /** Promote a preview tab to pinned (double-click the tab). */
+  onPin(relPath: string): void;
   onClose(relPath: string): void;
 }
 
@@ -28,9 +32,11 @@ function baseName(relPath: string): string {
 export function EditorTabs({
   tabs,
   active,
+  preview,
   dirty,
   saveError,
   onActivate,
+  onPin,
   onClose,
 }: EditorTabsProps): React.JSX.Element {
   const { t } = useI18n();
@@ -38,6 +44,7 @@ export function EditorTabs({
     <div className="editor-tabs" data-testid="editor-tabs" role="tablist">
       {tabs.map((relPath) => {
         const isActive = relPath === active;
+        const isPreview = relPath === preview;
         const showDot = isActive && (dirty || saveError);
         return (
           <div
@@ -45,9 +52,10 @@ export function EditorTabs({
             role="tab"
             aria-selected={isActive}
             data-testid={`editor-tab-${relPath}`}
-            className={`editor-tab${isActive ? ' active' : ''}`}
+            className={`editor-tab${isActive ? ' active' : ''}${isPreview ? ' preview' : ''}`}
             title={relPath}
             onClick={() => onActivate(relPath)}
+            onDoubleClick={() => onPin(relPath)}
             onAuxClick={(e) => {
               if (e.button === 1) {
                 e.preventDefault();
