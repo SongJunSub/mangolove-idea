@@ -8,9 +8,11 @@ function renderTabs(props: Partial<React.ComponentProps<typeof EditorTabs>> = {}
   const full: React.ComponentProps<typeof EditorTabs> = {
     tabs: ['src/a.ts', 'src/b.ts'],
     active: 'src/b.ts',
+    preview: null,
     dirty: false,
     saveError: false,
     onActivate: vi.fn(),
+    onPin: vi.fn(),
     onClose: vi.fn(),
     ...props,
   };
@@ -62,5 +64,17 @@ describe('<EditorTabs>', () => {
   it('renders nothing but the container when there are no tabs', () => {
     renderTabs({ tabs: [], active: null });
     expect(screen.getByTestId('editor-tabs').childElementCount).toBe(0);
+  });
+
+  it('marks the preview tab with the preview class (italic) and only that one', () => {
+    renderTabs({ preview: 'src/a.ts' });
+    expect(screen.getByTestId('editor-tab-src/a.ts').className).toContain('preview');
+    expect(screen.getByTestId('editor-tab-src/b.ts').className).not.toContain('preview');
+  });
+
+  it('double-clicking a tab pins it', () => {
+    const props = renderTabs({ preview: 'src/a.ts' });
+    fireEvent.doubleClick(screen.getByTestId('editor-tab-src/a.ts'));
+    expect(props.onPin).toHaveBeenCalledWith('src/a.ts');
   });
 });

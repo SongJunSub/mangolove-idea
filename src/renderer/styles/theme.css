@@ -378,6 +378,9 @@ a {
   background: var(--accent-soft);
   border-color: var(--border);
 }
+.editor-tab.preview .editor-tab-name {
+  font-style: italic;
+}
 .editor-tab-name {
   overflow: hidden;
   text-overflow: ellipsis;

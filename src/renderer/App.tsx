@@ -225,14 +225,30 @@ export function App(): React.JSX.Element {
    *  durably persisted; on write failure it stays put (the saveError banner shows why), so edits
    *  are never silently dropped. A normal open also clears any pending nav-reveal. */
   const requestOpenFile = useCallback(
-    async (relPath: string): Promise<void> => {
-      if (relPath === selectedFile) return;
-      if (!(await editorRef.current.flush())) return;
+    async (relPath: string, opts?: { preview?: boolean }): Promise<void> => {
+      // Switching files flushes the outgoing buffer first (block on failure). Re-opening the ACTIVE
+      // file doesn't switch, but a pinned re-open can still promote a preview tab, so always
+      // forward to open() — it is a no-op when nothing actually changes.
+      if (relPath !== selectedFile && !(await editorRef.current.flush())) return;
       setPendingReveal(null);
-      openTabsRef.current.open(relPath); // append a tab if new, then activate it
+      openTabsRef.current.open(relPath, opts); // preview: single-click; pinned: double-click / nav
     },
     [selectedFile],
   );
+
+  /** Switch to an already-open tab (click). Flush the outgoing file first (block on failure); a tab
+   *  click activates WITHOUT changing its preview/pinned status. */
+  const onTabActivate = useCallback(async (relPath: string): Promise<void> => {
+    if (relPath === openTabsRef.current.active) return;
+    if (!(await editorRef.current.flush())) return;
+    setPendingReveal(null);
+    openTabsRef.current.activate(relPath);
+  }, []);
+
+  /** Promote a preview tab to pinned (double-clicking the tab). No file switch, so no flush. */
+  const onPinTab = useCallback((relPath: string): void => {
+    openTabsRef.current.pin(relPath);
+  }, []);
 
   /** Close a tab. Closing the ACTIVE tab changes the shown file, so flush first (block on failure);
    *  closing a background tab leaves the active editor untouched. */
@@ -407,6 +423,13 @@ export function App(): React.JSX.Element {
   // net. The editor tracks one open file, so this is 0 or 1; main sums it across windows.
   useEffect(() => {
     window.mango.app.setUnsaved(editor.dirty ? 1 : 0);
+  }, [editor.dirty]);
+
+  // Editing a preview tab promotes it to a pinned tab (IntelliJ behaviour): the first keystroke
+  // makes it dirty, and a file you've started changing is no longer a throwaway preview.
+  useEffect(() => {
+    const o = openTabsRef.current;
+    if (editor.dirty && o.active && o.active === o.preview) o.pin(o.active);
   }, [editor.dirty]);
 
   // Best-effort flush of a pending auto-save when the window is torn down (quit / reload), so a
@@ -679,7 +702,7 @@ export function App(): React.JSX.Element {
                           <FileTree
                             worktreeId={selectedId}
                             selectedFile={selectedFile}
-                            onOpenFile={requestOpenFile}
+                            onOpenFile={(p, opts) => void requestOpenFile(p, opts)}
                           />
                         </div>
                       }
@@ -692,9 +715,11 @@ export function App(): React.JSX.Element {
                         <EditorTabs
                           tabs={openTabs.tabs}
                           active={openTabs.active}
+                          preview={openTabs.preview}
                           dirty={editor.dirty}
                           saveError={editor.saveError !== null}
-                          onActivate={(p) => void requestOpenFile(p)}
+                          onActivate={(p) => void onTabActivate(p)}
+                          onPin={onPinTab}
                           onClose={(p) => void onTabClose(p)}
                         />
                       </div>

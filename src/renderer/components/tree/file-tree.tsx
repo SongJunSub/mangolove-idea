@@ -16,8 +16,9 @@ export interface FileTreeProps {
   readonly worktreeId: string | null;
   /** relPath of the currently-open file (for highlight), or null. */
   readonly selectedFile: string | null;
-  /** Called with a file's relPath when a file (not a folder) is opened. */
-  onOpenFile(relPath: string): void;
+  /** Called with a file's relPath when a file (not a folder) is opened. A single-click opens a
+   *  PREVIEW tab (temporary); a double-click / Enter opens a pinned tab. */
+  onOpenFile(relPath: string, opts: { preview: boolean }): void;
 }
 
 const toNodes = (entries: TreeEntry[], parent: string): Node[] =>
@@ -122,14 +123,17 @@ export function FileTree({
     else expand(node);
   };
 
-  /** Select a row (the click/keyboard cursor). Never opens or toggles. */
-  const select = (relPath: string): void => setActivePath(relPath);
+  /** Single-click a row: move the cursor there, and PREVIEW-open a file (folders just select). */
+  const select = (node: Node): void => {
+    setActivePath(node.relPath);
+    if (!node.isDir) onOpenFile(node.relPath, { preview: true });
+  };
 
-  /** Activate a row: open a file, toggle a folder (double-click / Enter). */
+  /** Activate a row: PIN-open a file, toggle a folder (double-click / Enter). */
   const activate = (node: Node): void => {
     setActivePath(node.relPath);
     if (node.isDir) toggle(node);
-    else onOpenFile(node.relPath);
+    else onOpenFile(node.relPath, { preview: false });
   };
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -208,7 +212,7 @@ export function FileTree({
             className={`tree-node${open ? ' sel' : ''}${active ? ' tree-node--active' : ''}`}
             data-testid={`tree-node-${node.relPath}`}
             style={{ paddingLeft: 8 + depth * INDENT }}
-            onClick={() => select(node.relPath)}
+            onClick={() => select(node)}
             onDoubleClick={() => activate(node)}
           >
             {Array.from({ length: depth }, (_, i) => (
@@ -220,7 +224,7 @@ export function FileTree({
                 data-testid={`tree-chevron-${node.relPath}`}
                 onClick={(e) => {
                   e.stopPropagation(); // the chevron toggles; the row-click select is redundant here
-                  select(node.relPath);
+                  select(node); // a folder node: just moves the cursor (never opens a file)
                   toggle(node);
                 }}
                 onDoubleClick={(e) => e.stopPropagation()} // never let a chevron dbl-click reach activate()
