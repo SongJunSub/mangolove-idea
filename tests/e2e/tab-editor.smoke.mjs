@@ -6,7 +6,7 @@
 // agent; app.close() teardown — never a process kill). Screenshots are written to
 // tests/e2e/screenshots/ (gitignored) as reviewable artifacts.
 import { launchApp } from './helpers/launch-app.mjs';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,7 +25,7 @@ const hardExit = setTimeout(() => {
   process.exit(1);
 }, 120000);
 
-const { window, close } = await launchApp({
+const { window, repoRoot, close } = await launchApp({
   'a.ts': 'export const a = 1;\nconst x = 10;\n',
   'b.ts': 'export const b = 2;\n',
   'c.ts': 'export const c = 3;\n',
@@ -81,6 +81,27 @@ try {
     !(await editorText()).includes(MARK),
   );
   await window.screenshot({ path: join(SHOTS, '3-undone.png') });
+
+  // ── External modification while inactive reloads on tab activation (agent edits a file) ──
+  await window.getByTestId('editor-tab-b.ts').click(); // leave a (clean, flushed on leave)
+  await window.waitForTimeout(300);
+  writeFileSync(join(repoRoot, 'a.ts'), 'export const a = 999; // AGENTEDIT\n');
+  await window.getByTestId('editor-tab-a.ts').click(); // return to a
+  await window.waitForTimeout(500);
+  check(
+    'external modification reloads on tab activation',
+    (await editorText()).includes('AGENTEDIT'),
+  );
+
+  // ── Bulk close: right-click a tab -> Close others -> only that tab remains ──
+  await window.getByTestId('editor-tab-a.ts').click({ button: 'right' });
+  await window.getByTestId('tab-menu-close-others').click();
+  await window.waitForTimeout(200);
+  check(
+    'close others leaves a single tab',
+    (await window.getByTestId('editor-tab-a.ts').count()) === 1 &&
+      (await window.getByTestId('editor-tab-b.ts').count()) === 0,
+  );
 } catch (e) {
   check(`no exception (${String(e).slice(0, 160)})`, false);
 } finally {

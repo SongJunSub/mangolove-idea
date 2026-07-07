@@ -21,6 +21,10 @@ export interface UseOpenTabs {
   pin(relPath: string): void;
   /** Close a tab; if it was active, activate its right neighbour (else left, else none). */
   close(relPath: string): void;
+  /** Close every tab EXCEPT `relPath`, which becomes the sole (active, pinned) tab. */
+  closeOthers(relPath: string): void;
+  /** Close every tab. */
+  closeAll(): void;
 }
 
 /** In-memory tab state — a superset of the persisted shape with the non-persisted preview slot. */
@@ -151,5 +155,20 @@ export function useOpenTabs(
     [update],
   );
 
-  return { tabs, active, preview, open, activate, pin, close };
+  const closeOthers = useCallback(
+    (relPath: string): void => {
+      update((cur) =>
+        !cur.open.includes(relPath) || (cur.open.length === 1 && cur.active === relPath)
+          ? cur
+          : { open: [relPath], active: relPath, preview: cur.preview === relPath ? relPath : null },
+      );
+    },
+    [update],
+  );
+
+  const closeAll = useCallback((): void => {
+    update((cur) => (cur.open.length === 0 ? cur : { open: [], active: null, preview: null }));
+  }, [update]);
+
+  return { tabs, active, preview, open, activate, pin, close, closeOthers, closeAll };
 }

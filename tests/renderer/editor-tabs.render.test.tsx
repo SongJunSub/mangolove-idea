@@ -14,6 +14,8 @@ function renderTabs(props: Partial<React.ComponentProps<typeof EditorTabs>> = {}
     onActivate: vi.fn(),
     onPin: vi.fn(),
     onClose: vi.fn(),
+    onCloseOthers: vi.fn(),
+    onCloseAll: vi.fn(),
     ...props,
   };
   render(
@@ -59,6 +61,27 @@ describe('<EditorTabs>', () => {
   it('marks the dot with the error class when the active tab failed to save', () => {
     renderTabs({ dirty: true, saveError: true });
     expect(screen.getByTestId('editor-tab-dot-src/b.ts').className).toContain('err');
+  });
+
+  it('right-click opens a menu whose items close others / close all', () => {
+    const props = renderTabs();
+    expect(screen.queryByTestId('tab-menu')).toBeNull();
+    fireEvent.contextMenu(screen.getByTestId('editor-tab-src/a.ts'));
+    expect(screen.getByTestId('tab-menu')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('tab-menu-close-others'));
+    expect(props.onCloseOthers).toHaveBeenCalledWith('src/a.ts');
+    expect(screen.queryByTestId('tab-menu')).toBeNull(); // menu closes after the action
+  });
+
+  it('the close-all menu item triggers onCloseAll and a backdrop click dismisses the menu', () => {
+    const props = renderTabs();
+    fireEvent.contextMenu(screen.getByTestId('editor-tab-src/b.ts'));
+    fireEvent.click(screen.getByTestId('tab-menu-close-all'));
+    expect(props.onCloseAll).toHaveBeenCalled();
+    // reopen, then dismiss via the backdrop
+    fireEvent.contextMenu(screen.getByTestId('editor-tab-src/b.ts'));
+    fireEvent.click(screen.getByTestId('tab-menu-backdrop'));
+    expect(screen.queryByTestId('tab-menu')).toBeNull();
   });
 
   it('renders nothing but the container when there are no tabs', () => {

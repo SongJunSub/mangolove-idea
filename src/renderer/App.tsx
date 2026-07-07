@@ -257,6 +257,19 @@ export function App(): React.JSX.Element {
     openTabsRef.current.close(relPath);
   }, []);
 
+  /** Close every tab except `relPath` (context menu). If the active tab is among those closed, the
+   *  shown file switches to `relPath`, so flush the outgoing buffer first (block on failure). */
+  const onCloseOthers = useCallback(async (relPath: string): Promise<void> => {
+    if (relPath !== openTabsRef.current.active && !(await editorRef.current.flush())) return;
+    openTabsRef.current.closeOthers(relPath);
+  }, []);
+
+  /** Close every tab (context menu). The active file goes away, so flush it first. */
+  const onCloseAll = useCallback(async (): Promise<void> => {
+    if (openTabsRef.current.active && !(await editorRef.current.flush())) return;
+    openTabsRef.current.closeAll();
+  }, []);
+
   /** Select a worktree. Auto-save flushes the open file first and only switches on success. */
   const requestSelectWorktree = useCallback(
     async (id: string | null): Promise<void> => {
@@ -721,6 +734,8 @@ export function App(): React.JSX.Element {
                           onActivate={(p) => void onTabActivate(p)}
                           onPin={onPinTab}
                           onClose={(p) => void onTabClose(p)}
+                          onCloseOthers={(p) => void onCloseOthers(p)}
+                          onCloseAll={() => void onCloseAll()}
                         />
                       </div>
                       {!selectedFile || !selectedId ? (

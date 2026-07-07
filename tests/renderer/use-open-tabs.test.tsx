@@ -29,6 +29,8 @@ function Harness({
       <button data-testid="act-a" onClick={() => o.activate('a.ts')} />
       <button data-testid="close-b" onClick={() => o.close('b.ts')} />
       <button data-testid="close-active" onClick={() => o.active && o.close(o.active)} />
+      <button data-testid="close-others-b" onClick={() => o.closeOthers('b.ts')} />
+      <button data-testid="close-all" onClick={() => o.closeAll()} />
     </div>
   );
 }
@@ -192,6 +194,36 @@ describe('useOpenTabs', () => {
       render(<Harness worktreeId="/wt" save={save} />);
       fireEvent.click(screen.getByTestId('prev-a'));
       expect(save).toHaveBeenLastCalledWith('/wt', { open: ['a.ts'], active: 'a.ts' });
+    });
+  });
+
+  describe('bulk close', () => {
+    it('closeOthers keeps only the named tab (active + pinned)', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('open-a'));
+      fireEvent.click(screen.getByTestId('open-b'));
+      fireEvent.click(screen.getByTestId('open-c')); // a,b,c active=c
+      fireEvent.click(screen.getByTestId('close-others-b'));
+      expect(tabs()).toBe('b.ts');
+      expect(active()).toBe('b.ts');
+    });
+
+    it('closeOthers clears the preview unless the kept tab IS the preview', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('open-a'));
+      fireEvent.click(screen.getByTestId('prev-b')); // b is the preview
+      fireEvent.click(screen.getByTestId('close-others-b')); // keep b (the preview)
+      expect(tabs()).toBe('b.ts');
+      expect(preview()).toBe('b.ts'); // kept tab was the preview -> stays preview
+    });
+
+    it('closeAll empties every tab', () => {
+      render(<Harness worktreeId="/wt" save={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('open-a'));
+      fireEvent.click(screen.getByTestId('open-b'));
+      fireEvent.click(screen.getByTestId('close-all'));
+      expect(tabs()).toBe('');
+      expect(active()).toBe('');
     });
   });
 });
