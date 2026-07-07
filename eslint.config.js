@@ -33,5 +33,20 @@ export default tseslint.config(
     },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
+  // E2E smoke scripts: plain ESM run under Node (not the app bundle). They legitimately use Node
+  // globals + timers; type annotations don't apply to these .mjs files.
+  {
+    files: ['tests/e2e/**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+      },
+    },
+    rules: { '@typescript-eslint/explicit-module-boundary-types': 'off' },
+  },
   prettier,
 );

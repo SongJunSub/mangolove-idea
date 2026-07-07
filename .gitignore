@@ -54,3 +54,6 @@ signing.env
 
 # Playwright (used only for throwaway local smoke tests, not committed)
 .playwright-mcp/
+
+# e2e smoke screenshots (artifacts)
+tests/e2e/screenshots/
