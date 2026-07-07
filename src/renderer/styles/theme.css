@@ -167,8 +167,9 @@ a {
   display: flex;
   align-items: center;
   gap: 9px;
-  /* left padding clears the overlaid macOS traffic-light controls */
-  padding: 0 16px 0 84px;
+  /* left padding clears the overlaid macOS traffic-light controls (x:16, ~70px wide) with
+     comfortable breathing room so the brand doesn't crowd the close/min/max buttons. */
+  padding: 0 16px 0 100px;
   background: var(--elevated);
   border-bottom: 1px solid var(--border);
   user-select: none;
