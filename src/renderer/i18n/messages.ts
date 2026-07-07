@@ -123,9 +123,6 @@ export const en = {
   'app.loadError': 'Load failed: {error}',
   'app.saveError': 'Save failed: {error}',
   'app.editor': 'Editor',
-  'app.save': 'Save',
-  'app.saving': 'Saving…',
-  'app.saveTip': 'Save ⌘S',
   'app.editorEmpty': 'Select a file to edit it here.',
   'app.editorLoading': 'Loading editor…',
   'app.readonly.binary': 'Binary file',
@@ -271,11 +268,6 @@ export const en = {
   // code-editor
   'editor.findAllUsages': 'Find All Usages',
   'editor.unsavedChanges': 'unsaved changes',
-  // confirm-discard-modal
-  'app.discard.title': 'Unsaved changes',
-  'app.discard.body': '{name} has unsaved changes. Save before switching?',
-  'app.discard.saveError': 'save failed: {error}',
-  'app.discard.action': 'Discard',
   // nav-back
   'editor.navBack': 'Back (⌘[)',
   // usages-panel
@@ -442,9 +434,6 @@ export const ko: Record<MessageKey, string> = {
   'app.loadError': '불러오지 못했어요: {error}',
   'app.saveError': '저장하지 못했어요: {error}',
   'app.editor': '에디터',
-  'app.save': '저장',
-  'app.saving': '저장 중…',
-  'app.saveTip': '저장 ⌘S',
   'app.editorEmpty': '파일을 선택하면 여기서 편집할 수 있어요.',
   'app.editorLoading': '에디터 불러오는 중…',
   'app.readonly.binary': '바이너리 파일',
@@ -582,11 +571,6 @@ export const ko: Record<MessageKey, string> = {
   // code-editor
   'editor.findAllUsages': '사용처 모두 찾기',
   'editor.unsavedChanges': '저장 안 한 변경사항',
-  // confirm-discard-modal
-  'app.discard.title': '저장 안 한 변경사항이 있어요',
-  'app.discard.body': '{name} 파일에 저장 안 한 변경사항이 있어요. 넘어가기 전에 저장할까요?',
-  'app.discard.saveError': '저장하지 못했어요: {error}',
-  'app.discard.action': '저장 안 하기',
   // nav-back
   'editor.navBack': '뒤로 (⌘[)',
   // usages-panel

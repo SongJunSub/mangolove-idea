@@ -335,12 +335,6 @@ a {
   justify-content: space-between;
   gap: 8px;
 }
-.editor-save-btn {
-  font-size: 11px;
-  padding: 2px 10px;
-  text-transform: none;
-  letter-spacing: 0;
-}
 .nav-back-btn {
   font-size: 12px;
   line-height: 1;

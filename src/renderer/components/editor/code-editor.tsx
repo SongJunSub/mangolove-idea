@@ -18,6 +18,8 @@ export interface CodeEditorProps {
   readonly reveal: { line: number; column: number } | null;
   onChange(value: string): void;
   onSaveRequested(): void;
+  /** Editor lost focus — auto-save flushes the buffer (App owns the write). */
+  onBlur?(): void;
   /** Reports the cursor position (1-based) so App can remember the jump-from spot for Back. */
   onCursor?(line: number, column: number): void;
   /** Find-usages: reports loading then the results so App shows them in the usages panel. */
@@ -44,6 +46,7 @@ export function CodeEditor({
   reveal,
   onChange,
   onSaveRequested,
+  onBlur,
   onCursor,
   onUsages,
 }: CodeEditorProps): React.JSX.Element {
@@ -59,10 +62,12 @@ export function CodeEditor({
   const ownedModelRef = useRef<monaco.editor.ITextModel | null>(null);
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSaveRequested);
+  const onBlurRef = useRef(onBlur);
   const onCursorRef = useRef(onCursor);
   const onUsagesRef = useRef(onUsages);
   onChangeRef.current = onChange;
   onSaveRef.current = onSaveRequested;
+  onBlurRef.current = onBlur;
   onCursorRef.current = onCursor;
   onUsagesRef.current = onUsages;
 
@@ -85,6 +90,9 @@ export function CodeEditor({
     const cursorSub = editor.onDidChangeCursorPosition((e) =>
       onCursorRef.current?.(e.position.lineNumber, e.position.column),
     );
+    // Widget (not text) blur: fires only when focus leaves the WHOLE editor — staying inside
+    // (Find box, go-to-line, context menu, suggest widget) does NOT flush a mid-edit write.
+    const blurSub = editor.onDidBlurEditorWidget(() => onBlurRef.current?.());
     // addCommand (not a window keydown — monaco swallows keys while focused).
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
     // Find-usages into the persistent panel (context menu + Cmd/Ctrl+Shift+F12). Distinct from
@@ -107,6 +115,7 @@ export function CodeEditor({
     return () => {
       sub.dispose();
       cursorSub.dispose();
+      blurSub.dispose();
       usagesAction.dispose();
       ownedModelRef.current?.dispose(); // dispose ONLY our own model, never a borrowed one
       ownedModelRef.current = null;
