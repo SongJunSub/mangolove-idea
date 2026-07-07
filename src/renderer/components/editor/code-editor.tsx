@@ -70,6 +70,12 @@ export function CodeEditor({
   const viewStateRef = useRef<Map<string, monaco.editor.ICodeEditorViewState | null>>(new Map());
   // The throwaway empty model monaco creates at mount — disposed once a real model is shown.
   const scratchRef = useRef<monaco.editor.ITextModel | null>(null);
+  // URI awaiting a one-shot "did disk change while this tab was inactive?" reload check, set on a
+  // switch to a pre-existing model and consumed on the first content arrival after it. The version
+  // id captured when arming lets the reload bail if the user typed into the model before its content
+  // load resolved — so a reload never discards keystrokes made in that gap.
+  const reloadPendingRef = useRef<string | null>(null);
+  const reloadVersionRef = useRef<number>(0);
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSaveRequested);
   const onBlurRef = useRef(onBlur);
@@ -160,9 +166,26 @@ export function CodeEditor({
     if (currentModel && currentModel.uri.toString() === uriStr) {
       // Same tab already on screen: the model IS the buffer (onChange keeps it synced), so never
       // setValue it from `content` — a switch lags `content` by a render and that write would nuke
-      // the model's undo/cursor. Only the reveal below (a nav jump) repositions it.
+      // the model's undo/cursor. The one exception is a ONE-SHOT reload right after arriving here:
+      // if the file changed on disk while this tab was inactive (an agent edit), refresh it. The
+      // incoming tab is always clean (block-on-failure flushed it on leave), so nothing is lost;
+      // this fires exactly once (reloadPendingRef cleared), never during editing/saving.
+      if (reloadPendingRef.current === uriStr) {
+        const armedVersion = reloadVersionRef.current;
+        reloadPendingRef.current = null;
+        // Reload only if the model is unchanged since we arrived (no keystrokes in the load gap) and
+        // disk actually differs — so an external edit refreshes but in-gap typing is never dropped.
+        if (
+          content !== null &&
+          currentModel.getVersionId() === armedVersion &&
+          currentModel.getValue() !== content
+        ) {
+          currentModel.setValue(content);
+        }
+      }
     } else {
       let entry = poolRef.current.get(uriStr);
+      let freshlyCreated = false;
       if (!entry) {
         const borrowed = monaco.editor.getModel(uri); // registry-seeded (headless) model?
         if (borrowed) {
@@ -175,6 +198,7 @@ export function CodeEditor({
             model: monaco.editor.createModel(content, languageForPath(relPath), uri),
             owns: true,
           };
+          freshlyCreated = true;
         }
         poolRef.current.set(uriStr, entry);
       }
@@ -186,6 +210,11 @@ export function CodeEditor({
         scratchRef.current.dispose(); // drop the throwaway empty model once a real one is shown
         scratchRef.current = null;
       }
+      // A model we didn't just create (a kept-alive pool model, or a registry model seeded before a
+      // change) may be stale vs disk — arm a one-shot reload check for when fresh content arrives,
+      // capturing the model version so in-gap typing can veto it.
+      reloadPendingRef.current = freshlyCreated ? null : uriStr;
+      reloadVersionRef.current = entry.model.getVersionId();
       if (!reveal) {
         const vs = viewStateRef.current.get(uriStr);
         if (vs) editor.restoreViewState(vs); // return to this tab's last cursor/scroll

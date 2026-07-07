@@ -267,6 +267,8 @@ export const en = {
   // code-editor
   'editor.findAllUsages': 'Find All Usages',
   'editor.closeTab': 'Close {name}',
+  'editor.closeOthers': 'Close others',
+  'editor.closeAllTabs': 'Close all',
   // nav-back
   'editor.navBack': 'Back (⌘[)',
   // usages-panel
@@ -569,6 +571,8 @@ export const ko: Record<MessageKey, string> = {
   // code-editor
   'editor.findAllUsages': '사용처 모두 찾기',
   'editor.closeTab': '{name} 닫기',
+  'editor.closeOthers': '다른 탭 닫기',
+  'editor.closeAllTabs': '모두 닫기',
   // nav-back
   'editor.navBack': '뒤로 (⌘[)',
   // usages-panel
