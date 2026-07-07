@@ -1,0 +1,35 @@
+/*
+ * Jetendard — a monospace coding font that fuses JetBrains Mono Nerd Font (Latin, ligatures, icons)
+ * with Pretendard (한글), scaling Hangul to a clean 1:2 cell so mixed Korean/English code and
+ * terminal output line up. SIL Open Font License 1.1 (see ./../assets/fonts/jetendard/LICENSE.txt);
+ * upstream: github.com/kuskhan/jetendard. Only the four editor-essential weights are bundled
+ * (Regular / Italic / Bold / BoldItalic); Vite fingerprints + copies the woff2 into the bundle.
+ */
+@font-face {
+  font-family: 'Jetendard';
+  src: url('../assets/fonts/jetendard/Jetendard-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Jetendard';
+  src: url('../assets/fonts/jetendard/Jetendard-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Jetendard';
+  src: url('../assets/fonts/jetendard/Jetendard-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Jetendard';
+  src: url('../assets/fonts/jetendard/Jetendard-BoldItalic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
