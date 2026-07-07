@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { AppSettings } from '../../shared/types';
 import { coercePaneLayout } from '../../shared/pane-layout';
 import { coerceTerminalLayouts } from '../../shared/terminal-layout';
+import { coerceOpenTabs, coerceWorktreeTabs, type OpenTabs } from '../../shared/open-tabs';
 
 /**
  * Resolves the default settings.json path under Electron's userData dir. Kept
@@ -129,6 +130,23 @@ export class SettingsStore {
         delete merged.terminalLayouts; // present-but-invalid / empty -> unset (default single tile)
       }
     }
+    if (source.openTabs !== null && typeof source.openTabs === 'object') {
+      // Per-key MERGE (never whole-map replace): each worktree key is validated on its own, an
+      // empty/invalid entry DELETES just that key, and untouched keys (other windows/repos) are
+      // preserved — so a second window can never stomp another repo's persisted tabs.
+      // merged.openTabs already came from load()->sanitize() (coerced), so no re-coerce needed.
+      const next: Record<string, unknown> = {
+        ...((merged.openTabs as OpenTabs | undefined) ?? {}),
+      };
+      for (const [wt, entry] of Object.entries(source.openTabs as Record<string, unknown>)) {
+        if (wt === '') continue;
+        const tabs = coerceWorktreeTabs(entry);
+        if (tabs) next[wt] = tabs;
+        else delete next[wt];
+      }
+      if (Object.keys(next).length > 0) merged.openTabs = next;
+      else delete merged.openTabs;
+    }
     this.write(merged as AppSettings);
     return merged as AppSettings;
   }
@@ -157,6 +175,8 @@ export class SettingsStore {
     if (layout) out.paneLayout = layout;
     const terminalLayouts = coerceTerminalLayouts(source.terminalLayouts);
     if (terminalLayouts) out.terminalLayouts = terminalLayouts;
+    const openTabs = coerceOpenTabs(source.openTabs);
+    if (openTabs) out.openTabs = openTabs;
     return out as AppSettings;
   }
 

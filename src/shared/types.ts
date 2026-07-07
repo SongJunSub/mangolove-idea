@@ -2,6 +2,7 @@
 // src/shared/types.ts  —  imported by BOTH main and renderer. No side effects.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { TerminalLayout } from './terminal-layout';
+import type { OpenTabs } from './open-tabs';
 
 /** A git worktree managed by MangoLove IDEA. */
 export interface Worktree {
@@ -664,6 +665,13 @@ export interface AppSettings {
    * see shared/terminal-layout.ts. Unset for a worktree => a single agent tile (the default).
    */
   readonly terminalLayouts?: Record<string, TerminalLayout>;
+  /**
+   * Per-worktree editor tabs (open file relPaths + the active one), keyed by worktreeId. Only
+   * paths are stored — auto-save keeps disk authoritative, so no buffer contents. Coerced on read
+   * AND write by the shared sanitizer, and MERGED per worktree key on write (never whole-map
+   * replaced) so a second window/repo cannot stomp another's tabs. See shared/open-tabs.ts.
+   */
+  readonly openTabs?: OpenTabs;
 }
 
 /**

@@ -8,6 +8,8 @@
  * mirroring the pane-layout / coercePaneLayout boundary-coherence pattern.
  */
 
+import { coerceWorktreeMap } from './coerce-worktree-map';
+
 export type PersistedLeaf =
   | { readonly kind: 'agent' }
   | { readonly kind: 'shell'; readonly cwd: string };
@@ -74,11 +76,5 @@ export function coerceTerminalLayout(raw: unknown): TerminalLayout | undefined {
 
 /** Per-worktree map; drops any entry that fails to coerce. undefined if NONE survive. */
 export function coerceTerminalLayouts(raw: unknown): Record<string, TerminalLayout> | undefined {
-  if (raw === null || typeof raw !== 'object') return undefined;
-  const out: Record<string, TerminalLayout> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    const layout = coerceTerminalLayout(value);
-    if (key !== '' && layout) out[key] = layout;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return coerceWorktreeMap(raw, coerceTerminalLayout);
 }
