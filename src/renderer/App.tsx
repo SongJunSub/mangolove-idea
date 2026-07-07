@@ -5,7 +5,7 @@ import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
 import { useOpenTabs } from './hooks/use-open-tabs';
 import type { WorktreeTabs } from '../shared/open-tabs';
-import { NavBack } from './components/editor/nav-back';
+import { NavButtons } from './components/editor/nav-buttons';
 import { EditorTabs } from './components/editor/editor-tabs';
 import { UsagesOverlay } from './components/editor/usages-overlay';
 import { NavStatusBadge, type NavIndicatorState } from './components/statusbar/nav-status-badge';
@@ -188,7 +188,12 @@ export function App(): React.JSX.Element {
     column: number;
   } | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+  // Back/forward stacks for code-nav jumps. navBusyRef serializes the async nav ops so a second
+  // one that fires during a flush await can't pop the wrong entry off a stale snapshot.
   const navHistoryRef = useRef<Array<{ relPath: string; line: number; column: number }>>([]);
+  const navForwardRef = useRef<Array<{ relPath: string; line: number; column: number }>>([]);
+  const navBusyRef = useRef(false);
   const currentPosRef = useRef<{ line: number; column: number }>({ line: 1, column: 1 });
 
   // App's resolved theme ('dark'/'light'), fed to ALL monaco panes (process-global
@@ -211,7 +216,9 @@ export function App(): React.JSX.Element {
     // A worktree switch resets code-nav: its history + reveal belonged to the old worktree.
     setPendingReveal(null);
     navHistoryRef.current = [];
+    navForwardRef.current = [];
     setCanGoBack(false);
+    setCanGoForward(false);
     // Clear find-usages too: it stores worktree-relative paths (not mango URIs), so leaving
     // OLD-worktree rows around would let a later click re-bind them to the NEW selectedId and
     // open the wrong worktree's path (stale cross-worktree nav).
@@ -295,16 +302,29 @@ export function App(): React.JSX.Element {
       relPath: string,
       position?: { line: number; column: number },
     ): Promise<void> => {
-      const s = navSelRef.current;
-      if (worktreeId !== s.selectedId) return; // only within the selected worktree (defense)
-      const switching = relPath !== s.selectedFile;
-      if (switching && !(await editorRef.current.flush())) return;
-      if (s.selectedFile && s.selectedFile !== relPath) {
-        navHistoryRef.current.push({ relPath: s.selectedFile, ...currentPosRef.current });
-        setCanGoBack(true);
+      if (worktreeId !== navSelRef.current.selectedId) return; // only within the selected worktree
+      if (navBusyRef.current) return; // serialize with an in-flight nav op
+      navBusyRef.current = true;
+      try {
+        const switching = relPath !== navSelRef.current.selectedFile;
+        if (switching && !(await editorRef.current.flush())) return;
+        const from = navSelRef.current.selectedFile; // re-read after the await
+        if (from && from !== relPath) {
+          navHistoryRef.current.push({ relPath: from, ...currentPosRef.current });
+          setCanGoBack(true);
+        }
+        // A NEW jump invalidates the forward history (browser back/forward semantics).
+        if (navForwardRef.current.length > 0) {
+          navForwardRef.current = [];
+          setCanGoForward(false);
+        }
+        setPendingReveal(
+          position ? { relPath, line: position.line, column: position.column } : null,
+        );
+        if (relPath !== from) openTabsRef.current.open(relPath);
+      } finally {
+        navBusyRef.current = false;
       }
-      setPendingReveal(position ? { relPath, line: position.line, column: position.column } : null);
-      if (switching) openTabsRef.current.open(relPath);
     },
     [],
   );
@@ -352,19 +372,45 @@ export function App(): React.JSX.Element {
     [onCodeNavOpen],
   );
 
-  /** Back: return to the previously-jumped-from location. Auto-saves the current file first and
-   *  only navigates (popping the history) once it is persisted; a failed write keeps the stack. */
-  const onNavBack = useCallback(async (): Promise<void> => {
-    const stack = navHistoryRef.current;
-    if (stack.length === 0) return;
-    const s = navSelRef.current;
-    const target = stack[stack.length - 1];
-    if (target.relPath !== s.selectedFile && !(await editorRef.current.flush())) return;
-    stack.pop();
-    setCanGoBack(stack.length > 0);
-    setPendingReveal({ relPath: target.relPath, line: target.line, column: target.column });
-    if (target.relPath !== s.selectedFile) openTabsRef.current.open(target.relPath);
-  }, []);
+  /** Traverse the code-nav history one step. `from`/`to` are the stack we pop the target off and
+   *  the stack we push the current location onto (Back: history→forward, Forward: forward→history).
+   *  Auto-saves first (block on failure — a failed write keeps the stacks) and serializes via
+   *  navBusyRef so a concurrent nav can't act on a stale snapshot. */
+  const navStep = useCallback(
+    async (
+      popStack: React.MutableRefObject<Array<{ relPath: string; line: number; column: number }>>,
+      pushStack: React.MutableRefObject<Array<{ relPath: string; line: number; column: number }>>,
+      setPopEnabled: (v: boolean) => void,
+      setPushEnabled: (v: boolean) => void,
+    ): Promise<void> => {
+      if (navBusyRef.current || popStack.current.length === 0) return;
+      navBusyRef.current = true;
+      try {
+        if (!(await editorRef.current.flush())) return; // failed write: keep stacks, stay put
+        const target = popStack.current.pop();
+        if (!target) return;
+        const from = navSelRef.current.selectedFile; // re-read after the await
+        if (from) {
+          pushStack.current.push({ relPath: from, ...currentPosRef.current });
+          setPushEnabled(true);
+        }
+        setPopEnabled(popStack.current.length > 0);
+        setPendingReveal({ relPath: target.relPath, line: target.line, column: target.column });
+        if (target.relPath !== from) openTabsRef.current.open(target.relPath);
+      } finally {
+        navBusyRef.current = false;
+      }
+    },
+    [],
+  );
+  const onNavBack = useCallback(
+    (): Promise<void> => navStep(navHistoryRef, navForwardRef, setCanGoBack, setCanGoForward),
+    [navStep],
+  );
+  const onNavForward = useCallback(
+    (): Promise<void> => navStep(navForwardRef, navHistoryRef, setCanGoForward, setCanGoBack),
+    [navStep],
+  );
 
   // Register the process-global code-nav providers + editor-opener ONCE (idempotent).
   useEffect(() => {
@@ -724,7 +770,12 @@ export function App(): React.JSX.Element {
                   second={
                     <div className="ws-pane ws-editor">
                       <div className="pane-head">
-                        <NavBack canGoBack={canGoBack} onBack={onNavBack} />
+                        <NavButtons
+                          canGoBack={canGoBack}
+                          canGoForward={canGoForward}
+                          onBack={() => void onNavBack()}
+                          onForward={() => void onNavForward()}
+                        />
                         <EditorTabs
                           tabs={openTabs.tabs}
                           active={openTabs.active}

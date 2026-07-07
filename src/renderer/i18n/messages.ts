@@ -271,6 +271,7 @@ export const en = {
   'editor.closeAllTabs': 'Close all',
   // nav-back
   'editor.navBack': 'Back (⌘[)',
+  'editor.navForward': 'Forward (⌘])',
   // usages-panel
   'usages.loading': 'Finding usages…',
   'usages.empty': 'No usages found. Place the cursor on a symbol and run “Find All Usages”.',
@@ -575,6 +576,7 @@ export const ko: Record<MessageKey, string> = {
   'editor.closeAllTabs': '모두 닫기',
   // nav-back
   'editor.navBack': '뒤로 (⌘[)',
+  'editor.navForward': '앞으로 (⌘])',
   // usages-panel
   'usages.loading': '사용처를 찾고 있어요…',
   'usages.empty': '사용처를 찾지 못했어요. 심볼에 커서를 두고 “사용처 모두 찾기”를 실행해 주세요.',
