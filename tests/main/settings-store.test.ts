@@ -252,4 +252,41 @@ describe('SettingsStore — recentRepos (multi-window)', () => {
       expect(merged.terminalLayouts).toBeUndefined();
     });
   });
+
+  describe('openTabs (per-worktree, per-key merge)', () => {
+    it('persists a worktree entry and reads it back', () => {
+      const store = new SettingsStore(file);
+      store.set({ openTabs: { '/wt/a': { open: ['x.ts', 'y.ts'], active: 'y.ts' } } });
+      expect(new SettingsStore(file).get().openTabs).toEqual({
+        '/wt/a': { open: ['x.ts', 'y.ts'], active: 'y.ts' },
+      });
+    });
+
+    it('MERGES per worktree key — a second window never stomps another repo/worktree', () => {
+      const store = new SettingsStore(file);
+      store.set({ openTabs: { '/wt/a': { open: ['x.ts'], active: 'x.ts' } } });
+      store.set({ openTabs: { '/wt/b': { open: ['z.ts'], active: 'z.ts' } } }); // different key
+      expect(new SettingsStore(file).get().openTabs).toEqual({
+        '/wt/a': { open: ['x.ts'], active: 'x.ts' },
+        '/wt/b': { open: ['z.ts'], active: 'z.ts' },
+      });
+    });
+
+    it('an empty open for a key DELETES just that key (closing all tabs), keeping others', () => {
+      const store = new SettingsStore(file);
+      store.set({ openTabs: { '/wt/a': { open: ['x.ts'], active: 'x.ts' } } });
+      store.set({ openTabs: { '/wt/b': { open: ['z.ts'], active: 'z.ts' } } });
+      store.set({ openTabs: { '/wt/a': { open: [], active: null } } }); // close all in /wt/a
+      expect(new SettingsStore(file).get().openTabs).toEqual({
+        '/wt/b': { open: ['z.ts'], active: 'z.ts' },
+      });
+    });
+
+    it('dropping the last key unsets openTabs entirely', () => {
+      const store = new SettingsStore(file);
+      store.set({ openTabs: { '/wt/a': { open: ['x.ts'], active: 'x.ts' } } });
+      const merged = store.set({ openTabs: { '/wt/a': { open: [], active: null } } });
+      expect(merged.openTabs).toBeUndefined();
+    });
+  });
 });

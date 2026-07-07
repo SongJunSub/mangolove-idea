@@ -3,7 +3,10 @@ import type { QuitWarningEvent, SessionPersistenceInfo } from '../shared/types';
 import type { TerminalLayout } from '../shared/terminal-layout';
 import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
+import { useOpenTabs } from './hooks/use-open-tabs';
+import type { WorktreeTabs } from '../shared/open-tabs';
 import { NavBack } from './components/editor/nav-back';
+import { EditorTabs } from './components/editor/editor-tabs';
 import { UsagesOverlay } from './components/editor/usages-overlay';
 import { NavStatusBadge, type NavIndicatorState } from './components/statusbar/nav-status-badge';
 import type { UsageLocation } from './lib/code-nav/find-usages';
@@ -148,8 +151,19 @@ export function App(): React.JSX.Element {
   // Worktree currently holding an in-progress (paused) merge conflict, or null.
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
   // relPath of the file open in the editor pane (A4 edits + saves it), or null.
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  // The A4 editor state for (selectedId, selectedFile). Auto-saves; App flushes it before any
+  // Per-worktree editor tabs. active drives the editor; persisted per worktreeId (merged per key
+  // so windows don't stomp). openTabsRef lets the stable/[]-dep switch callbacks mutate tabs.
+  const saveOpenTabs = useCallback(
+    (wt: string, tabs: WorktreeTabs): void => void saveSettings({ openTabs: { [wt]: tabs } }),
+    [saveSettings],
+  );
+  const openTabs = useOpenTabs(selectedId, settings.openTabs, saveOpenTabs);
+  const openTabsRef = useRef(openTabs);
+  openTabsRef.current = openTabs;
+  // The active tab IS the open file — a read-only alias so every existing read site is unchanged;
+  // writes go through openTabs (open/activate/close) instead of a setter.
+  const selectedFile = openTabs.active;
+  // The A4 editor state for (selectedId, active tab). Auto-saves; App flushes it before any
   // switch/quit. editorRef lets the switch callbacks flush without taking `editor` as a dep.
   const editor = useFileEditor(selectedId, selectedFile);
   const editorRef = useRef(editor);
@@ -186,15 +200,14 @@ export function App(): React.JSX.Element {
   // resolvedTheme — 'system'/unset tracks the OS; explicit modes set once.
   useEffect(() => applyTheme(settings.theme, setResolvedTheme), [settings.theme]);
 
-  // ── Selection mutation: every worktree switch routes through applyWorktree (which also clears
-  // the open file + code-nav state); every file switch flushes the outgoing buffer first (auto-
-  // save), so no low-level channel can drop unsaved edits.
+  // ── Selection mutation: every worktree switch routes through applyWorktree; the active tab is
+  // per-worktree (useOpenTabs keys on selectedId), so switching a worktree shows ITS tab set. Every
+  // file/tab switch flushes the outgoing buffer first (auto-save), so no channel drops unsaved edits.
 
-  /** Apply a worktree selection AND clear the open file (replaces the old line-86 effect,
-   *  which nulled selectedFile on ANY selectedId change — unmounting a dirty editor). */
+  /** Apply a worktree selection. The open file follows automatically (openTabs is keyed by the new
+   *  selectedId); only the code-nav history/reveal + find-usages (worktree-scoped) are reset. */
   const applyWorktree = useCallback((id: string | null): void => {
     setSelectedId(id);
-    setSelectedFile(null);
     // A worktree switch resets code-nav: its history + reveal belonged to the old worktree.
     setPendingReveal(null);
     navHistoryRef.current = [];
@@ -216,10 +229,17 @@ export function App(): React.JSX.Element {
       if (relPath === selectedFile) return;
       if (!(await editorRef.current.flush())) return;
       setPendingReveal(null);
-      setSelectedFile(relPath);
+      openTabsRef.current.open(relPath); // append a tab if new, then activate it
     },
     [selectedFile],
   );
+
+  /** Close a tab. Closing the ACTIVE tab changes the shown file, so flush first (block on failure);
+   *  closing a background tab leaves the active editor untouched. */
+  const onTabClose = useCallback(async (relPath: string): Promise<void> => {
+    if (relPath === openTabsRef.current.active && !(await editorRef.current.flush())) return;
+    openTabsRef.current.close(relPath);
+  }, []);
 
   /** Select a worktree. Auto-save flushes the open file first and only switches on success. */
   const requestSelectWorktree = useCallback(
@@ -255,7 +275,7 @@ export function App(): React.JSX.Element {
         setCanGoBack(true);
       }
       setPendingReveal(position ? { relPath, line: position.line, column: position.column } : null);
-      if (switching) setSelectedFile(relPath);
+      if (switching) openTabsRef.current.open(relPath);
     },
     [],
   );
@@ -314,7 +334,7 @@ export function App(): React.JSX.Element {
     stack.pop();
     setCanGoBack(stack.length > 0);
     setPendingReveal({ relPath: target.relPath, line: target.line, column: target.column });
-    if (target.relPath !== s.selectedFile) setSelectedFile(target.relPath);
+    if (target.relPath !== s.selectedFile) openTabsRef.current.open(target.relPath);
   }, []);
 
   // Register the process-global code-nav providers + editor-opener ONCE (idempotent).
@@ -668,10 +688,15 @@ export function App(): React.JSX.Element {
                   second={
                     <div className="ws-pane ws-editor">
                       <div className="pane-head">
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <NavBack canGoBack={canGoBack} onBack={onNavBack} />
-                          {t('app.editor')}
-                        </span>
+                        <NavBack canGoBack={canGoBack} onBack={onNavBack} />
+                        <EditorTabs
+                          tabs={openTabs.tabs}
+                          active={openTabs.active}
+                          dirty={editor.dirty}
+                          saveError={editor.saveError !== null}
+                          onActivate={(p) => void requestOpenFile(p)}
+                          onClose={(p) => void onTabClose(p)}
+                        />
                       </div>
                       {!selectedFile || !selectedId ? (
                         <div className="pane-placeholder">{t('app.editorEmpty')}</div>
@@ -760,7 +785,12 @@ export function App(): React.JSX.Element {
                           selectedId={selectedId}
                           statuses={statuses}
                           onSelect={requestSelectWorktree}
-                          onRemove={(id) => void remove(id)}
+                          onRemove={(id) => {
+                            void remove(id);
+                            // Prune the removed worktree's persisted tabs so the openTabs map can't
+                            // grow unbounded across create/delete cycles (store deletes an empty key).
+                            saveOpenTabs(id, { open: [], active: null });
+                          }}
                         />
                       </div>
                     </div>

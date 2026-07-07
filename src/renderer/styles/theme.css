@@ -345,6 +345,74 @@ a {
 .nav-back-btn:disabled {
   opacity: 0.4;
 }
+/* ---- editor tab strip (A4 tabs) ---- */
+.editor-tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  max-width: 200px;
+  padding: 2px 6px 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.editor-tab:hover {
+  background: var(--accent-soft);
+}
+.editor-tab.active {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: var(--border);
+}
+.editor-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-tab-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.editor-tab-dot.err {
+  background: var(--err);
+}
+.editor-tab-close {
+  flex: none;
+  line-height: 1;
+  font-size: 14px;
+  padding: 0 3px;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+}
+.editor-tab:hover .editor-tab-close,
+.editor-tab.active .editor-tab-close {
+  opacity: 1;
+}
+.editor-tab-close:hover {
+  color: var(--text);
+  background: var(--border);
+}
 .editor-banner {
   flex: none;
   font-size: 11.5px;
