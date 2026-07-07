@@ -99,6 +99,9 @@ export function CodeEditor({
       theme: theme === 'dark' ? 'vs-dark' : 'vs',
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
+      // Jetendard (JetBrains Mono + Pretendard): aligns 한글/영문 monospace; ligatures on (JBM).
+      fontFamily: "'Jetendard', ui-monospace, Menlo, monospace",
+      fontLigatures: true,
     });
     editorRef.current = editor;
     scratchRef.current = editor.getModel(); // the initial empty model is ours to dispose

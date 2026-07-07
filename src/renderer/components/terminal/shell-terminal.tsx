@@ -35,7 +35,7 @@ export function ShellTerminal({ terminalId, cwd }: ShellTerminalProps): React.JS
 
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontFamily: "'Jetendard', ui-monospace, SFMono-Regular, Menlo, monospace",
       fontSize: 13,
       convertEol: true,
       theme: { background: '#1e1e1e' },
