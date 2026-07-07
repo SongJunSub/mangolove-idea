@@ -435,23 +435,6 @@ a {
   flex-direction: column;
   min-height: 0;
 }
-.code-editor-tab {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--muted);
-  padding: 3px 6px;
-  font-family: ui-monospace, Menlo, monospace;
-}
-.code-editor-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  display: inline-block;
-}
 .code-editor-host {
   flex: 1;
   /* min-height:0 (not a fixed floor): a resizable row splitter (A2c) can shrink the editor

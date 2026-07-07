@@ -168,6 +168,25 @@ describe('useFileEditor', () => {
     expect(writes[1]).toEqual({ content: 'x2', baseToken: 't2' }); // uses the token #1 returned
   });
 
+  it('exposes content as null on a switch until it is loaded for the NEW file (no stale leak)', async () => {
+    let resolveB!: (r: FileReadResult) => void;
+    readImpl = (req) => {
+      if (req.relPath === 'a.txt')
+        return Promise.resolve({ content: 'A-text', readOnly: false, size: 6, baseToken: 'ta' });
+      return new Promise<FileReadResult>((res) => (resolveB = res)); // b.txt is slow
+    };
+    const { rerender } = render(<Harness worktreeId="/wt" relPath="a.txt" />);
+    await waitFor(() => expect(content()).toBe('A-text'));
+    // Switch to b.txt: content must read LOADING (null) — never the OUTGOING a.txt text — until b
+    // finishes loading, so the editor can't apply the previous file's content under the new path.
+    rerender(<Harness worktreeId="/wt" relPath="b.txt" />);
+    expect(content()).toBe('LOADING');
+    await act(async () => {
+      resolveB({ content: 'B-text', readOnly: false, size: 6, baseToken: 'tb' });
+    });
+    expect(content()).toBe('B-text');
+  });
+
   it('race guard: a slow read for the OLD file does not clobber the new file', async () => {
     let resolveA!: (r: FileReadResult) => void;
     readImpl = (req) => {

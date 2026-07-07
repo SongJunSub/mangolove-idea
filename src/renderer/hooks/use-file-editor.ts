@@ -53,6 +53,10 @@ export function useFileEditor(worktreeId: string | null, relPath: string | null)
   const aliveRef = useRef<boolean>(true);
   const keyRef = useRef<string>('');
   keyRef.current = keyFor(worktreeId, relPath);
+  // The (worktree,file) key the current `content` was loaded for. `content` (async state) lags a
+  // switch by one render, so it's exposed as null until it matches the CURRENT file — the editor
+  // must never see the OUTGOING file's text under the new relPath (that would corrupt its model).
+  const loadedKeyRef = useRef<string | null>(null);
 
   // Latest buffer/baseline/readOnly read by the writer WITHOUT being effect deps (so a write
   // captured for the outgoing file always sees that file's values, never the switched-in one).
@@ -156,6 +160,7 @@ export function useFileEditor(worktreeId: string | null, relPath: string | null)
     setSaveError(null);
     baseTokenRef.current = undefined;
     lastSavedRef.current = null; // loading: nothing on disk to compare against yet
+    loadedKeyRef.current = null; // content is not yet loaded for this file
 
     if (worktreeId && relPath) {
       window.mango.file
@@ -164,6 +169,7 @@ export function useFileEditor(worktreeId: string | null, relPath: string | null)
           if (!isFresh()) return;
           baseTokenRef.current = res.baseToken;
           lastSavedRef.current = res.content;
+          loadedKeyRef.current = requested; // content below is now valid for this file
           setReadOnly(res.readOnly);
           setReason(res.reason);
           setContent(res.content);
@@ -201,5 +207,21 @@ export function useFileEditor(worktreeId: string | null, relPath: string | null)
     return writeNow();
   }, [clearTimer, writeNow]);
 
-  return { content, value, dirty, reason, readOnly, loadError, saveError, saving, setValue, flush };
+  // Expose `content` ONLY when it was loaded for the file currently requested — otherwise null (a
+  // loading sentinel). This closes the one-render lag where a switch flips relPath synchronously but
+  // `content` still holds the outgoing file's text, which the editor must never apply to the new file.
+  const visibleContent = loadedKeyRef.current === keyRef.current ? content : null;
+
+  return {
+    content: visibleContent,
+    value,
+    dirty,
+    reason,
+    readOnly,
+    loadError,
+    saveError,
+    saving,
+    setValue,
+    flush,
+  };
 }

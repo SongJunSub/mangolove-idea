@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { encodeMango } from '../../lib/mango-uri';
 import { languageForPath } from '../../lib/language-for-path';
 import { collectUsages, type UsageLocation } from '../../lib/code-nav/find-usages';
+import { modelPoolEvictions } from '../../lib/code-nav/model-pool';
 import { useI18n } from '../../i18n/i18n-context';
 
 export interface CodeEditorProps {
@@ -13,7 +14,9 @@ export interface CodeEditorProps {
   /** Baseline text to show; null = loading sentinel (a slow load never blanks the editor). */
   readonly content: string | null;
   readonly readOnly: boolean;
-  readonly dirty: boolean;
+  /** The open tab relPaths for this worktree — the pool retains a live model per open tab and
+   *  evicts a model only once its tab leaves this list (closed). */
+  readonly openPaths: readonly string[];
   /** A position to reveal once after the model loads (code-nav jump target), or null. */
   readonly reveal: { line: number; column: number } | null;
   onChange(value: string): void;
@@ -26,15 +29,19 @@ export interface CodeEditorProps {
   onUsages?(usages: UsageLocation[] | null, loading: boolean): void;
 }
 
+/** A pooled model: `owns` when THIS editor created it (dispose on tab close) vs borrowed from the
+ *  WorktreeModelRegistry (leave to the registry — disposing it would break cross-file nav). */
+interface PoolEntry {
+  readonly model: monaco.editor.ITextModel;
+  readonly owns: boolean;
+}
+
 /**
- * Editable raw-monaco editor for the editor pane. Creates the editor ONCE, swaps the model
- * in place on (worktree,file,content) change, disposes on unmount. NOT keyed by file in App.
- *
- * Phase B: each model carries a worktree-scoped `mango:` URI + its real language (so monaco's
- * built-in TS/JS providers + our Java/Kotlin providers activate). Models seeded by the
- * WorktreeModelRegistry are BORROWED (monaco enforces one model per URI) and never disposed
- * here — only models THIS editor created are owned + disposed. After a nav jump, `reveal`
- * scrolls the target line into view once the content has loaded.
+ * Editable raw-monaco editor for the editor pane. Creates the editor ONCE and swaps its model in
+ * place on (worktree,file) change; models for OPEN tabs are kept alive in a pool + their view state
+ * saved/restored, so switching tabs preserves cursor, scroll and undo (approach A). A model is
+ * disposed only when its tab closes (and only if this editor OWNS it — registry-seeded models are
+ * borrowed and left to the registry). After a nav jump, `reveal` positions the cursor.
  */
 export function CodeEditor({
   worktreeId,
@@ -42,7 +49,7 @@ export function CodeEditor({
   theme,
   content,
   readOnly,
-  dirty,
+  openPaths,
   reveal,
   onChange,
   onSaveRequested,
@@ -57,9 +64,12 @@ export function CodeEditor({
   tRef.current = t;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  // The model THIS editor created (to dispose on swap/unmount). null while borrowing a
-  // registry-owned model (those outlive the editor and are disposed by the registry).
-  const ownedModelRef = useRef<monaco.editor.ITextModel | null>(null);
+  // Live model per open tab, keyed by mango URI string — kept alive across tab switches.
+  const poolRef = useRef<Map<string, PoolEntry>>(new Map());
+  // Per-tab editor view state (cursor, selections, scroll), keyed by the same URI string.
+  const viewStateRef = useRef<Map<string, monaco.editor.ICodeEditorViewState | null>>(new Map());
+  // The throwaway empty model monaco creates at mount — disposed once a real model is shown.
+  const scratchRef = useRef<monaco.editor.ITextModel | null>(null);
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSaveRequested);
   const onBlurRef = useRef(onBlur);
@@ -71,7 +81,7 @@ export function CodeEditor({
   onCursorRef.current = onCursor;
   onUsagesRef.current = onUsages;
 
-  // Create once on mount; dispose on unmount.
+  // Create once on mount; dispose everything on unmount.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -85,7 +95,7 @@ export function CodeEditor({
       scrollBeyondLastLine: false,
     });
     editorRef.current = editor;
-    ownedModelRef.current = editor.getModel(); // the initial empty model is ours to dispose
+    scratchRef.current = editor.getModel(); // the initial empty model is ours to dispose
     const sub = editor.onDidChangeModelContent(() => onChangeRef.current(editor.getValue()));
     const cursorSub = editor.onDidChangeCursorPosition((e) =>
       onCursorRef.current?.(e.position.lineNumber, e.position.column),
@@ -117,8 +127,12 @@ export function CodeEditor({
       cursorSub.dispose();
       blurSub.dispose();
       usagesAction.dispose();
-      ownedModelRef.current?.dispose(); // dispose ONLY our own model, never a borrowed one
-      ownedModelRef.current = null;
+      editor.setModel(null); // detach before disposing models so none is disposed while on screen
+      for (const entry of poolRef.current.values()) if (entry.owns) entry.model.dispose();
+      poolRef.current.clear();
+      viewStateRef.current.clear();
+      scratchRef.current?.dispose();
+      scratchRef.current = null;
       editor.dispose();
       editorRef.current = null;
     };
@@ -134,26 +148,48 @@ export function CodeEditor({
     editorRef.current?.updateOptions({ readOnly });
   }, [readOnly]);
 
-  // Swap to the (worktree,file) model + reveal a nav target. Borrows a seeded model when one
-  // exists for the mango URI; otherwise creates + owns one. Disposes only the prior OWNED model.
+  // Swap to the (worktree,file) model, preserving cursor/scroll/undo. Saves the OUTGOING tab's view
+  // state, borrows-or-creates the target model in the pool (never disposing the one we leave), and
+  // restores the target tab's view state — unless a nav `reveal` positions the cursor instead.
   useEffect(() => {
     const editor = editorRef.current;
-    if (!editor || content === null) return; // loading: don't blank the prior file
+    if (!editor) return;
     const uri = monaco.Uri.from(encodeMango(worktreeId, relPath));
-    const current = editor.getModel();
-    if (!current || current.uri.toString() !== uri.toString()) {
-      let model = monaco.editor.getModel(uri);
-      const owns = !model;
-      if (!model) {
-        model = monaco.editor.createModel(content, languageForPath(relPath), uri);
-      } else if (model.getValue() !== content) {
-        model.setValue(content); // refresh a borrowed/stale model to the freshly-loaded bytes
+    const uriStr = uri.toString();
+    const currentModel = editor.getModel();
+    if (currentModel && currentModel.uri.toString() === uriStr) {
+      // Same tab already on screen: the model IS the buffer (onChange keeps it synced), so never
+      // setValue it from `content` — a switch lags `content` by a render and that write would nuke
+      // the model's undo/cursor. Only the reveal below (a nav jump) repositions it.
+    } else {
+      let entry = poolRef.current.get(uriStr);
+      if (!entry) {
+        const borrowed = monaco.editor.getModel(uri); // registry-seeded (headless) model?
+        if (borrowed) {
+          entry = { model: borrowed, owns: false }; // BORROW — never disposed here
+        } else {
+          // Creating a model needs THIS file's text. `content` is null until it's loaded for the
+          // current relPath (use-file-editor gates the lag), so defer the switch until it arrives.
+          if (content === null) return;
+          entry = {
+            model: monaco.editor.createModel(content, languageForPath(relPath), uri),
+            owns: true,
+          };
+        }
+        poolRef.current.set(uriStr, entry);
       }
-      editor.setModel(model);
-      if (ownedModelRef.current && ownedModelRef.current !== model) ownedModelRef.current.dispose();
-      ownedModelRef.current = owns ? model : null;
-    } else if (current.getValue() !== content) {
-      current.setValue(content); // same file, content changed (e.g. post-discard re-open)
+      // Save the OUTGOING tab's cursor/scroll before swapping so returning to it restores them.
+      if (currentModel)
+        viewStateRef.current.set(currentModel.uri.toString(), editor.saveViewState());
+      editor.setModel(entry.model);
+      if (scratchRef.current && scratchRef.current !== entry.model) {
+        scratchRef.current.dispose(); // drop the throwaway empty model once a real one is shown
+        scratchRef.current = null;
+      }
+      if (!reveal) {
+        const vs = viewStateRef.current.get(uriStr);
+        if (vs) editor.restoreViewState(vs); // return to this tab's last cursor/scroll
+      }
     }
     if (reveal) {
       const pos = { lineNumber: reveal.line, column: reveal.column };
@@ -163,18 +199,25 @@ export function CodeEditor({
     }
   }, [worktreeId, relPath, content, reveal]);
 
+  // Evict pooled models whose tab has closed (or belongs to a worktree we left). Declared AFTER the
+  // swap effect so, when closing the active tab, the swap to a neighbour runs first and the model
+  // being evicted is never the one on screen. Only OWNED models are disposed.
+  useEffect(() => {
+    const editor = editorRef.current;
+    const currentUri = editor?.getModel()?.uri.toString() ?? null;
+    const openUris = new Set(
+      openPaths.map((p) => monaco.Uri.from(encodeMango(worktreeId, p)).toString()),
+    );
+    for (const uriStr of modelPoolEvictions(poolRef.current.keys(), openUris, currentUri)) {
+      const entry = poolRef.current.get(uriStr);
+      if (entry?.owns) entry.model.dispose(); // borrowed models: leave to the registry
+      poolRef.current.delete(uriStr);
+      viewStateRef.current.delete(uriStr);
+    }
+  }, [worktreeId, openPaths]);
+
   return (
     <div className="code-editor" data-testid="code-editor">
-      <div className="code-editor-tab">
-        <span className="code-editor-path">{relPath}</span>
-        {dirty && (
-          <span
-            className="code-editor-dot"
-            data-testid="editor-dirty-dot"
-            title={t('editor.unsavedChanges')}
-          />
-        )}
-      </div>
       <div ref={hostRef} className="code-editor-host" />
     </div>
   );
