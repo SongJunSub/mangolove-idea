@@ -64,24 +64,20 @@ describe('isRepoBusy (in-place repo-switch confirm gate)', () => {
   const statuses = (...rows: WorktreeRowStatus[]): ReadonlyMap<string, WorktreeRowStatus> =>
     new Map(rows.map((r, i) => [`/wt${i}`, r]));
 
-  it('an unsaved editor alone makes the repo busy (even with all agents idle)', () => {
-    expect(isRepoBusy(true, statuses(row('idle'), row('idle')))).toBe(true);
-  });
-
-  it('a clean editor with only idle/exited/error agents is NOT busy', () => {
-    expect(isRepoBusy(false, statuses(row('idle'), row('exited'), row('error')))).toBe(false);
+  it('only idle/exited/error agents is NOT busy', () => {
+    expect(isRepoBusy(statuses(row('idle'), row('exited'), row('error')))).toBe(false);
   });
 
   it("an in-flight agent turn ('running' or 'starting') makes the repo busy", () => {
-    expect(isRepoBusy(false, statuses(row('idle'), row('running')))).toBe(true);
-    expect(isRepoBusy(false, statuses(row('starting')))).toBe(true);
+    expect(isRepoBusy(statuses(row('idle'), row('running')))).toBe(true);
+    expect(isRepoBusy(statuses(row('starting')))).toBe(true);
   });
 
   it('a live dev server alone does NOT make the repo busy (cheap to restart, no work lost)', () => {
-    expect(isRepoBusy(false, statuses(row('idle', 'running')))).toBe(false);
+    expect(isRepoBusy(statuses(row('idle', 'running')))).toBe(false);
   });
 
-  it('no worktrees + clean editor is not busy', () => {
-    expect(isRepoBusy(false, new Map())).toBe(false);
+  it('no worktrees is not busy', () => {
+    expect(isRepoBusy(new Map())).toBe(false);
   });
 });

@@ -3,7 +3,6 @@ import type { QuitWarningEvent, SessionPersistenceInfo } from '../shared/types';
 import type { TerminalLayout } from '../shared/terminal-layout';
 import { applyTheme, resolveTheme } from './lib/theme';
 import { useFileEditor } from './hooks/use-file-editor';
-import { ConfirmDiscardModal } from './components/editor/confirm-discard-modal';
 import { NavBack } from './components/editor/nav-back';
 import { UsagesOverlay } from './components/editor/usages-overlay';
 import { NavStatusBadge, type NavIndicatorState } from './components/statusbar/nav-status-badge';
@@ -80,9 +79,6 @@ function readOnlyReason(
   return t('app.readonly.default');
 }
 
-/** A queued selection change held while the editor is dirty (resolved via the modal). */
-type PendingSwitch = { kind: 'file'; relPath: string } | { kind: 'worktree'; id: string | null };
-
 /** The titlebar Settings glyph: a crisp 16px gear (currentColor), inlined like ClaudeMark. */
 function GearIcon(): React.JSX.Element {
   return (
@@ -153,15 +149,20 @@ export function App(): React.JSX.Element {
   const [conflictWorktreeId, setConflictWorktreeId] = useState<string | null>(null);
   // relPath of the file open in the editor pane (A4 edits + saves it), or null.
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  // The A4 editor state for (selectedId, selectedFile). dirty drives the unsaved-guard.
+  // The A4 editor state for (selectedId, selectedFile). Auto-saves; App flushes it before any
+  // switch/quit. editorRef lets the switch callbacks flush without taking `editor` as a dep.
   const editor = useFileEditor(selectedId, selectedFile);
-  // A selection change queued while the editor is dirty, awaiting the save/discard prompt.
-  const [pending, setPending] = useState<PendingSwitch | null>(null);
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
 
   // In-place repo switch (the sidebar): main tears down THIS window's agents/servers/LSP and
-  // rebinds it to the new repo. Confirm first if anything live would be lost; else switch now.
-  const requestRepoSwitch = (path: string): void => {
-    if (isRepoBusy(editor.dirty, statuses)) setPendingRepoSwitch(path);
+  // rebinds it to the new repo. Auto-save flushes the open file first; a live agent turn still
+  // warrants a confirm (the editor no longer gates it — its buffer is already persisted).
+  const requestRepoSwitch = async (path: string): Promise<void> => {
+    // Await the flush so the open file is persisted BEFORE the window teardown/reload races it;
+    // on write failure stay put (the saveError banner shows why) so the edit isn't lost.
+    if (!(await editor.flush())) return;
+    if (isRepoBusy(statuses)) setPendingRepoSwitch(path);
     else void recentRepos.open(path);
   };
 
@@ -185,9 +186,9 @@ export function App(): React.JSX.Element {
   // resolvedTheme — 'system'/unset tracks the OS; explicit modes set once.
   useEffect(() => applyTheme(settings.theme, setResolvedTheme), [settings.theme]);
 
-  // ── Unsaved-changes guard: the SINGLE chokepoint for every selection mutation. ──
-  // Raw setSelectedId/setSelectedFile are forbidden outside applyWorktree/applyPending,
-  // so no low-level channel can drop a dirty buffer without prompting first.
+  // ── Selection mutation: every worktree switch routes through applyWorktree (which also clears
+  // the open file + code-nav state); every file switch flushes the outgoing buffer first (auto-
+  // save), so no low-level channel can drop unsaved edits.
 
   /** Apply a worktree selection AND clear the open file (replaces the old line-86 effect,
    *  which nulled selectedFile on ANY selectedId change — unmounting a dirty editor). */
@@ -207,69 +208,54 @@ export function App(): React.JSX.Element {
     usagesPendingRef.current = false; // drop any in-flight find-usages so its late result can't nav
   }, []);
 
-  const applyPending = useCallback(
-    (p: PendingSwitch): void => {
-      if (p.kind === 'file') setSelectedFile(p.relPath);
-      else applyWorktree(p.id);
-      setPending(null);
-    },
-    [applyWorktree],
-  );
-
-  /** Open a file in the editor; prompts first if the current file is dirty. A normal open
-   *  (file tree click) clears any pending nav-reveal so it never jumps the cursor. */
+  /** Open a file in the editor. Auto-save flushes the outgoing file and only switches once it is
+   *  durably persisted; on write failure it stays put (the saveError banner shows why), so edits
+   *  are never silently dropped. A normal open also clears any pending nav-reveal. */
   const requestOpenFile = useCallback(
-    (relPath: string): void => {
+    async (relPath: string): Promise<void> => {
       if (relPath === selectedFile) return;
+      if (!(await editorRef.current.flush())) return;
       setPendingReveal(null);
-      if (editor.dirty) setPending({ kind: 'file', relPath });
-      else setSelectedFile(relPath);
+      setSelectedFile(relPath);
     },
-    [selectedFile, editor.dirty],
+    [selectedFile],
   );
 
-  /** Select a worktree; prompts first if a dirty file is open. */
+  /** Select a worktree. Auto-save flushes the open file first and only switches on success. */
   const requestSelectWorktree = useCallback(
-    (id: string | null): void => {
+    async (id: string | null): Promise<void> => {
       if (id === selectedId) return;
-      if (editor.dirty) setPending({ kind: 'worktree', id });
-      else applyWorktree(id);
+      if (!(await editorRef.current.flush())) return;
+      applyWorktree(id);
     },
-    [selectedId, editor.dirty, applyWorktree],
+    [selectedId, applyWorktree],
   );
-
-  // Modal handlers. On save FAILURE keep the modal open (editor.saveError shows inside it)
-  // so the queued navigation is never silently dropped and Save can be retried.
-  const onGuardSave = useCallback(async (): Promise<void> => {
-    const ok = await editor.save();
-    if (ok && pending) applyPending(pending);
-  }, [editor, pending, applyPending]);
-  const onGuardDiscard = useCallback((): void => {
-    if (pending) applyPending(pending);
-  }, [pending, applyPending]);
-  const onGuardCancel = useCallback((): void => setPending(null), []);
 
   // ── Code navigation (Phase B) ──
   // Stable snapshot for the once-registered, process-global code-nav opener (reads refs so
   // it never goes stale despite [] deps).
-  const navSelRef = useRef({ selectedId, selectedFile, dirty: editor.dirty });
-  navSelRef.current = { selectedId, selectedFile, dirty: editor.dirty };
+  const navSelRef = useRef({ selectedId, selectedFile });
+  navSelRef.current = { selectedId, selectedFile };
 
-  /** Cross-file go-to-definition target (from monaco's editor-opener). Pushes the current
-   *  location for Back, then opens the target through the dirty-guard with a reveal. */
+  /** Cross-file go-to-definition target (from monaco's editor-opener). Auto-saves the current
+   *  file first (aborting the jump if that write fails), pushes the location for Back, then
+   *  reveals the target. */
   const onCodeNavOpen = useCallback(
-    (worktreeId: string, relPath: string, position?: { line: number; column: number }): void => {
+    async (
+      worktreeId: string,
+      relPath: string,
+      position?: { line: number; column: number },
+    ): Promise<void> => {
       const s = navSelRef.current;
       if (worktreeId !== s.selectedId) return; // only within the selected worktree (defense)
+      const switching = relPath !== s.selectedFile;
+      if (switching && !(await editorRef.current.flush())) return;
       if (s.selectedFile && s.selectedFile !== relPath) {
         navHistoryRef.current.push({ relPath: s.selectedFile, ...currentPosRef.current });
         setCanGoBack(true);
       }
       setPendingReveal(position ? { relPath, line: position.line, column: position.column } : null);
-      if (relPath !== s.selectedFile) {
-        if (s.dirty) setPending({ kind: 'file', relPath });
-        else setSelectedFile(relPath);
-      }
+      if (switching) setSelectedFile(relPath);
     },
     [],
   );
@@ -317,17 +303,18 @@ export function App(): React.JSX.Element {
     [onCodeNavOpen],
   );
 
-  /** Back: return to the previously-jumped-from location through the dirty-guard. */
-  const onNavBack = useCallback((): void => {
-    const prev = navHistoryRef.current.pop();
-    setCanGoBack(navHistoryRef.current.length > 0);
-    if (!prev) return;
+  /** Back: return to the previously-jumped-from location. Auto-saves the current file first and
+   *  only navigates (popping the history) once it is persisted; a failed write keeps the stack. */
+  const onNavBack = useCallback(async (): Promise<void> => {
+    const stack = navHistoryRef.current;
+    if (stack.length === 0) return;
     const s = navSelRef.current;
-    setPendingReveal({ relPath: prev.relPath, line: prev.line, column: prev.column });
-    if (prev.relPath !== s.selectedFile) {
-      if (s.dirty) setPending({ kind: 'file', relPath: prev.relPath });
-      else setSelectedFile(prev.relPath);
-    }
+    const target = stack[stack.length - 1];
+    if (target.relPath !== s.selectedFile && !(await editorRef.current.flush())) return;
+    stack.pop();
+    setCanGoBack(stack.length > 0);
+    setPendingReveal({ relPath: target.relPath, line: target.line, column: target.column });
+    if (target.relPath !== s.selectedFile) setSelectedFile(target.relPath);
   }, []);
 
   // Register the process-global code-nav providers + editor-opener ONCE (idempotent).
@@ -393,12 +380,23 @@ export function App(): React.JSX.Element {
     return window.mango.app.onQuitWarning((e) => setQuitWarning(e));
   }, []);
 
-  // Report this window's unsaved editor count to main so a quit with a dirty buffer — even
-  // with no active agent turn — still warns before the change is lost (A4). The editor
-  // tracks one open file, so this is 0 or 1; main sums it across windows.
+  // Report this window's unsaved editor state to main for the quit warning (A4). `dirty` covers
+  // BOTH windows a quit could lose work in: the ~400ms auto-save debounce (edits not yet written)
+  // AND a write that FAILED (buffer kept, still != baseline). The beforeunload flush is only a
+  // best-effort backstop — it can't await the async write — so this warning is the real safety
+  // net. The editor tracks one open file, so this is 0 or 1; main sums it across windows.
   useEffect(() => {
     window.mango.app.setUnsaved(editor.dirty ? 1 : 0);
   }, [editor.dirty]);
+
+  // Best-effort flush of a pending auto-save when the window is torn down (quit / reload), so a
+  // keystroke typed inside the last debounce window is persisted. Switch/blur flushes cover the
+  // rest; this is the final backstop.
+  useEffect(() => {
+    const onUnload = (): void => void editorRef.current.flush();
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -674,18 +672,6 @@ export function App(): React.JSX.Element {
                           <NavBack canGoBack={canGoBack} onBack={onNavBack} />
                           {t('app.editor')}
                         </span>
-                        {selectedFile && selectedId && !editor.readOnly && (
-                          <button
-                            type="button"
-                            data-testid="editor-save"
-                            className="editor-save-btn"
-                            disabled={!editor.dirty || editor.saving}
-                            title={t('app.saveTip')}
-                            onClick={() => void editor.save()}
-                          >
-                            {editor.saving ? t('app.saving') : t('app.save')}
-                          </button>
-                        )}
                       </div>
                       {!selectedFile || !selectedId ? (
                         <div className="pane-placeholder">{t('app.editorEmpty')}</div>
@@ -726,7 +712,8 @@ export function App(): React.JSX.Element {
                                   : null
                               }
                               onChange={editor.setValue}
-                              onSaveRequested={() => void editor.save()}
+                              onSaveRequested={() => void editor.flush()}
+                              onBlur={() => void editor.flush()}
                               onCursor={(line, column) => {
                                 currentPosRef.current = { line, column };
                               }}
@@ -921,16 +908,6 @@ export function App(): React.JSX.Element {
               settings={settings}
               onChange={(partial) => void saveSettings(partial)}
               onClose={() => setSettingsOpen(false)}
-            />
-          )}
-          {pending && selectedFile && (
-            <ConfirmDiscardModal
-              fileName={selectedFile}
-              saving={editor.saving}
-              saveError={editor.saveError}
-              onSave={() => void onGuardSave()}
-              onDiscard={onGuardDiscard}
-              onCancel={onGuardCancel}
             />
           )}
           {pendingRepoSwitch && (
