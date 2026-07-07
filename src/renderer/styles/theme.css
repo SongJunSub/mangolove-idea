@@ -335,14 +335,19 @@ a {
   justify-content: space-between;
   gap: 8px;
 }
-.nav-back-btn {
+.nav-buttons {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.nav-btn {
   font-size: 12px;
   line-height: 1;
   padding: 1px 7px;
   text-transform: none;
   letter-spacing: 0;
 }
-.nav-back-btn:disabled {
+.nav-btn:disabled {
   opacity: 0.4;
 }
 /* ---- editor tab strip (A4 tabs) ---- */

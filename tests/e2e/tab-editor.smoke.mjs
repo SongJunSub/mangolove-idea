@@ -47,6 +47,13 @@ try {
       (await window.getByTestId('editor-tab-b.ts').count()) === 1,
   );
 
+  // ── Nav cluster: ← and → both render, disabled until a code-nav jump builds history ──
+  check(
+    'back/forward nav buttons render, disabled with no jump history',
+    (await window.getByTestId('nav-back').isDisabled()) &&
+      (await window.getByTestId('nav-forward').isDisabled()),
+  );
+
   // ── Preview tab: single-click c.ts opens an italic (preview) tab, no accumulation ──
   await window.getByTestId('tree-node-c.ts').click();
   await window.waitForTimeout(300);
