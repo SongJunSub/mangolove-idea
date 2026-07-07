@@ -22,8 +22,6 @@ import { useWorktreeStatus } from './hooks/use-worktree-status';
 import { isRepoBusy } from './state/app-store';
 import { useSessionRecords } from './hooks/use-session-records';
 import { useSettings } from './hooks/use-settings';
-import { useCrossMachine } from './hooks/use-cross-machine';
-import { CrossMachinePanel } from './components/cross-machine/cross-machine-panel';
 import { useRepo } from './hooks/use-repo';
 import { Titlebar } from './components/titlebar/titlebar';
 import { FileTree } from './components/tree/file-tree';
@@ -64,11 +62,6 @@ const DiffView = lazy(() =>
 // Lazy so monaco stays in the existing ~7 MB diff chunk; the conflict editor shares it.
 const ConflictView = lazy(() =>
   import('./components/diff/conflict-view').then((m) => ({ default: m.ConflictView })),
-);
-// Lazy so the fan-out panel (which pulls the shared monaco diff chunk per-lane) is
-// only fetched when the user opens it; keeps the initial renderer chunk smaller.
-const FanoutView = lazy(() =>
-  import('./components/fanout/fanout-view').then((m) => ({ default: m.FanoutView })),
 );
 // Lazy so the editor folds into the shared monaco chunk (A4) — fetched only when a file
 // is first opened, like DiffView/ConflictView.
@@ -139,10 +132,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
-  const crossMachine = useCrossMachine();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [fanoutOpen, setFanoutOpen] = useState(false);
-  const [crossMachineOpen, setCrossMachineOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   // Pending in-place repo switch awaiting confirmation (set only when the current repo is
   // busy — a running agent turn or an unsaved file — since the switch tears those down).
@@ -588,26 +578,6 @@ export function App(): React.JSX.Element {
               </span>
               <button
                 type="button"
-                data-testid="fanout-open"
-                aria-pressed={fanoutOpen}
-                title={t('app.fanoutTip')}
-                onClick={() => setFanoutOpen((v) => !v)}
-              >
-                {t('app.fanout')}
-              </button>
-              <button
-                type="button"
-                data-testid="cross-machine-open"
-                title={t('app.machinesTip')}
-                onClick={() => {
-                  setCrossMachineOpen(true);
-                  void crossMachine.refresh();
-                }}
-              >
-                {t('app.machines')}
-              </button>
-              <button
-                type="button"
                 className="icon-btn"
                 data-testid="settings-open"
                 aria-label={t('settings.title')}
@@ -946,46 +916,11 @@ export function App(): React.JSX.Element {
               }
             />
           </div>
-          {fanoutOpen && (
-            <div className="fanout-overlay" data-testid="fanout-overlay">
-              <Suspense
-                fallback={
-                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>{t('app.loadingFanout')}</p>
-                }
-              >
-                <FanoutView
-                  base={baseBranch}
-                  theme={resolvedTheme}
-                  onMerged={() => void refresh()}
-                />
-              </Suspense>
-            </div>
-          )}
           {settingsOpen && !settingsLoading && (
             <SettingsModal
               settings={settings}
               onChange={(partial) => void saveSettings(partial)}
               onClose={() => setSettingsOpen(false)}
-            />
-          )}
-          {crossMachineOpen && (
-            <CrossMachinePanel
-              pointers={crossMachine.pointers}
-              loading={crossMachine.loading}
-              error={crossMachine.error}
-              enabled={settings.crossMachineSessions === 'on'}
-              selfMachineId={settings.machineId}
-              onRefresh={() => void crossMachine.refresh()}
-              onStartHere={(branch) => {
-                void crossMachine.startHere(branch).then((wt) => {
-                  if (!wt) return; // failure surfaced via crossMachine.error in the panel
-                  setCrossMachineOpen(false);
-                  // Refresh the worktree list, then select the (new) worktree — selecting it
-                  // mounts AgentTerminal with continueSession=false (no record), a FRESH session.
-                  void refresh().then(() => requestSelectWorktree(wt.id));
-                });
-              }}
-              onClose={() => setCrossMachineOpen(false)}
             />
           )}
           {pending && selectedFile && (

@@ -118,45 +118,6 @@ describe('<SettingsModal> auto-save', () => {
   });
 });
 
-describe('<SettingsModal> cross-machine controls', () => {
-  it('seeds the toggle + label from settings', () => {
-    renderModal(
-      <SettingsModal
-        settings={{ crossMachineSessions: 'on', machineLabel: 'work-mac' }}
-        onChange={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-    expect(screen.getByTestId('settings-cross-machine')).toBeChecked();
-    expect(screen.getByTestId('settings-machine-label')).toHaveValue('work-mac');
-  });
-
-  it('defaults to off, reveals the label on enable, and auto-saves the toggle', async () => {
-    const onChange = vi.fn();
-    renderModal(<SettingsModal settings={{}} onChange={onChange} onClose={vi.fn()} />);
-    expect(screen.getByTestId('settings-cross-machine')).not.toBeChecked();
-    expect(screen.queryByTestId('settings-machine-label')).not.toBeInTheDocument();
-
-    // Enable -> the label input appears and the toggle persists immediately.
-    await userEvent.click(screen.getByTestId('settings-cross-machine'));
-    expect(screen.getByTestId('settings-machine-label')).toBeInTheDocument();
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ crossMachineSessions: 'on' }));
-  });
-
-  it('toggling an enabled instance OFF persists off immediately', async () => {
-    const onChange = vi.fn();
-    renderModal(
-      <SettingsModal
-        settings={{ crossMachineSessions: 'on' }}
-        onChange={onChange}
-        onClose={vi.fn()}
-      />,
-    );
-    await userEvent.click(screen.getByTestId('settings-cross-machine')); // on -> off
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ crossMachineSessions: 'off' }));
-  });
-});
-
 describe('<SettingsModal> self-update action (Updates section)', () => {
   const AVAILABLE = {
     currentVersion: '0.1.1',
