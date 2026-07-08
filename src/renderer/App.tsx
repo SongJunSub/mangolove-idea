@@ -28,9 +28,13 @@ import { useRepo } from './hooks/use-repo';
 import { Titlebar } from './components/titlebar/titlebar';
 import { FileTree } from './components/tree/file-tree';
 import { FolderIcon } from './components/tree/tree-icons';
-import { BranchIcon } from './components/icons';
 import { RepoList } from './components/sidebar/repo-list';
+import { ProjectTree } from './components/sidebar/project-tree';
 import { useRecentRepos } from './hooks/use-recent-repos';
+import { useProjectGroups } from './hooks/use-project-groups';
+import { useWorktreesFor } from './hooks/use-worktrees-for';
+import { useProjectTreeExpanded } from './hooks/use-project-tree-expanded';
+import type { ProjectTreeExpanded } from '../shared/project-groups';
 import { usePaneLayout } from './hooks/use-pane-layout';
 import { Split } from './components/layout/split';
 import { DEFAULT_PANE_LAYOUT, PANE_BOUNDS } from '../shared/pane-layout';
@@ -45,7 +49,6 @@ import { openExternal } from './lib/open-external';
 import { I18nContext } from './i18n/i18n-context';
 import { makeT, type TranslateFn } from './i18n/messages';
 import { resolveLocale } from './i18n/resolve-locale';
-import { WorktreeList } from './components/sidebar/worktree-list';
 import { detectServerUrl } from './lib/detect-server-url';
 import { BrowserPane } from './components/browser/browser-pane';
 
@@ -105,6 +108,10 @@ function GearIcon(): React.JSX.Element {
 export function App(): React.JSX.Element {
   const repo = useRepo();
   const recentRepos = useRecentRepos();
+  // Project tree (bottom-left): groups + lazy per-repo worktree listing for repos other than the
+  // active one. The active repo's worktrees still come from useWorktrees (live status) below.
+  const projectGroups = useProjectGroups();
+  const worktreesFor = useWorktreesFor();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { worktrees, loading, error, remove, refresh } = useWorktrees();
   // `servers` still feeds the worktree status dots; the start/stop controls were removed from
@@ -123,6 +130,24 @@ export function App(): React.JSX.Element {
     settings.paneLayout,
     (l) => void saveSettings({ paneLayout: l }),
   );
+  // Project-tree expand/collapse state, persisted (a repo switch reloads the renderer, so the tree
+  // needs to remember which groups/repos were open).
+  const saveTreeExpanded = useCallback(
+    (e: ProjectTreeExpanded): void => void saveSettings({ projectTreeExpanded: e }),
+    [saveSettings],
+  );
+  const treeExpanded = useProjectTreeExpanded(settings.projectTreeExpanded, saveTreeExpanded);
+  // Auto-reveal the active repo (and its containing group) the first time it appears, so the user
+  // lands with their current worktree visible. One-shot per active path (a manual collapse sticks);
+  // waits for groups to load so the group isn't missed by a race.
+  const revealedActiveRef = useRef<string | null>(null);
+  useEffect(() => {
+    const active = repo.repoRoot;
+    if (!active || projectGroups.loading || revealedActiveRef.current === active) return;
+    revealedActiveRef.current = active;
+    const groupId = projectGroups.groups.find((g) => g.repoPaths.includes(active))?.id ?? null;
+    treeExpanded.reveal(groupId, active);
+  }, [repo.repoRoot, projectGroups.loading, projectGroups.groups, treeExpanded]);
   // Resolve the UI locale (explicit setting wins; otherwise follow the OS) and build the
   // i18n value App both provides (for child screens) and consumes (for its own titlebar).
   const locale = resolveLocale(settings.locale, navigator.language);
@@ -724,48 +749,21 @@ export function App(): React.JSX.Element {
                   label={t('app.resizeColumns')}
                   testId="split-col-top"
                   first={
-                    <Split
-                      axis="y"
-                      unit="fraction"
-                      size={paneLayout.repo.size}
-                      onResize={paneLayout.repo.onResize}
-                      onResizeEnd={paneLayout.repo.onResizeEnd}
-                      min={PANE_BOUNDS.minRepoFraction}
-                      max={PANE_BOUNDS.maxRepoFraction}
-                      minFirstPx={72}
-                      minSecondPx={100}
-                      defaultSize={DEFAULT_PANE_LAYOUT.repoFraction}
-                      label={t('app.resizeRepoTree')}
-                      testId="split-repo"
-                      first={
-                        <div className="ws-pane ws-repos">
-                          <RepoList
-                            repos={recentRepos.repos}
-                            onOpen={requestRepoSwitch}
-                            onAdd={() =>
-                              void repo.pick().then((r) => {
-                                if (r.ok) void recentRepos.refresh();
-                              })
-                            }
-                          />
-                        </div>
-                      }
-                      second={
-                        <div className="ws-pane ws-tree">
-                          <div className="pane-head">
-                            <span className="pane-head-ico">
-                              <FolderIcon open={false} />
-                            </span>
-                            {t('app.project')}
-                          </div>
-                          <FileTree
-                            worktreeId={selectedId}
-                            selectedFile={selectedFile}
-                            onOpenFile={(p, opts) => void requestOpenFile(p, opts)}
-                          />
-                        </div>
-                      }
-                    />
+                    // Top-left is now the file tree ALONE (the repo switcher moved into the unified
+                    // project tree at bottom-left), so it fills the full column height.
+                    <div className="ws-pane ws-tree">
+                      <div className="pane-head">
+                        <span className="pane-head-ico">
+                          <FolderIcon open={false} />
+                        </span>
+                        {t('app.project')}
+                      </div>
+                      <FileTree
+                        worktreeId={selectedId}
+                        selectedFile={selectedFile}
+                        onOpenFile={(p, opts) => void requestOpenFile(p, opts)}
+                      />
+                    </div>
                   }
                   second={
                     <div className="ws-pane ws-editor">
@@ -856,34 +854,31 @@ export function App(): React.JSX.Element {
                   label={t('app.resizeColumns')}
                   testId="split-col-bottom"
                   first={
-                    <div className="ws-pane ws-worktrees">
-                      <div className="pane-head pane-head--count">
-                        <span className="pane-head-ico">
-                          <BranchIcon />
-                        </span>
-                        {t('app.worktrees')}
-                        {!loading && (
-                          <span className="wt-count" data-testid="worktree-count">
-                            {worktrees.length}
-                          </span>
-                        )}
-                      </div>
-                      <div className="pane-body">
-                        <WorktreeList
-                          worktrees={worktrees}
-                          loading={loading}
-                          error={error}
-                          selectedId={selectedId}
-                          statuses={statuses}
-                          onSelect={requestSelectWorktree}
-                          onRemove={(id) => {
-                            void remove(id);
-                            // Prune the removed worktree's persisted tabs so the openTabs map can't
-                            // grow unbounded across create/delete cycles (store deletes an empty key).
-                            saveOpenTabs(id, { open: [], active: null });
-                          }}
-                        />
-                      </div>
+                    <div className="ws-pane ws-projects">
+                      <ProjectTree
+                        repos={recentRepos.repos}
+                        groups={projectGroups.groups}
+                        activeWorktrees={worktrees}
+                        activeLoading={loading}
+                        activeError={error}
+                        statuses={statuses}
+                        selectedId={selectedId}
+                        worktreesFor={worktreesFor}
+                        expanded={treeExpanded}
+                        onSelectWorktree={requestSelectWorktree}
+                        onSwitchRepo={requestRepoSwitch}
+                        onRemoveWorktree={(id) => {
+                          void remove(id);
+                          // Prune the removed worktree's persisted tabs so the openTabs map can't
+                          // grow unbounded across create/delete cycles (store deletes an empty key).
+                          saveOpenTabs(id, { open: [], active: null });
+                        }}
+                        onAddRepo={() =>
+                          void repo.pick().then((r) => {
+                            if (r.ok) void recentRepos.refresh();
+                          })
+                        }
+                      />
                     </div>
                   }
                   second={

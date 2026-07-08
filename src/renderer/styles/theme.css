@@ -839,6 +839,206 @@ a {
   border-color: var(--err);
 }
 
+/* ── Project tree (bottom-left): the unified group → repo → worktree navigator that replaced the
+ *    separate repo switcher + worktree list. Reuses the canonical selected idiom (accent-soft +
+ *    inset bar) from repo-item / wt-item, so a selected worktree or the active repo reads the same
+ *    as everywhere else. Three indent levels via the leading .pt-indent spacer. ── */
+.ws-projects .project-tree {
+  flex: 1;
+  min-height: 0;
+}
+.project-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.pt-title {
+  flex: 1;
+}
+.project-tree-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 5px 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pt-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 12.5px;
+  min-width: 0;
+}
+.pt-row:hover {
+  background: var(--elevated);
+}
+.pt-row:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: -2px;
+}
+.pt-indent {
+  flex: none;
+}
+.pt-chev {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  cursor: pointer;
+}
+.pt-chev .tree-chevron {
+  width: 12px;
+  height: 12px;
+}
+.pt-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.pt-ico .tree-ico-svg {
+  width: 14px;
+  height: 14px;
+}
+.pt-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+/* ── group row (level 0) ── */
+.pt-group .pt-group-ico {
+  color: var(--mango);
+}
+.pt-group-name {
+  font-weight: 650;
+}
+/* ── repo row: the ACTIVE repo gets the canonical selected treatment (accent-soft + bar) ── */
+.pt-repo.active,
+.pt-repo.active:hover {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  cursor: default;
+}
+.pt-repo.active .pt-repo-ico {
+  color: var(--accent);
+}
+.pt-here {
+  flex: none;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid var(--accent-ring);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.pt-chip {
+  flex: none;
+  min-width: 16px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0 5px;
+}
+/* ── worktree leaf row ── */
+.pt-wt.sel,
+.pt-wt.sel:hover {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.pt-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.pt-dot--static {
+  background: transparent;
+  border: 1.5px solid var(--faint);
+  box-sizing: border-box;
+}
+.pt-branch {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.pt-wt.sel .pt-branch {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pt-badge {
+  flex: 0 0 auto;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.pt-badge--warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.pt-head {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+.pt-remove {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 1px 8px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+}
+.pt-row:hover .pt-remove,
+.pt-remove:focus-visible {
+  opacity: 1;
+}
+.pt-remove:hover {
+  color: var(--err);
+  border-color: var(--err);
+}
+.pt-note {
+  margin: 0;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pt-note.pt-error {
+  color: var(--err);
+}
+
 /* ── Terminal / diff / browser / references tabs (A2e): an underline tab bar with a clear
  *    active state — previously bare <button>s with NO selected affordance at all. ── */
 .ws-tabs {
