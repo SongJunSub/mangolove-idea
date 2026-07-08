@@ -281,18 +281,23 @@ async function getWorktreeManager(ctx: IpcContext): Promise<WorktreeManager> {
 const worktreeManagersByPath = new Map<string, WorktreeManager>();
 
 /**
- * The set of canonical repo roots that CURRENTLY exist as git repos, derived from recentRepos —
- * the same liveness filter REPO_LIST applies. Doubles as the security allowlist for
- * WORKTREE_LIST_FOR and the pruning oracle for project groups: only a repo the user actually
- * opened (and that still has a `.git`) may be listed or grouped.
+ * The canonical repo roots that CURRENTLY exist as git repos, in recentRepos order, deduped. The
+ * SINGLE definition of "which recentRepos are live": REPO_LIST maps it to RecentRepo (adding the
+ * active flag), WORKTREE_LIST_FOR uses it as the security allowlist, and project groups use it as
+ * the pruning oracle — only a repo the user actually opened (and that still has a `.git`) may be
+ * listed or grouped. Pure over the passed array so callers read settings once.
  */
-function liveCanonicalRepoSet(store: SettingsStore): Set<string> {
-  const set = new Set<string>();
-  for (const raw of store.get().recentRepos ?? []) {
-    if (!existsSync(join(raw, '.git'))) continue;
-    set.add(canonicalRepoRoot(raw));
+function liveCanonicalRepos(recentRepos: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of recentRepos) {
+    if (!existsSync(join(raw, '.git'))) continue; // stale: dir gone or no longer a repo
+    const path = canonicalRepoRoot(raw);
+    if (seen.has(path)) continue; // two raw forms of the same repo collapse to one
+    seen.add(path);
+    out.push(path);
   }
-  return set;
+  return out;
 }
 
 /** Lists worktrees for a canonical repo path, reusing the window's manager for its active repo
@@ -1373,17 +1378,10 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     const ctx = requireCtx(event);
     const store = getSettingsStore(ctx);
     const active = ctx.repoRoot ?? null; // already canonical (set in createWindow)
-    const seen = new Set<string>();
-    const repos: RecentRepo[] = [];
-    for (const raw of store.get().recentRepos ?? []) {
-      if (!existsSync(join(raw, '.git'))) continue; // stale: dir gone or no longer a repo
-      const path = canonicalRepoRoot(raw);
-      if (seen.has(path)) continue; // two raw forms of the same repo collapse to one
-      seen.add(path);
-      repos.push({ path, active: path === active });
-    }
+    const live = liveCanonicalRepos(store.get().recentRepos ?? []);
+    const repos: RecentRepo[] = live.map((path) => ({ path, active: path === active }));
     // Defensive: surface the active repo even if recentRepos somehow lost it.
-    if (active && !seen.has(active) && existsSync(join(active, '.git'))) {
+    if (active && !live.includes(active) && existsSync(join(active, '.git'))) {
       repos.unshift({ path: active, active: true });
     }
     return repos;
@@ -1416,7 +1414,8 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     const store = getSettingsStore(ctx);
     try {
       const canonical = canonicalRepoRoot(repoPath);
-      if (!liveCanonicalRepoSet(store).has(canonical)) return [];
+      const live = new Set(liveCanonicalRepos(store.get().recentRepos ?? []));
+      if (!live.has(canonical)) return [];
       if (!existsSync(join(canonical, '.git'))) return [];
       return await listWorktreesForCanonical(ctx, canonical);
     } catch {
@@ -1430,9 +1429,9 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   // windows never race on it.
   ipcMain.handle(IPC.GROUPS_GET, async (event): Promise<ProjectGroup[]> => {
     const ctx = requireCtx(event);
-    const store = getSettingsStore(ctx);
-    const live = liveCanonicalRepoSet(store);
-    return (store.get().projectGroups ?? []).map((g) => ({
+    const settings = getSettingsStore(ctx).get(); // read settings ONCE for both the live set + groups
+    const live = new Set(liveCanonicalRepos(settings.recentRepos ?? []));
+    return (settings.projectGroups ?? []).map((g) => ({
       ...g,
       repoPaths: g.repoPaths.filter((p) => live.has(p)),
     }));
@@ -1445,7 +1444,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   ipcMain.handle(IPC.GROUPS_SET, async (event, groups: unknown): Promise<ProjectGroup[]> => {
     const ctx = requireCtx(event);
     const store = getSettingsStore(ctx);
-    const live = liveCanonicalRepoSet(store);
+    const live = new Set(liveCanonicalRepos(store.get().recentRepos ?? []));
     const normalized = (coerceProjectGroups(groups) ?? []).map((g) => ({
       ...g,
       repoPaths: g.repoPaths.map((p) => canonicalRepoRoot(p)).filter((p) => live.has(p)),

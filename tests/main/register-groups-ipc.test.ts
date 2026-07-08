@@ -134,6 +134,23 @@ describe('project-groups + listFor IPC wiring', () => {
     expect(got).toEqual([{ id: 'g1', name: 'CRS', repoPaths: [canonA] }]);
   });
 
+  it('GROUPS_SET re-applies 1-repo-1-group AFTER canonicalizing (two raw forms across groups)', async () => {
+    // The pure coercer sees distinct strings (trailing slash) so it keeps both; only the handler's
+    // RE-coercion after canonicalization collapses them and re-enforces the invariant.
+    const canonA = realpathSync(repoA.dir);
+    const ctx = ctxWithStore(settingsFile);
+    ctx.settingsStore!.set({ recentRepos: [canonA] });
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    const stored = (await handlers.get(IPC.GROUPS_SET)!(fakeEvent, [
+      { id: 'g1', name: 'one', repoPaths: [`${canonA}/`] }, // trailing-slash raw form
+      { id: 'g2', name: 'two', repoPaths: [canonA] }, // canonical form of the SAME repo
+    ])) as Array<{ id: string; repoPaths: string[] }>;
+    expect(stored).toEqual([
+      { id: 'g1', name: 'one', repoPaths: [canonA] },
+      { id: 'g2', name: 'two', repoPaths: [] }, // collapsed to g1 only
+    ]);
+  });
+
   it('GROUPS_SET with an empty array clears the persisted groups', async () => {
     const canonA = realpathSync(repoA.dir);
     const ctx = ctxWithStore(settingsFile);

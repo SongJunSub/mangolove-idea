@@ -7,8 +7,6 @@ export interface UseProjectGroups {
   readonly groups: readonly ProjectGroup[];
   /** True until the first list resolves. */
   readonly loading: boolean;
-  /** Re-fetch from main. */
-  refresh(): Promise<void>;
   /** Create a new empty group; returns its id, or null when the name is blank. */
   createGroup(name: string): Promise<string | null>;
   /** Rename a group; a blank name is rejected (no-op). */
@@ -28,10 +26,6 @@ export interface UseProjectGroups {
 export function useProjectGroups(): UseProjectGroups {
   const [groups, setGroups] = useState<readonly ProjectGroup[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    setGroups(await window.mango.groups.get());
-  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -107,5 +101,5 @@ export function useProjectGroups(): UseProjectGroups {
     [groups, commit],
   );
 
-  return { groups, loading, refresh, createGroup, renameGroup, removeGroup, assignRepoToGroup };
+  return { groups, loading, createGroup, renameGroup, removeGroup, assignRepoToGroup };
 }

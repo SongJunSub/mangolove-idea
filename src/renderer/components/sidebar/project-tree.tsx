@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { AgentStatus, RecentRepo, Worktree } from '../../../shared/types';
+import type { RecentRepo, Worktree } from '../../../shared/types';
 import type { ProjectGroup } from '../../../shared/project-groups';
 import type { WorktreeRowStatus } from '../../state/app-store';
 import type { UseWorktreesFor } from '../../hooks/use-worktrees-for';
 import type { UseProjectTreeExpanded } from '../../hooks/use-project-tree-expanded';
 import { useI18n } from '../../i18n/i18n-context';
-import { AGENT_STATUS_KEY } from '../../i18n/status-keys';
+import { AGENT_STATUS_KEY, AGENT_STATUS_COLOR } from '../../i18n/status-keys';
+import { basename } from '../../lib/basename';
 import { Chevron, FolderIcon } from '../tree/tree-icons';
 import { ServerDot } from './server-dot';
 
@@ -13,20 +14,6 @@ import { ServerDot } from './server-dot';
 const DRAG_TYPE = 'application/x-mango-repo';
 /** Sentinel drop-target id for "drop here to ungroup" (the tree body outside any group). */
 const UNGROUPED = '__ungrouped__';
-
-/** Agent-status dot colors — mirrors the worktree row idiom (STATUS_COLOR). */
-const STATUS_COLOR: Record<AgentStatus, string> = {
-  idle: 'var(--faint)',
-  starting: 'var(--warn)',
-  running: 'var(--ok)',
-  exited: 'var(--muted)',
-  error: 'var(--err)',
-};
-
-/** Last path segment as the repo's display name (matches RepoList). */
-function repoName(path: string): string {
-  return path.split('/').filter(Boolean).pop() ?? path;
-}
 
 /** True when a drag event carries a repo payload (so we only accept repo drops). */
 function isRepoDrag(e: React.DragEvent): boolean {
@@ -106,6 +93,33 @@ function InlineNameInput({
   );
 }
 
+/** A context-menu row: runs its action, then always closes the menu. */
+function MenuItem({
+  label,
+  onSelect,
+  close,
+  testId,
+}: {
+  readonly label: string;
+  readonly testId?: string;
+  onSelect(): void;
+  close(): void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className="tab-menu-item"
+      data-testid={testId}
+      onClick={() => {
+        onSelect();
+        close();
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 /** One worktree leaf. Active-repo rows carry the live status dot + optional Remove; static otherwise. */
 function WorktreeRow({
   worktree,
@@ -146,7 +160,7 @@ function WorktreeRow({
           className="pt-dot"
           aria-label={agentLabel}
           title={agentLabel}
-          style={{ background: STATUS_COLOR[agent] }}
+          style={{ background: AGENT_STATUS_COLOR[agent] }}
         />
       ) : (
         <span className="pt-dot pt-dot--static" aria-hidden="true" />
@@ -229,6 +243,7 @@ function RepoNode({
     if (active) toggle();
     else ctx.onSwitchRepo(repo.path);
   };
+  const notePad = { paddingLeft: level * 14 + 22 }; // aligns the loading/empty/error note under the worktrees
 
   return (
     <div className="pt-repo-wrap">
@@ -239,7 +254,7 @@ function RepoNode({
         aria-current={active ? 'true' : undefined}
         tabIndex={0}
         draggable
-        data-testid={`repo-node-${repoName(repo.path)}`}
+        data-testid={`repo-node-${basename(repo.path)}`}
         className={`pt-row pt-repo${active ? ' active' : ''}`}
         title={repo.path}
         onClick={activateRow}
@@ -261,24 +276,24 @@ function RepoNode({
         <span className="pt-ico pt-repo-ico">
           <FolderIcon open={active} />
         </span>
-        <span className="pt-name">{repoName(repo.path)}</span>
+        <span className="pt-name">{basename(repo.path)}</span>
         {active && <span className="pt-here">{t('projectTree.here')}</span>}
         {worktrees.length > 0 && <span className="pt-chip">{worktrees.length}</span>}
       </div>
       {open && (
         <div role="group">
           {error && (
-            <p className="pt-note pt-error" style={{ paddingLeft: level * 14 + 22 }}>
+            <p className="pt-note pt-error" style={notePad}>
               {t('projectTree.error')}
             </p>
           )}
           {loading && worktrees.length === 0 && (
-            <p className="pt-note" style={{ paddingLeft: level * 14 + 22 }}>
+            <p className="pt-note" style={notePad}>
               {t('projectTree.loading')}
             </p>
           )}
           {!loading && !error && worktrees.length === 0 && (
-            <p className="pt-note" style={{ paddingLeft: level * 14 + 22 }}>
+            <p className="pt-note" style={notePad}>
               {t('projectTree.noWorktrees')}
             </p>
           )}
@@ -315,8 +330,8 @@ function GroupNode({
   readonly repos: readonly RecentRepo[];
   readonly ctx: RepoNodeContext;
   readonly dropActive: boolean;
-  onDropRepo(e: React.DragEvent, groupId: string): void;
-  onDragOverGroup(e: React.DragEvent, groupId: string): void;
+  onDropRepo(e: React.DragEvent): void;
+  onDragOverGroup(e: React.DragEvent): void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const open = ctx.expanded.isGroupExpanded(group.id);
@@ -325,8 +340,8 @@ function GroupNode({
   return (
     <div
       className={`pt-group-wrap${dropActive ? ' pt-drop' : ''}`}
-      onDragOver={(e) => onDragOverGroup(e, group.id)}
-      onDrop={(e) => onDropRepo(e, group.id)}
+      onDragOver={onDragOverGroup}
+      onDrop={onDropRepo}
     >
       <div
         role="treeitem"
@@ -448,6 +463,7 @@ export function ProjectTree({
   const [creating, setCreating] = useState<{ repoPath: string | null } | null>(null);
   // The current drop target during a repo drag (a group id or UNGROUPED); drives the highlight.
   const [dragTarget, setDragTarget] = useState<string | null>(null);
+  const closeMenu = (): void => setMenu(null);
 
   const byPath = new Map(repos.map((r) => [r.path, r]));
   const grouped = new Set(groups.flatMap((g) => [...g.repoPaths]));
@@ -582,28 +598,18 @@ export function ProjectTree({
           >
             {menu.kind === 'header' && (
               <>
-                <button
-                  type="button"
-                  className="tab-menu-item"
-                  data-testid="menu-add-repo"
-                  onClick={() => {
-                    setMenu(null);
-                    onAddRepo();
-                  }}
-                >
-                  {t('app.repoAdd')}
-                </button>
-                <button
-                  type="button"
-                  className="tab-menu-item"
-                  data-testid="menu-new-group"
-                  onClick={() => {
-                    setMenu(null);
-                    setCreating({ repoPath: null });
-                  }}
-                >
-                  {t('projectTree.menu.newGroup')}
-                </button>
+                <MenuItem
+                  testId="menu-add-repo"
+                  label={t('app.repoAdd')}
+                  onSelect={onAddRepo}
+                  close={closeMenu}
+                />
+                <MenuItem
+                  testId="menu-new-group"
+                  label={t('projectTree.menu.newGroup')}
+                  onSelect={() => setCreating({ repoPath: null })}
+                  close={closeMenu}
+                />
               </>
             )}
             {menu.kind === 'repo' &&
@@ -611,72 +617,47 @@ export function ProjectTree({
                 const current = groupOf(menu.repoPath);
                 return (
                   <>
-                    <button
-                      type="button"
-                      className="tab-menu-item"
-                      data-testid="menu-new-group"
-                      onClick={() => {
-                        setCreating({ repoPath: menu.repoPath });
-                        setMenu(null);
-                      }}
-                    >
-                      {t('projectTree.menu.newGroupWithRepo')}
-                    </button>
+                    <MenuItem
+                      testId="menu-new-group"
+                      label={t('projectTree.menu.newGroupWithRepo')}
+                      onSelect={() => setCreating({ repoPath: menu.repoPath })}
+                      close={closeMenu}
+                    />
                     {groups
                       .filter((g) => g.id !== current?.id)
                       .map((g) => (
-                        <button
+                        <MenuItem
                           key={g.id}
-                          type="button"
-                          className="tab-menu-item"
-                          onClick={() => {
-                            onAssignRepo(menu.repoPath, g.id);
-                            setMenu(null);
-                          }}
-                        >
-                          {t('projectTree.menu.addTo', { name: g.name })}
-                        </button>
+                          label={t('projectTree.menu.addTo', { name: g.name })}
+                          onSelect={() => onAssignRepo(menu.repoPath, g.id)}
+                          close={closeMenu}
+                        />
                       ))}
                     {current && (
-                      <button
-                        type="button"
-                        className="tab-menu-item"
-                        data-testid="menu-remove-from-group"
-                        onClick={() => {
-                          onAssignRepo(menu.repoPath, null);
-                          setMenu(null);
-                        }}
-                      >
-                        {t('projectTree.menu.removeFromGroup')}
-                      </button>
+                      <MenuItem
+                        testId="menu-remove-from-group"
+                        label={t('projectTree.menu.removeFromGroup')}
+                        onSelect={() => onAssignRepo(menu.repoPath, null)}
+                        close={closeMenu}
+                      />
                     )}
                   </>
                 );
               })()}
             {menu.kind === 'group' && (
               <>
-                <button
-                  type="button"
-                  className="tab-menu-item"
-                  data-testid="menu-rename-group"
-                  onClick={() => {
-                    setRenamingGroupId(menu.groupId);
-                    setMenu(null);
-                  }}
-                >
-                  {t('projectTree.menu.rename')}
-                </button>
-                <button
-                  type="button"
-                  className="tab-menu-item"
-                  data-testid="menu-ungroup"
-                  onClick={() => {
-                    onRemoveGroup(menu.groupId);
-                    setMenu(null);
-                  }}
-                >
-                  {t('projectTree.menu.ungroup')}
-                </button>
+                <MenuItem
+                  testId="menu-rename-group"
+                  label={t('projectTree.menu.rename')}
+                  onSelect={() => setRenamingGroupId(menu.groupId)}
+                  close={closeMenu}
+                />
+                <MenuItem
+                  testId="menu-ungroup"
+                  label={t('projectTree.menu.ungroup')}
+                  onSelect={() => onRemoveGroup(menu.groupId)}
+                  close={closeMenu}
+                />
               </>
             )}
           </div>

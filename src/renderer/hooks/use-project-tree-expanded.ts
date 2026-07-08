@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProjectTreeExpanded } from '../../shared/project-groups';
 
 /** Expand/collapse state for the project tree (groups by id, repos by canonical path). */
@@ -26,11 +26,16 @@ export function useProjectTreeExpanded(
     repos: persisted?.repos ? [...persisted.repos] : [],
   }));
 
-  const groupSet = useMemo(() => new Set(expanded.groups), [expanded.groups]);
-  const repoSet = useMemo(() => new Set(expanded.repos), [expanded.repos]);
-
-  const isGroupExpanded = useCallback((id: string): boolean => groupSet.has(id), [groupSet]);
-  const isRepoExpanded = useCallback((path: string): boolean => repoSet.has(path), [repoSet]);
+  // Plain array membership — the expanded set is a handful of ids/paths, so .includes is simpler
+  // (and no slower at this scale) than deriving Sets.
+  const isGroupExpanded = useCallback(
+    (id: string): boolean => expanded.groups.includes(id),
+    [expanded.groups],
+  );
+  const isRepoExpanded = useCallback(
+    (path: string): boolean => expanded.repos.includes(path),
+    [expanded.repos],
+  );
 
   const toggleGroup = useCallback((id: string): void => {
     setExpanded((e) => ({

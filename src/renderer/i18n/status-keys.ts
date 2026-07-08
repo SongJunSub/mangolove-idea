@@ -17,6 +17,15 @@ export const AGENT_STATUS_KEY: Record<AgentStatus, MessageKey> = {
   error: 'status.agent.error',
 };
 
+/** CSS color var for each agent status dot (shared by the sidebar worktree rows). */
+export const AGENT_STATUS_COLOR: Record<AgentStatus, string> = {
+  idle: 'var(--faint)',
+  starting: 'var(--warn)',
+  running: 'var(--ok)',
+  exited: 'var(--muted)',
+  error: 'var(--err)',
+};
+
 /** Localized label key for each server state (shared by ServerControls + ServerDot). */
 export const SERVER_STATE_KEY: Record<ServerState, MessageKey> = {
   stopped: 'status.server.stopped',
