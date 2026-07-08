@@ -7,8 +7,12 @@ export interface UseProjectGroups {
   readonly groups: readonly ProjectGroup[];
   /** True until the first list resolves. */
   readonly loading: boolean;
-  /** Create a new empty group; returns its id, or null when the name is blank. */
-  createGroup(name: string): Promise<string | null>;
+  /**
+   * Create a new group; returns its id, or null when the name is blank. Pass `initialRepoPath` to
+   * move that repo INTO the new group in the SAME write (atomic) — never a create-then-assign pair,
+   * whose second call would run against a stale pre-create groups snapshot and clobber the group.
+   */
+  createGroup(name: string, initialRepoPath?: string): Promise<string | null>;
   /** Rename a group; a blank name is rejected (no-op). */
   renameGroup(id: string, name: string): Promise<void>;
   /** Remove a group — its repos become ungrouped (they remain in recentRepos). */
@@ -55,11 +59,20 @@ export function useProjectGroups(): UseProjectGroups {
   }, []);
 
   const createGroup = useCallback(
-    async (name: string): Promise<string | null> => {
+    async (name: string, initialRepoPath?: string): Promise<string | null> => {
       const trimmed = name.trim();
       if (trimmed === '') return null; // blank name rejected (never rely on the coercer to drop it)
       const id = crypto.randomUUID();
-      await commit([...groups, { id, name: trimmed, repoPaths: [] }]);
+      // Build the whole next set in ONE commit: strip the repo from its old group (1-repo-1-group)
+      // and seed it into the new group. Doing create + assign atomically avoids the stale-closure
+      // clobber a create-then-assign pair would hit (assign would run against pre-create groups).
+      const stripped = initialRepoPath
+        ? groups.map((g) => ({ ...g, repoPaths: g.repoPaths.filter((p) => p !== initialRepoPath) }))
+        : groups;
+      await commit([
+        ...stripped,
+        { id, name: trimmed, repoPaths: initialRepoPath ? [initialRepoPath] : [] },
+      ]);
       return id;
     },
     [groups, commit],

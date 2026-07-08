@@ -24,6 +24,15 @@ describe('coerceProjectGroups', () => {
     ]);
   });
 
+  it('trims group names and drops whitespace-only ones (main enforces, not just the client)', () => {
+    expect(
+      coerceProjectGroups([
+        { id: 'g1', name: '  CRS  ', repoPaths: [] },
+        { id: 'g2', name: '   ', repoPaths: [] }, // whitespace-only -> dropped
+      ]),
+    ).toEqual([{ id: 'g1', name: 'CRS', repoPaths: [] }]);
+  });
+
   it('collapses duplicate group ids to the first occurrence', () => {
     const out = coerceProjectGroups([
       { id: 'dup', name: 'first', repoPaths: ['/a'] },

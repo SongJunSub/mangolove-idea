@@ -47,6 +47,21 @@ describe('useProjectGroups', () => {
     ]);
   });
 
+  it('createGroup with a repoPath seeds it into the new group in ONE atomic commit', async () => {
+    const { set } = stub([{ id: 'g1', name: 'one', repoPaths: ['/repo', '/keep'] }]);
+    const { result } = renderHook(() => useProjectGroups());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.createGroup('Infra', '/repo');
+    });
+    // Single write: /repo stripped from its old group AND seeded into the new one (no stale-closure pair).
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith([
+      { id: 'g1', name: 'one', repoPaths: ['/keep'] },
+      { id: expect.any(String), name: 'Infra', repoPaths: ['/repo'] },
+    ]);
+  });
+
   it('createGroup rejects a blank name (returns null, no set)', async () => {
     const { set } = stub([]);
     const { result } = renderHook(() => useProjectGroups());

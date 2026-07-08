@@ -205,7 +205,7 @@ describe('<ProjectTree>', () => {
     const input = screen.getByTestId('new-group-input');
     fireEvent.change(input, { target: { value: 'Backend' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(onCreateGroup).toHaveBeenCalledWith('Backend'));
+    expect(onCreateGroup).toHaveBeenCalledWith('Backend', undefined); // no repo to seed
   });
 
   // ── repo context menu (Phase 4) ──────────────────────────────────────────────
@@ -218,7 +218,7 @@ describe('<ProjectTree>', () => {
     expect(onAssignRepo).toHaveBeenCalledWith(OTHER, 'g1');
   });
 
-  it('repo menu → "new group with this repo" creates a group and assigns the repo', async () => {
+  it('repo menu → "new group with this repo" creates + seeds the repo in ONE atomic call', async () => {
     const onCreateGroup = vi.fn(async () => 'gnew');
     const onAssignRepo = vi.fn();
     renderWithI18n(<Harness onCreateGroup={onCreateGroup} onAssignRepo={onAssignRepo} />);
@@ -227,8 +227,9 @@ describe('<ProjectTree>', () => {
     const input = screen.getByTestId('new-group-input');
     fireEvent.change(input, { target: { value: 'Infra' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(onCreateGroup).toHaveBeenCalledWith('Infra'));
-    await waitFor(() => expect(onAssignRepo).toHaveBeenCalledWith(OTHER, 'gnew'));
+    // Atomic: createGroup carries the repo; NO separate assign (that pair would clobber via stale groups).
+    expect(onCreateGroup).toHaveBeenCalledWith('Infra', OTHER);
+    expect(onAssignRepo).not.toHaveBeenCalled();
   });
 
   it('repo menu on a grouped repo → "remove from group" ungroups it', () => {

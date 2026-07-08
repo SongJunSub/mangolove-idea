@@ -418,7 +418,7 @@ export interface ProjectTreeProps {
   onRemoveWorktree(id: string): void;
   onAddRepo(): void;
   // ── grouping mutations (from useProjectGroups) ──
-  onCreateGroup(name: string): Promise<string | null>;
+  onCreateGroup(name: string, initialRepoPath?: string): Promise<string | null>;
   onRenameGroup(id: string, name: string): void;
   onRemoveGroup(id: string): void;
   onAssignRepo(repoPath: string, groupId: string | null): void;
@@ -471,11 +471,11 @@ export function ProjectTree({
   const groupOf = (repoPath: string): ProjectGroup | undefined =>
     groups.find((g) => g.repoPaths.includes(repoPath));
 
-  const submitCreate = async (name: string): Promise<void> => {
-    const repoPath = creating?.repoPath ?? null;
+  const submitCreate = (name: string): void => {
+    const repoPath = creating?.repoPath ?? undefined;
     setCreating(null);
-    const id = await onCreateGroup(name);
-    if (id && repoPath) onAssignRepo(repoPath, id);
+    // Create + seed the repo in ONE call (atomic) — avoids the create-then-assign stale-closure clobber.
+    void onCreateGroup(name, repoPath);
   };
 
   const onDropRepo = (e: React.DragEvent, groupId: string | null): void => {
@@ -559,7 +559,7 @@ export function ProjectTree({
             initial=""
             placeholder={t('projectTree.newGroupPlaceholder')}
             testId="new-group-input"
-            onSubmit={(v) => void submitCreate(v)}
+            onSubmit={submitCreate}
             onCancel={() => setCreating(null)}
           />
         )}

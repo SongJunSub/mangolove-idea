@@ -71,7 +71,11 @@ export function coerceProjectGroups(raw: unknown): ProjectGroup[] | undefined {
   for (const item of raw) {
     if (item === null || typeof item !== 'object') continue;
     const o = item as Record<string, unknown>;
-    if (!isNonEmptyString(o.id) || !isNonEmptyString(o.name)) continue;
+    if (!isNonEmptyString(o.id)) continue;
+    // Reject blank / whitespace-only names here too, so main (not just the client) enforces it —
+    // a hand-edited settings.json or any non-UI caller can't persist a nameless group.
+    const name = typeof o.name === 'string' ? o.name.trim() : '';
+    if (name === '') continue;
     if (seenIds.has(o.id)) continue;
     seenIds.add(o.id);
     const repoPaths = uniqueNonEmptyStrings(o.repoPaths).filter((p) => {
@@ -79,7 +83,7 @@ export function coerceProjectGroups(raw: unknown): ProjectGroup[] | undefined {
       claimedRepos.add(p);
       return true;
     });
-    groups.push({ id: o.id, name: o.name, repoPaths });
+    groups.push({ id: o.id, name, repoPaths });
   }
   return groups.length > 0 ? groups : undefined;
 }

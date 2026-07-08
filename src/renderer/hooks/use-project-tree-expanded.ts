@@ -26,6 +26,21 @@ export function useProjectTreeExpanded(
     repos: persisted?.repos ? [...persisted.repos] : [],
   }));
 
+  // The persisted expand state arrives asynchronously (settings fetch on mount), so the initializer
+  // above usually sees `undefined`. Adopt it the FIRST time it appears — UNION-merged into whatever
+  // is already open (e.g. the active repo App auto-revealed) so a load-order race drops neither the
+  // saved shape nor the reveal. Mirrors usePaneLayout's adopt effect. Without this, the saved shape
+  // is ignored and then overwritten on disk by the first reveal — a silent settings data loss.
+  const adopted = useRef(persisted !== undefined);
+  useEffect(() => {
+    if (adopted.current || !persisted) return;
+    adopted.current = true;
+    setExpanded((cur) => ({
+      groups: [...new Set([...cur.groups, ...persisted.groups])],
+      repos: [...new Set([...cur.repos, ...persisted.repos])],
+    }));
+  }, [persisted]);
+
   // Plain array membership — the expanded set is a handful of ids/paths, so .includes is simpler
   // (and no slower at this scale) than deriving Sets.
   const isGroupExpanded = useCallback(
