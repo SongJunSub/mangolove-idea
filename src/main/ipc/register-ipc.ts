@@ -76,6 +76,7 @@ import { createRefSyncGit } from '../sync/session-ref-git';
 import { getOrCreateMachineIdentity } from '../sync/machine-identity';
 import { SessionPublisher, type LiveSession } from '../sync/session-publisher';
 import { WorktreeManager } from '../managers/worktree-manager';
+import { coerceProjectGroups, type ProjectGroup } from '../../shared/project-groups';
 import { SessionManager, type SessionEmitter } from '../managers/session-manager';
 import { ShellManager } from '../managers/shell-manager';
 import { ServerManager, type ServerEmitter } from '../managers/server-manager';
@@ -269,6 +270,47 @@ async function getWorktreeManager(ctx: IpcContext): Promise<WorktreeManager> {
   const { simpleGit } = await import('simple-git');
   ctx.worktreeManager = new WorktreeManager(simpleGit(repoRoot), repoRoot);
   return ctx.worktreeManager;
+}
+
+/**
+ * Module-level cache of read-only WorktreeManagers for repos OTHER than a window's active one
+ * (powers the project tree's cross-repo listing). Keyed by canonical repo path; a WorktreeManager
+ * is stateless (a SimpleGit bound to a path), so sharing it across windows is safe and avoids a
+ * fresh simpleGit init + realpath on every tree expand / re-render.
+ */
+const worktreeManagersByPath = new Map<string, WorktreeManager>();
+
+/**
+ * The canonical repo roots that CURRENTLY exist as git repos, in recentRepos order, deduped. The
+ * SINGLE definition of "which recentRepos are live": REPO_LIST maps it to RecentRepo (adding the
+ * active flag), WORKTREE_LIST_FOR uses it as the security allowlist, and project groups use it as
+ * the pruning oracle — only a repo the user actually opened (and that still has a `.git`) may be
+ * listed or grouped. Pure over the passed array so callers read settings once.
+ */
+function liveCanonicalRepos(recentRepos: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of recentRepos) {
+    if (!existsSync(join(raw, '.git'))) continue; // stale: dir gone or no longer a repo
+    const path = canonicalRepoRoot(raw);
+    if (seen.has(path)) continue; // two raw forms of the same repo collapse to one
+    seen.add(path);
+    out.push(path);
+  }
+  return out;
+}
+
+/** Lists worktrees for a canonical repo path, reusing the window's manager for its active repo
+ *  (also honors a test-injected ctx.worktreeManager) and a shared cache for the rest. */
+async function listWorktreesForCanonical(ctx: IpcContext, canonical: string): Promise<Worktree[]> {
+  if (ctx.repoRoot === canonical) return (await getWorktreeManager(ctx)).list();
+  let manager = worktreeManagersByPath.get(canonical);
+  if (!manager) {
+    const { simpleGit } = await import('simple-git');
+    manager = new WorktreeManager(simpleGit(canonical), canonical);
+    worktreeManagersByPath.set(canonical, manager);
+  }
+  return manager.list();
 }
 
 /**
@@ -1336,17 +1378,10 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     const ctx = requireCtx(event);
     const store = getSettingsStore(ctx);
     const active = ctx.repoRoot ?? null; // already canonical (set in createWindow)
-    const seen = new Set<string>();
-    const repos: RecentRepo[] = [];
-    for (const raw of store.get().recentRepos ?? []) {
-      if (!existsSync(join(raw, '.git'))) continue; // stale: dir gone or no longer a repo
-      const path = canonicalRepoRoot(raw);
-      if (seen.has(path)) continue; // two raw forms of the same repo collapse to one
-      seen.add(path);
-      repos.push({ path, active: path === active });
-    }
+    const live = liveCanonicalRepos(store.get().recentRepos ?? []);
+    const repos: RecentRepo[] = live.map((path) => ({ path, active: path === active }));
     // Defensive: surface the active repo even if recentRepos somehow lost it.
-    if (active && !seen.has(active) && existsSync(join(active, '.git'))) {
+    if (active && !live.includes(active) && existsSync(join(active, '.git'))) {
       repos.unshift({ path: active, active: true });
     }
     return repos;
@@ -1367,6 +1402,63 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     store.set({ recentRepos });
     ctx.openRepo?.(root);
     return { ok: true, repoRoot: root };
+  });
+
+  // Read-only worktree listing for an ARBITRARY known repo (the project tree's cross-repo
+  // expansion). SECURITY: the repoPath is honored ONLY if it canonicalizes into the live
+  // recentRepos allowlist AND still has a `.git` — main never runs git in a path the renderer
+  // merely asserts. Any rejection or git error resolves to [] (never throws to the renderer).
+  ipcMain.handle(IPC.WORKTREE_LIST_FOR, async (event, repoPath: unknown): Promise<Worktree[]> => {
+    const ctx = requireCtx(event);
+    if (typeof repoPath !== 'string' || repoPath === '') return [];
+    const store = getSettingsStore(ctx);
+    try {
+      const canonical = canonicalRepoRoot(repoPath);
+      const live = new Set(liveCanonicalRepos(store.get().recentRepos ?? []));
+      if (!live.has(canonical)) return [];
+      if (!existsSync(join(canonical, '.git'))) return [];
+      return await listWorktreesForCanonical(ctx, canonical);
+    } catch {
+      return []; // realpath/git failure -> empty (defensive; the allowlist already gated it)
+    }
+  });
+
+  // Project groups (the tree's grouping layer): a persisted VIEW over recentRepos. GET returns the
+  // stored groups pruned to repos still present in the live canonical set (a repo removed/moved
+  // since drops out of its group). No write on read — pruning is a pure view transform, so two
+  // windows never race on it.
+  ipcMain.handle(IPC.GROUPS_GET, async (event): Promise<ProjectGroup[]> => {
+    const ctx = requireCtx(event);
+    const settings = getSettingsStore(ctx).get(); // read settings ONCE for both the live set + groups
+    const live = new Set(liveCanonicalRepos(settings.recentRepos ?? []));
+    return (settings.projectGroups ?? []).map((g) => ({
+      ...g,
+      repoPaths: g.repoPaths.filter((p) => live.has(p)),
+    }));
+  });
+
+  // Replace the whole group set. Shape-coerce (drops blank id/name, dedups ids, enforces
+  // 1-repo-1-group), canonicalize + prune repoPaths to the live set, RE-coerce so the invariant
+  // holds on canonical paths, persist, then broadcast GROUPS_CHANGED to every OTHER window so
+  // their trees re-fetch. Returns the STORED form for the caller to adopt.
+  ipcMain.handle(IPC.GROUPS_SET, async (event, groups: unknown): Promise<ProjectGroup[]> => {
+    const ctx = requireCtx(event);
+    const store = getSettingsStore(ctx);
+    const live = new Set(liveCanonicalRepos(store.get().recentRepos ?? []));
+    const normalized = (coerceProjectGroups(groups) ?? []).map((g) => ({
+      ...g,
+      repoPaths: g.repoPaths.map((p) => canonicalRepoRoot(p)).filter((p) => live.has(p)),
+    }));
+    const final = coerceProjectGroups(normalized) ?? [];
+    store.set({ projectGroups: final });
+    const senderId = event.sender.id;
+    const { BrowserWindow } = await import('electron');
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.webContents.id !== senderId && !win.isDestroyed()) {
+        win.webContents.send(IPC.GROUPS_CHANGED);
+      }
+    }
+    return final;
   });
 
   ipcMain.handle(IPC.SCROLLBACK_GET, async (event, worktreeId: string): Promise<string | null> => {

@@ -5,8 +5,14 @@ export const IPC = {
 
   // worktree CRUD (renderer -> main, invoke)
   WORKTREE_LIST: 'worktree:list',
+  WORKTREE_LIST_FOR: 'worktree:list-for', // invoke (repoPath -> Worktree[]; repoPath validated against recentRepos; [] on reject/error). read-only cross-repo listing for the project tree
   WORKTREE_CREATE: 'worktree:create',
   WORKTREE_REMOVE: 'worktree:remove',
+
+  // project groups (project tree grouping layer) — persisted view over recentRepos
+  GROUPS_GET: 'groups:get', // invoke (-> ProjectGroup[]; pruned to live canonical recentRepos)
+  GROUPS_SET: 'groups:set', // invoke (ProjectGroup[] -> ProjectGroup[]; shape-coerced + canonicalized + pruned + 1-repo-1-group; returns the stored form)
+  GROUPS_CHANGED: 'groups:changed', // main -> renderer, event (another window changed groups; re-fetch)
 
   // agent session (mixed)
   SESSION_SPAWN: 'session:spawn', // invoke

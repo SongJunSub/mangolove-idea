@@ -21,8 +21,14 @@ const api: MangoApi = {
   },
   worktree: {
     list: () => ipcRenderer.invoke(IPC.WORKTREE_LIST),
+    listFor: (repoPath) => ipcRenderer.invoke(IPC.WORKTREE_LIST_FOR, repoPath),
     create: (req) => ipcRenderer.invoke(IPC.WORKTREE_CREATE, req),
     remove: (req) => ipcRenderer.invoke(IPC.WORKTREE_REMOVE, req),
+  },
+  groups: {
+    get: () => ipcRenderer.invoke(IPC.GROUPS_GET),
+    set: (groups) => ipcRenderer.invoke(IPC.GROUPS_SET, groups),
+    onChanged: (cb) => subscribe(IPC.GROUPS_CHANGED, cb),
   },
   session: {
     spawn: (req) => ipcRenderer.invoke(IPC.SESSION_SPAWN, req),
