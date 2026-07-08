@@ -1038,6 +1038,37 @@ a {
 .pt-note.pt-error {
   color: var(--err);
 }
+/* ── drag-to-group (Phase 4): a repo dragged over a group highlights that group; over the empty
+ *    tree body highlights the body as the "ungroup" target. ── */
+.pt-group-wrap.pt-drop {
+  background: var(--accent-soft);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--accent-ring);
+}
+.project-tree-body.pt-drop-root {
+  box-shadow: inset 0 0 0 2px var(--accent-ring);
+  border-radius: 8px;
+}
+.pt-row[draggable='true'] {
+  -webkit-user-drag: element;
+}
+/* inline group name field (create / rename) — sits where the group name would be */
+.pt-name-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--code-bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 2px 6px;
+  outline: none;
+}
+.project-tree-body > .pt-name-input {
+  margin: 2px 2px 4px;
+}
 
 /* ── Terminal / diff / browser / references tabs (A2e): an underline tab bar with a clear
  *    active state — previously bare <button>s with NO selected affordance at all. ── */

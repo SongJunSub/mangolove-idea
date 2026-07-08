@@ -10,6 +10,7 @@ import type { WorktreeRowStatus } from '../../src/renderer/state/app-store';
 
 const ACTIVE = '/Users/me/crs';
 const OTHER = '/Users/me/mangolove-idea';
+const DRAG_TYPE = 'application/x-mango-repo';
 
 const repos: RecentRepo[] = [
   { path: ACTIVE, active: true },
@@ -28,6 +29,18 @@ const statuses = new Map<string, WorktreeRowStatus>([
   [`${ACTIVE}/feat`, { agent: 'running', server: 'stopped', ownsServer: false }],
 ]);
 
+/** A minimal DataTransfer carrying a repo path (jsdom lacks a real one). */
+function repoDrag(path: string): Partial<DataTransfer> {
+  const store: Record<string, string> = { [DRAG_TYPE]: path };
+  return {
+    types: [DRAG_TYPE],
+    getData: (t: string) => store[t] ?? '',
+    setData: (t: string, v: string) => {
+      store[t] = v;
+    },
+  } as unknown as DataTransfer;
+}
+
 interface HarnessProps {
   repos?: RecentRepo[];
   groups?: ProjectGroup[];
@@ -37,6 +50,10 @@ interface HarnessProps {
   onSwitchRepo?: (path: string) => void;
   onRemoveWorktree?: (id: string) => void;
   onAddRepo?: () => void;
+  onCreateGroup?: (name: string) => Promise<string | null>;
+  onRenameGroup?: (id: string, name: string) => void;
+  onRemoveGroup?: (id: string) => void;
+  onAssignRepo?: (repoPath: string, groupId: string | null) => void;
 }
 
 /** Drives ProjectTree with the REAL expand + lazy-load hooks so toggles/loads actually re-render. */
@@ -58,6 +75,10 @@ function Harness(props: HarnessProps) {
       onSwitchRepo={props.onSwitchRepo ?? vi.fn()}
       onRemoveWorktree={props.onRemoveWorktree ?? vi.fn()}
       onAddRepo={props.onAddRepo ?? vi.fn()}
+      onCreateGroup={props.onCreateGroup ?? vi.fn(async () => null)}
+      onRenameGroup={props.onRenameGroup ?? vi.fn()}
+      onRemoveGroup={props.onRemoveGroup ?? vi.fn()}
+      onAssignRepo={props.onAssignRepo ?? vi.fn()}
     />
   );
 }
@@ -73,6 +94,8 @@ function stubListFor(impl: (repoPath: string) => Promise<Worktree[]>) {
 
 describe('<ProjectTree>', () => {
   beforeEach(() => stubListFor(async () => []));
+
+  // ── rendering + navigation ──────────────────────────────────────────────────
 
   it('renders groups + ungrouped repos at the top level; grouped repos hide until expanded', () => {
     renderWithI18n(<Harness />);
@@ -158,16 +181,108 @@ describe('<ProjectTree>', () => {
     expect(onSwitchRepo).toHaveBeenCalledWith(OTHER);
   });
 
-  it('the + button triggers onAddRepo', () => {
-    const onAddRepo = vi.fn();
-    renderWithI18n(<Harness onAddRepo={onAddRepo} />);
-    fireEvent.click(screen.getByTestId('repo-add'));
-    expect(onAddRepo).toHaveBeenCalledOnce();
-  });
-
   it('shows the empty state when there are no repos', () => {
     renderWithI18n(<Harness repos={[]} groups={[]} />);
     expect(screen.getByTestId('project-count')).toHaveTextContent('0');
     expect(screen.getByText('No repositories yet')).toBeInTheDocument();
+  });
+
+  // ── header menu (Phase 4) ────────────────────────────────────────────────────
+
+  it('the + button opens a menu; "add repository" triggers onAddRepo', () => {
+    const onAddRepo = vi.fn();
+    renderWithI18n(<Harness onAddRepo={onAddRepo} />);
+    fireEvent.click(screen.getByTestId('project-add'));
+    fireEvent.click(screen.getByTestId('menu-add-repo'));
+    expect(onAddRepo).toHaveBeenCalledOnce();
+  });
+
+  it('header menu "new group" creates an empty group from the inline input', async () => {
+    const onCreateGroup = vi.fn(async () => 'newid');
+    renderWithI18n(<Harness onCreateGroup={onCreateGroup} />);
+    fireEvent.click(screen.getByTestId('project-add'));
+    fireEvent.click(screen.getByTestId('menu-new-group'));
+    const input = screen.getByTestId('new-group-input');
+    fireEvent.change(input, { target: { value: 'Backend' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(onCreateGroup).toHaveBeenCalledWith('Backend'));
+  });
+
+  // ── repo context menu (Phase 4) ──────────────────────────────────────────────
+
+  it('repo menu → "add to CRS" assigns the ungrouped repo to that group', () => {
+    const onAssignRepo = vi.fn();
+    renderWithI18n(<Harness onAssignRepo={onAssignRepo} />);
+    fireEvent.contextMenu(screen.getByTestId('repo-node-mangolove-idea'));
+    fireEvent.click(screen.getByText('Add to “CRS”'));
+    expect(onAssignRepo).toHaveBeenCalledWith(OTHER, 'g1');
+  });
+
+  it('repo menu → "new group with this repo" creates a group and assigns the repo', async () => {
+    const onCreateGroup = vi.fn(async () => 'gnew');
+    const onAssignRepo = vi.fn();
+    renderWithI18n(<Harness onCreateGroup={onCreateGroup} onAssignRepo={onAssignRepo} />);
+    fireEvent.contextMenu(screen.getByTestId('repo-node-mangolove-idea'));
+    fireEvent.click(screen.getByTestId('menu-new-group'));
+    const input = screen.getByTestId('new-group-input');
+    fireEvent.change(input, { target: { value: 'Infra' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(onCreateGroup).toHaveBeenCalledWith('Infra'));
+    await waitFor(() => expect(onAssignRepo).toHaveBeenCalledWith(OTHER, 'gnew'));
+  });
+
+  it('repo menu on a grouped repo → "remove from group" ungroups it', () => {
+    const onAssignRepo = vi.fn();
+    renderWithI18n(
+      <Harness expandedInit={{ groups: ['g1'], repos: [] }} onAssignRepo={onAssignRepo} />,
+    );
+    fireEvent.contextMenu(screen.getByTestId('repo-node-crs'));
+    fireEvent.click(screen.getByTestId('menu-remove-from-group'));
+    expect(onAssignRepo).toHaveBeenCalledWith(ACTIVE, null);
+  });
+
+  // ── group context menu (Phase 4) ─────────────────────────────────────────────
+
+  it('group menu → rename shows an inline input that commits on Enter', () => {
+    const onRenameGroup = vi.fn();
+    renderWithI18n(<Harness onRenameGroup={onRenameGroup} />);
+    fireEvent.contextMenu(screen.getByTestId('group-node-CRS'));
+    fireEvent.click(screen.getByTestId('menu-rename-group'));
+    const input = screen.getByTestId('group-rename-g1');
+    fireEvent.change(input, { target: { value: 'CRS Platform' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRenameGroup).toHaveBeenCalledWith('g1', 'CRS Platform');
+  });
+
+  it('group menu → ungroup removes the group', () => {
+    const onRemoveGroup = vi.fn();
+    renderWithI18n(<Harness onRemoveGroup={onRemoveGroup} />);
+    fireEvent.contextMenu(screen.getByTestId('group-node-CRS'));
+    fireEvent.click(screen.getByTestId('menu-ungroup'));
+    expect(onRemoveGroup).toHaveBeenCalledWith('g1');
+  });
+
+  // ── drag to group / drag to ungroup (Phase 4) ────────────────────────────────
+
+  it('dropping a repo on a group assigns it to that group', () => {
+    const onAssignRepo = vi.fn();
+    renderWithI18n(<Harness onAssignRepo={onAssignRepo} />);
+    const wrap = screen.getByTestId('group-node-CRS').closest('.pt-group-wrap')!;
+    const dataTransfer = repoDrag(OTHER);
+    fireEvent.dragOver(wrap, { dataTransfer });
+    fireEvent.drop(wrap, { dataTransfer });
+    expect(onAssignRepo).toHaveBeenCalledWith(OTHER, 'g1');
+  });
+
+  it('dropping a repo on the empty tree body ungroups it', () => {
+    const onAssignRepo = vi.fn();
+    renderWithI18n(
+      <Harness expandedInit={{ groups: ['g1'], repos: [] }} onAssignRepo={onAssignRepo} />,
+    );
+    const body = screen.getByRole('tree');
+    const dataTransfer = repoDrag(ACTIVE);
+    fireEvent.dragOver(body, { dataTransfer });
+    fireEvent.drop(body, { dataTransfer });
+    expect(onAssignRepo).toHaveBeenCalledWith(ACTIVE, null);
   });
 });

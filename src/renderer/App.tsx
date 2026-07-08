@@ -878,6 +878,12 @@ export function App(): React.JSX.Element {
                             if (r.ok) void recentRepos.refresh();
                           })
                         }
+                        onCreateGroup={projectGroups.createGroup}
+                        onRenameGroup={(id, name) => void projectGroups.renameGroup(id, name)}
+                        onRemoveGroup={(id) => void projectGroups.removeGroup(id)}
+                        onAssignRepo={(path, groupId) =>
+                          void projectGroups.assignRepoToGroup(path, groupId)
+                        }
                       />
                     </div>
                   }
