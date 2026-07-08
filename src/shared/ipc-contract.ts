@@ -67,6 +67,7 @@ import type {
   UpdateProgress,
   UsageStatus,
 } from './types';
+import type { ProjectGroup } from './project-groups';
 
 /** Unsubscribe handle returned by every on*() subscriber. */
 export type Unsubscribe = () => void;
@@ -84,6 +85,13 @@ export interface MangoApi {
   };
   worktree: {
     list(): Promise<Worktree[]>;
+    /**
+     * List worktrees for an ARBITRARY known repo (read-only) — powers the project tree's
+     * per-repo lazy expansion across repos other than this window's active one. `repoPath` is
+     * validated against the live recentRepos set in main; an unknown/missing path or any git
+     * error resolves to `[]` (never throws). Carries NO live agent/server status (static snapshot).
+     */
+    listFor(repoPath: string): Promise<Worktree[]>;
     create(req: CreateWorktreeRequest): Promise<Worktree>;
     remove(req: RemoveWorktreeRequest): Promise<Ack>;
   };
@@ -194,6 +202,18 @@ export interface MangoApi {
     get(): Promise<AppSettings>;
     /** Persists a partial; returns the merged, sanitized settings. */
     set(partial: Partial<AppSettings>): Promise<AppSettings>;
+  };
+  groups: {
+    /** Project groups, pruned to repos that still exist in recentRepos (canonical). */
+    get(): Promise<ProjectGroup[]>;
+    /**
+     * Replace the whole group set. Main shape-coerces, canonicalizes + prunes repoPaths, and
+     * re-applies the "1 repo = 1 group" invariant, then returns the STORED form (the client must
+     * adopt it, discarding its optimistic value). Broadcasts GROUPS_CHANGED to other windows.
+     */
+    set(groups: ProjectGroup[]): Promise<ProjectGroup[]>;
+    /** Fires when ANOTHER window changed the groups; the listener should re-fetch. */
+    onChanged(cb: () => void): Unsubscribe;
   };
   scrollback: {
     /** Last serialized terminal screen for a worktree, or null if none saved. */

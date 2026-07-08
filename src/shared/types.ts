@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { TerminalLayout } from './terminal-layout';
 import type { OpenTabs } from './open-tabs';
+import type { ProjectGroup, ProjectTreeExpanded } from './project-groups';
 
 /** A git worktree managed by MangoLove IDEA. */
 export interface Worktree {
@@ -672,6 +673,19 @@ export interface AppSettings {
    * replaced) so a second window/repo cannot stomp another's tabs. See shared/open-tabs.ts.
    */
   readonly openTabs?: OpenTabs;
+  /**
+   * User-defined project groups (the "프로젝트 트리" grouping layer): named buckets of related
+   * repos, e.g. "CRS" holding crs/crs-admin/crs-be. A repo belongs to at most one group. Purely
+   * a VIEW over recentRepos (the source of truth for which repos exist) — a group referencing a
+   * repo no longer in recentRepos is pruned by the GROUPS_GET handler (fs-canonical). Coerced on
+   * read AND write by the shared sanitizer; see shared/project-groups.ts. Unset => no groups.
+   */
+  readonly projectGroups?: readonly ProjectGroup[];
+  /**
+   * Which project-tree nodes are EXPANDED (groups by id, repos by canonical path). Persisted so the
+   * tree keeps its shape across the renderer reloads a repo switch causes. Unset => all collapsed.
+   */
+  readonly projectTreeExpanded?: ProjectTreeExpanded;
 }
 
 /**

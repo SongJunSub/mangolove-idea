@@ -4,6 +4,7 @@ import type { AppSettings } from '../../shared/types';
 import { coercePaneLayout } from '../../shared/pane-layout';
 import { coerceTerminalLayouts } from '../../shared/terminal-layout';
 import { coerceOpenTabs, coerceWorktreeTabs, type OpenTabs } from '../../shared/open-tabs';
+import { coerceProjectGroups, coerceProjectTreeExpanded } from '../../shared/project-groups';
 
 /**
  * Resolves the default settings.json path under Electron's userData dir. Kept
@@ -147,6 +148,16 @@ export class SettingsStore {
       if (Object.keys(next).length > 0) merged.openTabs = next;
       else delete merged.openTabs;
     }
+    if ('projectGroups' in source) {
+      const groups = coerceProjectGroups(source.projectGroups);
+      if (groups) merged.projectGroups = groups;
+      else delete merged.projectGroups; // empty/invalid -> unset (no groups)
+    }
+    if ('projectTreeExpanded' in source) {
+      const expanded = coerceProjectTreeExpanded(source.projectTreeExpanded);
+      if (expanded) merged.projectTreeExpanded = expanded;
+      else delete merged.projectTreeExpanded; // nothing expanded -> unset (all collapsed)
+    }
     this.write(merged as AppSettings);
     return merged as AppSettings;
   }
@@ -177,6 +188,10 @@ export class SettingsStore {
     if (terminalLayouts) out.terminalLayouts = terminalLayouts;
     const openTabs = coerceOpenTabs(source.openTabs);
     if (openTabs) out.openTabs = openTabs;
+    const projectGroups = coerceProjectGroups(source.projectGroups);
+    if (projectGroups) out.projectGroups = projectGroups;
+    const projectTreeExpanded = coerceProjectTreeExpanded(source.projectTreeExpanded);
+    if (projectTreeExpanded) out.projectTreeExpanded = projectTreeExpanded;
     return out as AppSettings;
   }
 
