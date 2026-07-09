@@ -51,6 +51,8 @@ signing.env
 
 # Claude Code harness worktrees / local state (not part of the repo)
 .claude/worktrees/
+.claude/settings.json
+.claude/settings.local.json
 
 # Playwright (used only for throwaway local smoke tests, not committed)
 .playwright-mcp/

@@ -33,5 +33,12 @@
 
 - 타입체크: `npm run typecheck`
 - 린트: `npm run lint`
-- 테스트: `npm run test`
+- 테스트: `npm run test` (전체) · `npm run test:unit` (빠른 단위, integration 제외) · `npm run test:integration` (real-git만)
 - 빌드: `npm run build`
+- **전체 게이트: `npm run verify`** (typecheck → lint → test → build 를 **순차** 실행) · 스모크까지: `npm run verify:full`
+
+### 테스트 풀 구조 & 동시 실행 금지
+
+- vitest 는 3 프로젝트로 분리된다: `node`(빠른 단위, 병렬), `jsdom`(렌더러), `integration`(real-git 통합, **직렬** `fileParallelism:false`).
+- real-git 서브프로세스를 띄우는 테스트는 파일명을 **`*.integration.test.ts`** 로 지어 `integration` 풀에 넣는다 (규약). 그래야 빠른 `node` 풀이 hermetic·병렬안전하게 유지되고 pass/fail 이 주변 CPU 부하에 의존하지 않는다.
+- **`npm run build` 와 `npm run test` 를 동시에 돌리지 말 것** — CPU 경합으로 real-git integration 테스트가 타임아웃하며 거짓 실패한다. 항상 `npm run verify`(순차) 를 쓰거나, 손으로 돌릴 땐 test → build 순서로.
