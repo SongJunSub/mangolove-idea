@@ -20,6 +20,25 @@ function isRepoDrag(e: React.DragEvent): boolean {
   return e.dataTransfer.types.includes(DRAG_TYPE);
 }
 
+/**
+ * Moves keyboard focus between the tree's visible rows (↑/↓/Home/End). Reads the treeitems in DOM
+ * order (= visual order), finds the focused one, and focuses the neighbour. Per-row handlers still
+ * own Enter/Space (activate) and ←/→ (expand/collapse); this only adds vertical movement.
+ */
+function moveTreeFocus(container: HTMLElement, key: string): void {
+  const rows = Array.from(container.querySelectorAll<HTMLElement>('[role="treeitem"]'));
+  if (rows.length === 0) return;
+  const cur = rows.indexOf(document.activeElement as HTMLElement);
+  let target: number;
+  if (key === 'Home') target = 0;
+  else if (key === 'End') target = rows.length - 1;
+  else if (cur < 0)
+    target = 0; // ArrowUp/Down with nothing focused -> first row
+  else if (key === 'ArrowDown') target = Math.min(rows.length - 1, cur + 1);
+  else target = Math.max(0, cur - 1); // ArrowUp (clamp at top — no wrap, standard tree)
+  rows[target]?.focus();
+}
+
 /** Enter/Space activates a row; Arrow keys expand/collapse a branch node (partial WAI-ARIA tree). */
 function rowKeyHandler(opts: {
   activate(): void;
@@ -492,6 +511,14 @@ export function ProjectTree({
   // The current drop target during a repo drag (a group id or UNGROUPED); drives the highlight.
   const [dragTarget, setDragTarget] = useState<string | null>(null);
   const closeMenu = (): void => setMenu(null);
+  // ↑/↓/Home/End move focus between rows; the per-row handlers own Enter/Space + ←/→ (they don't
+  // touch these keys, so both coexist as the event bubbles up to the tree container).
+  const onTreeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      moveTreeFocus(e.currentTarget, e.key);
+    }
+  };
 
   const byPath = new Map(repos.map((r) => [r.path, r]));
   const grouped = new Set(groups.flatMap((g) => [...g.repoPaths]));
@@ -638,6 +665,7 @@ export function ProjectTree({
         className={`project-tree-body${dragTarget === UNGROUPED ? ' pt-drop-root' : ''}`}
         role="tree"
         aria-label={t('app.projects')}
+        onKeyDown={onTreeKeyDown}
         onDragOver={(e) => onDragOver(e, UNGROUPED)}
         onDrop={(e) => onDropRepo(e, null)}
       >
