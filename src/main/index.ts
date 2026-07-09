@@ -14,6 +14,7 @@ import {
   teardownWindow,
   rebindCtxRepo,
   decideRepoSwitch,
+  applyRepoSwitchAction,
   canonicalRepoRoot,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
@@ -52,41 +53,14 @@ let abducoPath: string | null = null;
 function switchOrFocusRepo(wcId: number, repoRoot: string, worktreeId?: string): void {
   const root = canonicalRepoRoot(repoRoot);
   const action = decideRepoSwitch(contexts, wcId, root, worktreeId);
-  const current = contexts.get(wcId);
-  switch (action.kind) {
-    case 'noop':
-      return;
-    case 'reselect':
-      // Already on this repo — just tell this window to select the worktree (no reload).
-      if (current?.mainWindow && !current.mainWindow.isDestroyed()) {
-        current.mainWindow.webContents.send(IPC.REPO_SELECT_WORKTREE, {
-          worktreeId: action.worktreeId,
-        });
-      }
-      return;
-    case 'focus': {
-      // Open elsewhere -> focus it, don't duplicate or steal. Pend the selection durably (the
-      // nudge is lost if the target isn't listening yet) AND nudge so it applies live if it is.
-      const other = contexts.get(action.targetWcId);
-      if (!other?.mainWindow || other.mainWindow.isDestroyed()) return;
-      other.pendingSelectWorktreeId = action.worktreeId ?? null;
-      if (action.worktreeId) {
-        other.mainWindow.webContents.send(IPC.REPO_SELECT_WORKTREE, {
-          worktreeId: action.worktreeId,
-        });
-      }
-      other.mainWindow.focus();
-      return;
-    }
-    case 'reload':
-      if (!current?.mainWindow) return;
-      rebindCtxRepo(current, root);
-      // ALWAYS set (null clears a stale target from a prior cross-repo click) so a plain switch
-      // never inherits a pending selection. Survives the reload — ctx keeps its webContents.id.
-      current.pendingSelectWorktreeId = action.worktreeId ?? null;
-      current.mainWindow.webContents.reload();
-      return;
-  }
+  // Pure decision -> injected Electron effects (applyRepoSwitchAction is unit-tested with fakes).
+  applyRepoSwitchAction(action, wcId, root, contexts, {
+    rebind: (ctx, r) => rebindCtxRepo(ctx, r),
+    reload: (ctx) => ctx.mainWindow?.webContents.reload(),
+    selectWorktree: (ctx, id) =>
+      ctx.mainWindow?.webContents.send(IPC.REPO_SELECT_WORKTREE, { worktreeId: id }),
+    focus: (ctx) => ctx.mainWindow?.focus(),
+  });
 }
 
 /**

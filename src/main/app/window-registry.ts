@@ -200,6 +200,65 @@ export function decideRepoSwitch(
   return { kind: 'reload', worktreeId };
 }
 
+/** True for a window whose BrowserWindow is present and not destroyed. */
+function isLiveCtx(ctx: IpcContext | undefined): ctx is IpcContext {
+  return !!ctx?.mainWindow && !ctx.mainWindow.isDestroyed();
+}
+
+/** The side effects applyRepoSwitchAction performs — injected so it is unit-testable sans Electron. */
+export interface RepoSwitchEffects {
+  /** Rebind a window's ctx to a new repo root (managers torn down + repoRoot set). */
+  rebind(ctx: IpcContext, root: string): void;
+  /** Reload a window's renderer (it remounts, re-reads REPO_GET, and pulls the pending selection). */
+  reload(ctx: IpcContext): void;
+  /** Nudge a window to select a worktree (REPO_SELECT_WORKTREE). */
+  selectWorktree(ctx: IpcContext, worktreeId: string): void;
+  /** Bring a window to the foreground. */
+  focus(ctx: IpcContext): void;
+}
+
+/**
+ * Interprets a RepoSwitchAction into side effects — the counterpart to the pure decideRepoSwitch.
+ * Sets `pendingSelectWorktreeId` on the target ctx as the durable, consume-once delivery channel
+ * (ALWAYS overwritten on reload so a plain switch can't inherit a stale target). Effects are
+ * injected, so the reload / focus / reselect branches are unit-testable without a real BrowserWindow.
+ */
+export function applyRepoSwitchAction(
+  action: RepoSwitchAction,
+  wcId: number,
+  root: string,
+  contexts: Map<number, IpcContext>,
+  fx: RepoSwitchEffects,
+): void {
+  const current = contexts.get(wcId);
+  switch (action.kind) {
+    case 'noop':
+      return;
+    case 'reselect':
+      // Already on this repo — just tell this window to select the worktree (no reload).
+      if (isLiveCtx(current)) fx.selectWorktree(current, action.worktreeId);
+      return;
+    case 'focus': {
+      // Open elsewhere -> focus it. Pend the selection durably (the nudge is lost if the target
+      // isn't listening yet) AND nudge so it applies live if it is.
+      const other = contexts.get(action.targetWcId);
+      if (!isLiveCtx(other)) return;
+      other.pendingSelectWorktreeId = action.worktreeId ?? null;
+      if (action.worktreeId) fx.selectWorktree(other, action.worktreeId);
+      fx.focus(other);
+      return;
+    }
+    case 'reload':
+      // Rebind THIS window + reload. ALWAYS set pending (null clears a stale target) so a plain
+      // switch never inherits one; it survives the reload — ctx keeps its webContents.id.
+      if (!isLiveCtx(current)) return;
+      fx.rebind(current, root);
+      current.pendingSelectWorktreeId = action.worktreeId ?? null;
+      fx.reload(current);
+      return;
+  }
+}
+
 /**
  * The first context with NO repoRoot (the empty-gate window showing the picker), or
  * undefined when every window already owns a repo. The launcher attaches a picked
