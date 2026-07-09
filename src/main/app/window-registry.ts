@@ -17,6 +17,40 @@ export function canonicalRepoRoot(repoRoot: string): string {
   }
 }
 
+/** A window rectangle (position + size) — the subset of Electron's Rectangle these helpers need. */
+export interface WindowRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Pixels a cascaded new window is offset from its anchor along each axis. */
+export const CASCADE_STEP = 30;
+
+/**
+ * The top-left for a NEW window cascaded off `from`, CLAMPED to `workArea` so repeatedly opening
+ * windows never marches them off-screen: each axis offsets by CASCADE_STEP, but if that would push
+ * the window's far edge past the work area it wraps back to the work-area origin (a fresh cascade
+ * run). `size` is the new window's width/height. Pure — unit-tested without Electron.
+ */
+export function cascadeWindowPosition(
+  from: WindowRect,
+  workArea: WindowRect,
+  size: { readonly width: number; readonly height: number },
+): { x: number; y: number } {
+  const axis = (start: number, span: number, waStart: number, waSpan: number): number => {
+    const next = start + CASCADE_STEP;
+    // Wrap to the work-area origin once the offset window would extend past the work-area end.
+    if (next + span > waStart + waSpan) return waStart;
+    return Math.max(waStart, next);
+  };
+  return {
+    x: axis(from.x, size.width, workArea.x, workArea.width),
+    y: axis(from.y, size.height, workArea.y, workArea.height),
+  };
+}
+
 /** The minimal event slice requireCtxFrom needs — a sender carrying an id. */
 export interface CtxEventLike {
   readonly sender: unknown;
