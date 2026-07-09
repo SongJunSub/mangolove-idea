@@ -9,6 +9,7 @@ import {
   cascadeWindowPosition,
   CASCADE_STEP,
   openRepoRootsExcluding,
+  perWindowQuitInfo,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
@@ -271,6 +272,30 @@ describe('openRepoRootsExcluding (repos open in OTHER windows → the badge)', (
     expect(openRepoRootsExcluding(contexts, 1)).toEqual(new Set(['/b'])); // excludes self (/a), null, dead
     expect(openRepoRootsExcluding(contexts, 9)).toEqual(new Set(['/a', '/b'])); // no exclusion
     expect(openRepoRootsExcluding(new Map(), 1)).toEqual(new Set()); // no windows
+  });
+});
+
+describe('perWindowQuitInfo (per-window quit attribution)', () => {
+  const win = (repoRoot: string | null, activeTurns: string[], unsaved: number): IpcContext =>
+    ({
+      mainWindow: { isDestroyed: () => false },
+      repoRoot,
+      sessionManager: { activeTurnWorktreeIds: () => activeTurns },
+      unsavedFileCount: unsaved,
+    }) as never;
+
+  it('lists ONLY windows with an active turn or unsaved file, named by repo basename', () => {
+    const contexts = new Map<number, IpcContext>([
+      [1, win('/Users/me/crs', ['/wt/a', '/wt/b'], 0)], // 2 active turns
+      [2, win('/Users/me/pickme', [], 3)], // 3 unsaved
+      [3, win('/Users/me/idle', [], 0)], // nothing → excluded
+      [4, win(null, ['/wt/x'], 0)], // empty-gate with an active turn → repoName null
+    ]);
+    expect(perWindowQuitInfo(contexts)).toEqual([
+      { repoName: 'crs', activeTurnCount: 2, unsavedFileCount: 0 },
+      { repoName: 'pickme', activeTurnCount: 0, unsavedFileCount: 3 },
+      { repoName: null, activeTurnCount: 1, unsavedFileCount: 0 },
+    ]);
   });
 });
 

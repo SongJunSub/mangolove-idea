@@ -1,6 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import type { IpcContext } from '../ipc/ipc-context';
+import type { QuitWindowInfo } from '../../shared/types';
 
 /**
  * Canonicalizes a repo path (realpath: resolves symlinks like /tmp -> /private/tmp,
@@ -121,6 +122,23 @@ export function aggregateUnsavedCount(contexts: Map<number, IpcContext>): number
   let total = 0;
   for (const ctx of contexts.values()) total += ctx.unsavedFileCount ?? 0;
   return total;
+}
+
+/**
+ * Per-window breakdown of what a quit would lose — ONLY the windows that actually have an active
+ * turn or an unsaved file. Powers the quit dialog's multi-window attribution ("<repo>: 2 active").
+ * repoName is the repo's basename (null for an empty-gate window). Pure over `contexts`.
+ */
+export function perWindowQuitInfo(contexts: Map<number, IpcContext>): QuitWindowInfo[] {
+  const out: QuitWindowInfo[] = [];
+  for (const ctx of contexts.values()) {
+    const activeTurnCount = ctx.sessionManager?.activeTurnWorktreeIds().length ?? 0;
+    const unsavedFileCount = ctx.unsavedFileCount ?? 0;
+    if (activeTurnCount === 0 && unsavedFileCount === 0) continue;
+    const repoName = ctx.repoRoot ? (ctx.repoRoot.split('/').filter(Boolean).pop() ?? null) : null;
+    out.push({ repoName, activeTurnCount, unsavedFileCount });
+  }
+  return out;
 }
 
 /** killAll() + dispose() EVERY window's managers (no orphan claude/server/shell anywhere). */

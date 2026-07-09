@@ -1141,6 +1141,31 @@ export function App(): React.JSX.Element {
                     {t('app.quit.unsaved', { count: quitWarning.unsavedFileCount })}
                   </p>
                 )}
+                {/* Multi-window attribution: which window/repo holds the running work. Only shown when
+                    more than one window would lose something (a single window is covered by the totals). */}
+                {quitWarning.windows.length > 1 && (
+                  <ul
+                    data-testid="quit-window-breakdown"
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--muted)',
+                      margin: '4px 0 0',
+                      paddingLeft: 18,
+                    }}
+                  >
+                    {quitWarning.windows.map((w, i) => (
+                      <li key={`${w.repoName ?? 'window'}-${i}`}>
+                        <strong style={{ color: 'var(--text)' }}>
+                          {w.repoName ?? t('app.quit.untitledWindow')}
+                        </strong>
+                        {w.activeTurnCount > 0 &&
+                          ` · ${t('app.quit.activeCount', { count: w.activeTurnCount })}`}
+                        {w.unsavedFileCount > 0 &&
+                          ` · ${t('app.quit.unsavedCount', { count: w.unsavedFileCount })}`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
                   <button type="button" onClick={() => void onQuitDecision(false)}>
                     {t('app.quit.cancel')}

@@ -317,6 +317,22 @@ export interface QuitWarningEvent {
    * before-quit warning fires when EITHER this is > 0 OR activeWorktreeIds is non-empty.
    */
   readonly unsavedFileCount: number;
+  /**
+   * Per-window attribution of what would be lost — only windows that actually have an active turn
+   * or an unsaved file. Lets the quit dialog say WHICH window/repo holds the running work (multi-
+   * window). Empty or single-entry for a single-window session (the aggregate fields suffice there).
+   */
+  readonly windows: readonly QuitWindowInfo[];
+}
+
+/** One window's contribution to the before-quit warning (see QuitWarningEvent.windows). */
+export interface QuitWindowInfo {
+  /** Display name of the window's repo (basename), or null for an empty-gate (picker) window. */
+  readonly repoName: string | null;
+  /** Worktrees in THIS window with an active turn (lost on quit). */
+  readonly activeTurnCount: number;
+  /** Unsaved editor files in THIS window (lost on quit). */
+  readonly unsavedFileCount: number;
 }
 
 /** Generic OK/err envelope for invoke handlers that don't return data. */

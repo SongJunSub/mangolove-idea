@@ -10,6 +10,7 @@ import {
   aggregateLiveWorktreeIds,
   aggregateActiveTurnWorktreeIds,
   aggregateUnsavedCount,
+  perWindowQuitInfo,
   sweepAll,
   teardownWindow,
   rebindCtxRepo,
@@ -201,7 +202,13 @@ function createWindow(repoRoot: string | null, position?: { x: number; y: number
  * warning modal). Window-guarded; a destroyed window is skipped.
  */
 function emitQuitWarning(activeWorktreeIds: readonly string[], unsavedFileCount: number): void {
-  const payload: QuitWarningEvent = { activeWorktreeIds, unsavedFileCount };
+  // Per-window attribution (which repo holds the running work) is computed from the registry here,
+  // so the quit-controller stays window-free.
+  const payload: QuitWarningEvent = {
+    activeWorktreeIds,
+    unsavedFileCount,
+    windows: perWindowQuitInfo(contexts),
+  };
   for (const ctx of contexts.values()) {
     const win = ctx.mainWindow;
     if (win && !win.isDestroyed()) win.webContents.send(IPC.APP_QUIT_WARNING, payload);
