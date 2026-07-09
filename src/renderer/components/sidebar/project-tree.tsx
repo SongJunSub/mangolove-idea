@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RecentRepo, Worktree } from '../../../shared/types';
 import type { ProjectGroup } from '../../../shared/project-groups';
 import type { WorktreeRowStatus } from '../../state/app-store';
@@ -223,14 +223,20 @@ function RepoNode({
   const { t } = useI18n();
   const open = ctx.expanded.isRepoExpanded(repo.path);
   const active = repo.active;
-  const { ensureLoaded } = ctx.worktreesFor;
+  const { ensureLoaded, reload } = ctx.worktreesFor;
+  const loadedOnceRef = useRef(false);
 
-  // Lazy-load a non-active repo's worktrees whenever it is (or becomes) expanded — covers both a
-  // fresh toggle and a repo already expanded from persisted state on mount. ensureLoaded is a no-op
-  // once loaded, so this is safe to run on every open change.
+  // Lazy-load a non-active repo's worktrees when it becomes expanded. FIRST expand (or persisted-
+  // open on mount) loads; a RE-expand reloads so a stale snapshot refreshes — worktrees may have
+  // been added/removed in that repo since we last looked (it's not this window's live repo).
   useEffect(() => {
-    if (open && !active) ensureLoaded(repo.path);
-  }, [open, active, repo.path, ensureLoaded]);
+    if (!open || active) return;
+    if (loadedOnceRef.current) reload(repo.path);
+    else {
+      loadedOnceRef.current = true;
+      ensureLoaded(repo.path);
+    }
+  }, [open, active, repo.path, ensureLoaded, reload]);
 
   const remote = active ? null : ctx.worktreesFor.stateFor(repo.path);
   const worktrees = active ? ctx.activeWorktrees : (remote?.worktrees ?? []);
@@ -424,6 +430,8 @@ export interface ProjectTreeProps {
   onRenameGroup(id: string, name: string): void;
   onRemoveGroup(id: string): void;
   onAssignRepo(repoPath: string, groupId: string | null): void;
+  /** Drop a repo from the list (disk untouched); only offered for non-active repos. */
+  onForgetRepo(path: string): void;
 }
 
 type Menu =
@@ -457,6 +465,7 @@ export function ProjectTree({
   onRenameGroup,
   onRemoveGroup,
   onAssignRepo,
+  onForgetRepo,
 }: ProjectTreeProps): React.JSX.Element {
   const { t } = useI18n();
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -640,6 +649,16 @@ export function ProjectTree({
                         testId="menu-remove-from-group"
                         label={t('projectTree.menu.removeFromGroup')}
                         onSelect={() => onAssignRepo(menu.repoPath, null)}
+                        close={closeMenu}
+                      />
+                    )}
+                    {/* Forget = drop from the list (disk untouched). Not the active repo — this
+                        window is on it and REPO_LIST would resurface it anyway. */}
+                    {!repos.some((r) => r.path === menu.repoPath && r.active) && (
+                      <MenuItem
+                        testId="menu-forget-repo"
+                        label={t('projectTree.menu.forget')}
+                        onSelect={() => onForgetRepo(menu.repoPath)}
                         close={closeMenu}
                       />
                     )}

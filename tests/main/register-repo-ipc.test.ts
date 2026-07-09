@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc-channels';
 import { registerIpcForTest } from '../helpers/register-ipc-for-test';
+import { SettingsStore } from '../../src/main/managers/settings-store';
 
 // Hoisted mock state the fake electron module reads. vi.mock is hoisted, so the
 // referenced object must be created with vi.hoisted.
@@ -171,6 +172,71 @@ describe('repo IPC wiring', () => {
       '/wt/feature-x',
     );
     expect(await handlers.get(IPC.REPO_TAKE_PENDING_SELECT)!(fakeEvent, undefined)).toBeNull();
+  });
+
+  // REPO_FORGET needs a store whose get() reflects set(), so use a real SettingsStore over a temp file.
+  describe('REPO_FORGET', () => {
+    /** A ctx bound to a real settings store + two repos (a, b) with a `.git` marker; b is active. */
+    function forgetCtx() {
+      const a = mkdtempSync(join(tmpdir(), 'mango-fa-'));
+      writeFileSync(join(a, '.git'), 'gitdir: a\n');
+      const b = mkdtempSync(join(tmpdir(), 'mango-fb-'));
+      writeFileSync(join(b, '.git'), 'gitdir: b\n');
+      const canonA = realpathSync(a);
+      const canonB = realpathSync(b);
+      const ctx = baseCtx();
+      ctx.repoRoot = canonB; // active = b
+      ctx.settingsStore = new SettingsStore(join(dir, 'settings.json'));
+      ctx.settingsStore.set({ recentRepos: [canonA, canonB] });
+      return {
+        ctx,
+        a,
+        b,
+        canonA,
+        canonB,
+        cleanup: () => [a, b].forEach((p) => rmSync(p, { recursive: true, force: true })),
+      };
+    }
+
+    it('drops a NON-active repo and returns the updated list', async () => {
+      const { ctx, a, canonB, cleanup } = forgetCtx();
+      try {
+        const { handlers, fakeEvent } = registerIpcForTest(ctx);
+        const out = await handlers.get(IPC.REPO_FORGET)!(fakeEvent, a);
+        expect(out).toEqual([{ path: canonB, active: true }]); // a gone, active b remains
+        expect(ctx.settingsStore!.get().recentRepos).toEqual([canonB]); // persisted
+      } finally {
+        cleanup();
+      }
+    });
+
+    it('refuses to forget the ACTIVE repo (list + recentRepos unchanged)', async () => {
+      const { ctx, b, canonA, canonB, cleanup } = forgetCtx();
+      try {
+        const { handlers, fakeEvent } = registerIpcForTest(ctx);
+        const out = await handlers.get(IPC.REPO_FORGET)!(fakeEvent, b); // b is active
+        expect(out).toEqual([
+          { path: canonA, active: false },
+          { path: canonB, active: true },
+        ]);
+        expect(ctx.settingsStore!.get().recentRepos).toEqual([canonA, canonB]);
+      } finally {
+        cleanup();
+      }
+    });
+
+    it('ignores a non-string path (list unchanged)', async () => {
+      const { ctx, canonA, canonB, cleanup } = forgetCtx();
+      try {
+        const { handlers, fakeEvent } = registerIpcForTest(ctx);
+        const out = (await handlers.get(IPC.REPO_FORGET)!(fakeEvent, 123 as never)) as Array<{
+          path: string;
+        }>;
+        expect(out.map((r) => r.path)).toEqual([canonA, canonB]);
+      } finally {
+        cleanup();
+      }
+    });
   });
 
   it('REPO_OPEN rejects a non-git / non-string path without opening', async () => {

@@ -54,6 +54,7 @@ interface HarnessProps {
   onRenameGroup?: (id: string, name: string) => void;
   onRemoveGroup?: (id: string) => void;
   onAssignRepo?: (repoPath: string, groupId: string | null) => void;
+  onForgetRepo?: (path: string) => void;
 }
 
 /** Drives ProjectTree with the REAL expand + lazy-load hooks so toggles/loads actually re-render. */
@@ -79,6 +80,7 @@ function Harness(props: HarnessProps) {
       onRenameGroup={props.onRenameGroup ?? vi.fn()}
       onRemoveGroup={props.onRemoveGroup ?? vi.fn()}
       onAssignRepo={props.onAssignRepo ?? vi.fn()}
+      onForgetRepo={props.onForgetRepo ?? vi.fn()}
     />
   );
 }
@@ -254,6 +256,32 @@ describe('<ProjectTree>', () => {
     fireEvent.change(input, { target: { value: 'CRS Platform' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onRenameGroup).toHaveBeenCalledWith('g1', 'CRS Platform');
+  });
+
+  it('repo menu → "forget" drops a NON-active repo from the list', () => {
+    const onForgetRepo = vi.fn();
+    renderWithI18n(<Harness onForgetRepo={onForgetRepo} />);
+    fireEvent.contextMenu(screen.getByTestId('repo-node-mangolove-idea')); // non-active, ungrouped
+    fireEvent.click(screen.getByTestId('menu-forget-repo'));
+    expect(onForgetRepo).toHaveBeenCalledWith(OTHER);
+  });
+
+  it('repo menu offers NO "forget" for the active repo (this window is on it)', () => {
+    renderWithI18n(<Harness expandedInit={{ groups: ['g1'], repos: [] }} />);
+    fireEvent.contextMenu(screen.getByTestId('repo-node-crs')); // active
+    expect(screen.queryByTestId('menu-forget-repo')).toBeNull();
+  });
+
+  it('re-expanding a non-active repo RELOADS its worktree snapshot (not frozen)', async () => {
+    const listFor = stubListFor(async () => []);
+    renderWithI18n(<Harness />);
+    const chevron = () => screen.getByTestId('repo-node-mangolove-idea').querySelector('.pt-chev')!;
+    fireEvent.click(chevron()); // expand -> first load
+    await waitFor(() => expect(listFor).toHaveBeenCalledTimes(1));
+    fireEvent.click(chevron()); // collapse
+    fireEvent.click(chevron()); // re-expand -> reload (fresh), not a no-op
+    await waitFor(() => expect(listFor).toHaveBeenCalledTimes(2));
+    expect(listFor).toHaveBeenNthCalledWith(2, OTHER);
   });
 
   it('group menu → ungroup removes the group', () => {

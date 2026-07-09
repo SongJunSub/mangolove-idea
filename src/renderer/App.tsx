@@ -896,6 +896,7 @@ export function App(): React.JSX.Element {
                         onAssignRepo={(path, groupId) =>
                           void projectGroups.assignRepoToGroup(path, groupId)
                         }
+                        onForgetRepo={(path) => void recentRepos.forget(path)}
                       />
                     </div>
                   }
