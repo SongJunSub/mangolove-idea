@@ -330,13 +330,24 @@ describe('repo IPC wiring', () => {
       const ctx = baseCtx();
       // '/old' is non-existent -> dropped from the live allowlist but kept in recentRepos on write.
       ctx.settingsStore = storeMock(() => ({ recentRepos: ['/old', dir] }), setSpy);
-      const openRepoNewWindow = vi.fn();
+      const openRepoNewWindow = vi.fn(() => false); // created a new window (not focused)
       ctx.openRepoNewWindow = openRepoNewWindow;
       const { handlers, fakeEvent } = registerIpcForTest(ctx);
       const out = await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir);
-      expect(out).toEqual({ ok: true, repoRoot: canon });
+      expect(out).toEqual({ ok: true, repoRoot: canon, focusedExisting: false });
       expect(setSpy).toHaveBeenCalledWith({ recentRepos: [canon, '/old'] }); // bumped to front
       expect(openRepoNewWindow).toHaveBeenCalledWith(canon);
+    });
+
+    it('returns focusedExisting:true when the repo was already open (a window was focused)', async () => {
+      writeFileSync(join(dir, '.git'), 'gitdir: x\n');
+      const canon = realpathSync(dir);
+      const ctx = baseCtx();
+      ctx.settingsStore = storeMock(() => ({ recentRepos: [dir] }), vi.fn());
+      ctx.openRepoNewWindow = vi.fn(() => true); // openOrCreateWindowForRepo focused an existing window
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      const out = await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir);
+      expect(out).toEqual({ ok: true, repoRoot: canon, focusedExisting: true });
     });
 
     it('rejects a git repo that is NOT in recentRepos (allowlist)', async () => {

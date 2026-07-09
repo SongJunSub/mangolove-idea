@@ -1508,8 +1508,8 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
         return { ok: false, error: 'unknown repository' };
       }
       await bumpRecentRepo(store, root);
-      ctx.openRepoNewWindow?.(root);
-      return { ok: true, repoRoot: root };
+      const focusedExisting = ctx.openRepoNewWindow?.(root) ?? false;
+      return { ok: true, repoRoot: root, focusedExisting };
     },
   );
 

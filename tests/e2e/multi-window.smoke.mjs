@@ -95,6 +95,11 @@ try {
     're-opening B focuses the existing window (no third window)',
     !thirdWindow && app.windows().length === 2,
   );
+
+  // ── B-4: the focus path shows the "moved to the existing window" toast in window 1 ──
+  const toast = window.getByTestId('toast');
+  await toast.waitFor({ timeout: 5000 });
+  check('window 1 shows the "moved to existing window" toast', (await toast.count()) === 1);
 } finally {
   clearTimeout(hardExit);
   await close();

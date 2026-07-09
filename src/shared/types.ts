@@ -864,7 +864,14 @@ export interface CrossMachineSessionPointer {
  * repo). The error/canceled shapes let the renderer keep the empty-state up.
  */
 export type RepoPickResult =
-  | { readonly ok: true; readonly repoRoot: string }
+  | {
+      readonly ok: true;
+      readonly repoRoot: string;
+      /** For openNewWindow: true when the repo was already open, so an EXISTING window was focused
+       *  instead of a new one created (one-repo-per-window). Drives the "moved to existing window"
+       *  toast. Absent/false for pick/open and for a genuinely new window. */
+      readonly focusedExisting?: boolean;
+    }
   | { readonly ok: false; readonly canceled: true }
   | { readonly ok: false; readonly error: string };
 

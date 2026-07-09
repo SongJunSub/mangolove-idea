@@ -53,6 +53,7 @@ import { makeT, type TranslateFn } from './i18n/messages';
 import { resolveLocale } from './i18n/resolve-locale';
 import { detectServerUrl } from './lib/detect-server-url';
 import { BrowserPane } from './components/browser/browser-pane';
+import { Toast } from './components/toast/toast';
 
 // Lazy-loaded so the xterm.js bundle (+ addon-fit + its CSS) is only fetched when
 // a worktree is first selected — keeps the initial renderer chunk smaller.
@@ -165,6 +166,14 @@ export function App(): React.JSX.Element {
   }, [repo.repoRoot]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
+  // Transient toast (e.g. "moved to the existing window" when open-in-new-window focused an already-
+  // open repo). Auto-dismisses; the effect below clears it after a few seconds.
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(id);
+  }, [toast]);
   // Pending in-place repo switch awaiting confirmation (set only when the current repo is
   // busy — a running agent turn or an unsaved file — since the switch tears those down).
   const [pendingRepoSwitch, setPendingRepoSwitch] = useState<{
@@ -885,7 +894,15 @@ export function App(): React.JSX.Element {
                         expanded={treeExpanded}
                         onSelectWorktree={requestSelectWorktree}
                         onSwitchRepo={requestRepoSwitch}
-                        onOpenNewWindow={(path) => void recentRepos.openNewWindow(path)}
+                        onOpenNewWindow={(path) =>
+                          void recentRepos.openNewWindow(path).then((r) => {
+                            // If the repo was already open, main focused its existing window instead
+                            // of creating a new one — tell the user so the "nothing happened here"
+                            // isn't confusing.
+                            if (r.ok && r.focusedExisting)
+                              setToast(t('projectTree.movedToExisting'));
+                          })
+                        }
                         onRemoveWorktree={(id) => {
                           void remove(id);
                           // Prune the removed worktree's persisted tabs so the openTabs map can't
@@ -1252,6 +1269,9 @@ export function App(): React.JSX.Element {
             }}
             onClose={closeUsages}
           />
+        )}
+        {toast && (
+          <Toast message={toast} closeLabel={t('toast.close')} onClose={() => setToast(null)} />
         )}
       </div>
     </I18nContext.Provider>

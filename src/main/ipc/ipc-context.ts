@@ -139,8 +139,9 @@ export interface IpcContext {
   /**
    * Injected by index.ts: open a repo in a NEW window (or focus its existing window — one repo per
    * window). Drives the project tree's "Open in new window"; distinct from openRepo's in-place swap.
+   * Returns true when it FOCUSED an already-open window (→ the "moved to existing window" toast).
    */
-  openRepoNewWindow?: (repoRoot: string) => void;
+  openRepoNewWindow?: (repoRoot: string) => boolean;
   /**
    * The worktree id a cross-repo switch asked this window to select once its repo is active. The
    * reload path sets it just after rebindCtxRepo (survives the reload since ctx is keyed by the
