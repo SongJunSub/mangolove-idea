@@ -289,4 +289,43 @@ describe('SettingsStore — recentRepos (multi-window)', () => {
       expect(merged.openTabs).toBeUndefined();
     });
   });
+
+  describe('update() — serialized read-modify-write', () => {
+    it('serializes concurrent updates so neither read-modify-write is lost', async () => {
+      const store = new SettingsStore(file);
+      store.set({ recentRepos: ['/a'] });
+      // Both mutators await before writing — without serialization they would both read ['/a'] and the
+      // second would clobber the first (lost update). update() must run them strictly in order, so the
+      // second reads the FIRST's result.
+      await Promise.all([
+        store.update(async (c) => {
+          await Promise.resolve();
+          return { recentRepos: [...(c.recentRepos ?? []), '/b'] };
+        }),
+        store.update(async (c) => {
+          await Promise.resolve();
+          return { recentRepos: [...(c.recentRepos ?? []), '/c'] };
+        }),
+      ]);
+      expect(new SettingsStore(file).get().recentRepos).toEqual(['/a', '/b', '/c']);
+    });
+
+    it('a throwing mutator rejects only its own call and does not wedge later updates', async () => {
+      const store = new SettingsStore(file);
+      const boom = store.update(async () => {
+        throw new Error('boom');
+      });
+      const after = store.update(() => ({ agentCommand: 'after' }));
+      await expect(boom).rejects.toThrow('boom');
+      await after; // the chain survived the rejection
+      expect(new SettingsStore(file).get().agentCommand).toBe('after');
+    });
+
+    it('returns the merged settings and persists them', async () => {
+      const store = new SettingsStore(file);
+      const merged = await store.update(() => ({ theme: 'dark', recentRepos: ['/x'] }));
+      expect(merged).toEqual({ theme: 'dark', recentRepos: ['/x'] });
+      expect(new SettingsStore(file).get()).toEqual({ theme: 'dark', recentRepos: ['/x'] });
+    });
+  });
 });

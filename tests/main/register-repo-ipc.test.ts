@@ -5,6 +5,27 @@ import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc-channels';
 import { registerIpcForTest } from '../helpers/register-ipc-for-test';
 import { SettingsStore } from '../../src/main/managers/settings-store';
+import type { AppSettings } from '../../src/shared/types';
+
+/**
+ * A get/set pair as a SettingsStore-shaped mock WITH a conforming serialized update(): handlers now
+ * route recentRepos/projectGroups writes through store.update(mutator), which is get() -> mutator ->
+ * set(partial). The mock mirrors that so set-spy assertions still see the written partial.
+ */
+function storeMock(
+  get: () => Partial<AppSettings>,
+  set: (p: Partial<AppSettings>) => unknown,
+): SettingsStore {
+  return {
+    get,
+    set,
+    // update() returns set()'s value; a bare vi.fn() set-spy returns undefined, so a handler that
+    // reads update()'s result (e.g. GROUPS_SET's `stored.projectGroups`) must be driven through the
+    // REAL SettingsStore (register-groups-ipc.integration.test.ts), not this mock.
+    update: async (fn: (c: Partial<AppSettings>) => unknown) =>
+      set((await fn(get())) as Partial<AppSettings>),
+  } as unknown as SettingsStore;
+}
 
 // Hoisted mock state the fake electron module reads. vi.mock is hoisted, so the
 // referenced object must be created with vi.hoisted.
@@ -25,7 +46,10 @@ const { createIpcContext } = await import('../../src/main/ipc/ipc-context');
 
 function baseCtx() {
   const ctx = createIpcContext();
-  ctx.settingsStore = { get: () => ({}), set: vi.fn((p: unknown) => p) } as never;
+  ctx.settingsStore = storeMock(
+    () => ({}),
+    vi.fn((p: Partial<AppSettings>) => p),
+  );
   return ctx;
 }
 
@@ -120,7 +144,7 @@ describe('repo IPC wiring', () => {
       const ctx = baseCtx();
       ctx.repoRoot = canonB; // active = b
       // recentRepos holds raw paths, with a stale entry + a duplicate of b.
-      ctx.settingsStore = { get: () => ({ recentRepos: [b, gone, a, b] }), set: vi.fn() } as never;
+      ctx.settingsStore = storeMock(() => ({ recentRepos: [b, gone, a, b] }), vi.fn());
       const { handlers, fakeEvent } = registerIpcForTest(ctx);
       const out = await handlers.get(IPC.REPO_LIST)!(fakeEvent, undefined);
       expect(out).toEqual([
@@ -133,13 +157,27 @@ describe('repo IPC wiring', () => {
     }
   });
 
+  it('SETTINGS_SET strips recentRepos/projectGroups so they cannot bypass the serialized update()', async () => {
+    const setSpy = vi.fn((p: Partial<AppSettings>) => p);
+    const ctx = baseCtx();
+    ctx.settingsStore = storeMock(() => ({}), setSpy);
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    await handlers.get(IPC.SETTINGS_SET)!(fakeEvent, {
+      theme: 'dark',
+      recentRepos: ['/evil'],
+      projectGroups: [{ id: 'g', name: 'G', repoPaths: ['/evil'] }],
+    });
+    // The store only ever receives the settings-modal keys; the REPO_*/GROUPS_*-owned keys are dropped.
+    expect(setSpy).toHaveBeenCalledWith({ theme: 'dark' });
+  });
+
   it('REPO_OPEN switches to a known repo: bumps the CANONICAL path + calls openRepo', async () => {
     writeFileSync(join(dir, '.git'), 'gitdir: x\n');
     const canon = realpathSync(dir);
     const setSpy = vi.fn();
     const ctx = baseCtx();
     // '/old' is non-existent -> canonicalRepoRoot falls back to itself, stays in the list.
-    ctx.settingsStore = { get: () => ({ recentRepos: ['/old', dir] }), set: setSpy } as never;
+    ctx.settingsStore = storeMock(() => ({ recentRepos: ['/old', dir] }), setSpy);
     const openRepo = vi.fn();
     ctx.openRepo = openRepo;
     const { handlers, fakeEvent } = registerIpcForTest(ctx);
@@ -153,7 +191,7 @@ describe('repo IPC wiring', () => {
     writeFileSync(join(dir, '.git'), 'gitdir: x\n');
     const canon = realpathSync(dir);
     const ctx = baseCtx();
-    ctx.settingsStore = { get: () => ({ recentRepos: [dir] }), set: vi.fn() } as never;
+    ctx.settingsStore = storeMock(() => ({ recentRepos: [dir] }), vi.fn());
     const openRepo = vi.fn();
     ctx.openRepo = openRepo;
     const { handlers, fakeEvent } = registerIpcForTest(ctx);
@@ -262,7 +300,7 @@ describe('repo IPC wiring', () => {
       const setSpy = vi.fn();
       const ctx = baseCtx();
       // '/old' is non-existent -> dropped from the live allowlist but kept in recentRepos on write.
-      ctx.settingsStore = { get: () => ({ recentRepos: ['/old', dir] }), set: setSpy } as never;
+      ctx.settingsStore = storeMock(() => ({ recentRepos: ['/old', dir] }), setSpy);
       const openRepoNewWindow = vi.fn();
       ctx.openRepoNewWindow = openRepoNewWindow;
       const { handlers, fakeEvent } = registerIpcForTest(ctx);
@@ -275,7 +313,7 @@ describe('repo IPC wiring', () => {
     it('rejects a git repo that is NOT in recentRepos (allowlist)', async () => {
       writeFileSync(join(dir, '.git'), 'gitdir: x\n'); // valid repo but not listed
       const ctx = baseCtx();
-      ctx.settingsStore = { get: () => ({ recentRepos: ['/other'] }), set: vi.fn() } as never;
+      ctx.settingsStore = storeMock(() => ({ recentRepos: ['/other'] }), vi.fn());
       const openRepoNewWindow = vi.fn();
       ctx.openRepoNewWindow = openRepoNewWindow;
       const { handlers, fakeEvent } = registerIpcForTest(ctx);
@@ -309,7 +347,7 @@ describe('repo IPC wiring', () => {
       const stale = Array.from({ length: 60 }, (_, i) => `/stale/${i}`);
       const setSpy = vi.fn();
       const ctx = baseCtx();
-      ctx.settingsStore = { get: () => ({ recentRepos: [dir, ...stale] }), set: setSpy } as never;
+      ctx.settingsStore = storeMock(() => ({ recentRepos: [dir, ...stale] }), setSpy);
       ctx.openRepoNewWindow = vi.fn();
       const { handlers, fakeEvent } = registerIpcForTest(ctx);
       await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir);
@@ -326,13 +364,13 @@ describe('repo IPC wiring', () => {
       const pinned = '/stale/59'; // last entry — would fall past the cap, but it's grouped
       const setSpy = vi.fn();
       const ctx = baseCtx();
-      ctx.settingsStore = {
-        get: () => ({
+      ctx.settingsStore = storeMock(
+        () => ({
           recentRepos: [dir, ...stale],
           projectGroups: [{ id: 'g1', name: 'G', repoPaths: [pinned] }],
         }),
-        set: setSpy,
-      } as never;
+        setSpy,
+      );
       ctx.openRepoNewWindow = vi.fn();
       const { handlers, fakeEvent } = registerIpcForTest(ctx);
       await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir);
@@ -341,36 +379,8 @@ describe('repo IPC wiring', () => {
       expect(written[0]).toBe(canon);
       expect(written).toContain(pinned); // the grouped repo survived the cap
     });
-
-    it('reads projectGroups FRESH before the cap write, so a concurrent GROUPS_SET is not evicted', async () => {
-      // Race: bumpRecentRepo reads recentRepos, awaits realpath, then reads projectGroups. If it used
-      // the FIRST snapshot's (empty) groups, a grouping committed during the await would be evicted by
-      // the cap and later persisted as un-grouped. The 2nd get() here returns the just-committed group;
-      // the pin must honor it. Driven via REPO_OPEN, whose only get()s are bumpRecentRepo's two reads.
-      writeFileSync(join(dir, '.git'), 'gitdir: x\n');
-      const stale = Array.from({ length: 60 }, (_, i) => `/stale/${i}`);
-      const pinned = '/stale/59';
-      let getCall = 0;
-      const setSpy = vi.fn();
-      const ctx = baseCtx();
-      ctx.settingsStore = {
-        get: () => {
-          getCall += 1;
-          return getCall === 1
-            ? { recentRepos: [dir, ...stale] } // recentRepos read: no groups yet
-            : {
-                recentRepos: [dir, ...stale],
-                projectGroups: [{ id: 'g', name: 'G', repoPaths: [pinned] }], // grouped during await
-              };
-        },
-        set: setSpy,
-      } as never;
-      ctx.openRepo = vi.fn();
-      const { handlers, fakeEvent } = registerIpcForTest(ctx);
-      getCall = 0; // ignore any registration-time reads
-      await handlers.get(IPC.REPO_OPEN)!(fakeEvent, dir, undefined);
-      const written = setSpy.mock.calls[0][0].recentRepos as string[];
-      expect(written).toContain(pinned); // fresh group read -> the concurrently-grouped repo survives
-    });
+    // NOTE: the bump<->GROUPS_SET atomicity (a concurrent grouping is never evicted) is now
+    // guaranteed by SettingsStore.update() serialization, exercised in settings-store.test.ts —
+    // the old getCall-snapshot "fresh read" test is obsolete and was removed.
   });
 });

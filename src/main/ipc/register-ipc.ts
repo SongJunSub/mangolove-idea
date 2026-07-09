@@ -335,35 +335,27 @@ const MAX_RECENT_REPOS = 50;
  * silently un-group it — and a later GROUPS_SET would persist that loss. Grouped repos beyond the cap
  * are therefore retained (groups are a small curated set, so this keeps the list effectively bounded).
  *
- * CONCURRENCY: now async, the recentRepos read-modify-write is no longer atomic — two opens (or an
- * open + a REPO_FORGET) overlapping within the realpath await window are last-writer-wins on the
- * recentRepos key, so one bump/forget can be lost (a just-opened repo briefly absent, or a just-
- * forgotten repo transiently back). Accepted for an MRU convenience list: it self-heals on the next
- * open/list and the active repo is still surfaced by recentRepoList's fallback. The one interaction
- * that would NOT self-heal — a concurrent GROUPS_SET grouping a cap-boundary repo, which a stale pin
- * snapshot could evict and a later GROUPS_SET then persist as un-grouped — is closed above by reading
- * projectGroups fresh with no await before the write. A store-level write serialization would remove
- * the residual MRU races too, if they ever matter; the whole-app freeze on a hung mount that the async
- * conversion avoids is the worse problem, so this trade is deliberate.
+ * CONCURRENCY: runs inside store.update(), which serializes it against every other recentRepos /
+ * projectGroups write (other bumps, REPO_FORGET, GROUPS_SET). So the read-modify-write is atomic —
+ * no lost update — and `current` already reflects any committed GROUPS_SET, so the grouped-repo pin
+ * reads groups straight from `current` (no stale snapshot, no fresh-re-read hack).
  */
 async function bumpRecentRepo(store: SettingsStore, root: string): Promise<void> {
-  // Async realpath fan-out over the current list — off the sync path (see liveCanonicalRepos). `root`
-  // is already canonical from the caller (a single sync canonicalRepoRoot on the acted-on path).
-  // Promise.all preserves order, so the dedupe/cap results match the old sync form.
-  const prevCanonical = await Promise.all(
-    (store.get().recentRepos ?? []).map(canonicalRepoRootAsync),
-  );
-  const bumped = [root, ...prevCanonical.filter((r) => r !== root)];
-  const kept = bumped.slice(0, MAX_RECENT_REPOS);
-  const overflow = bumped.slice(MAX_RECENT_REPOS);
-  // Read projectGroups FRESH here — synchronously, with NO await before the store.set below — so the
-  // grouped-repo pin is atomic w.r.t. GROUPS_SET: a grouping that committed during the realpath await
-  // above is honored, instead of evicting its just-grouped repo (which a later GROUPS_SET would then
-  // persist as un-grouped). Stored repoPaths are already canonical (GROUPS_SET canonicalizes), as are
-  // the overflow entries, so a string-match pin needs no realpath.
-  const grouped = new Set((store.get().projectGroups ?? []).flatMap((g) => g.repoPaths));
-  const pinnedBeyondCap = overflow.filter((r) => grouped.has(r));
-  store.set({ recentRepos: [...kept, ...pinnedBeyondCap] });
+  await store.update(async (current) => {
+    // Async realpath fan-out over the current list — off the sync path (see liveCanonicalRepos).
+    // `root` is already canonical from the caller (a single sync canonicalRepoRoot on the acted-on
+    // path). Promise.all preserves order, so the dedupe/cap results match the old sync form.
+    const prevCanonical = await Promise.all(
+      (current.recentRepos ?? []).map(canonicalRepoRootAsync),
+    );
+    const bumped = [root, ...prevCanonical.filter((r) => r !== root)];
+    const kept = bumped.slice(0, MAX_RECENT_REPOS);
+    // Stored group repoPaths are already canonical (GROUPS_SET canonicalizes), as are the overflow
+    // entries, so a string-match pin needs no realpath. Never evict a grouped repo beyond the cap.
+    const grouped = new Set((current.projectGroups ?? []).flatMap((g) => g.repoPaths));
+    const pinnedBeyondCap = bumped.slice(MAX_RECENT_REPOS).filter((r) => grouped.has(r));
+    return { recentRepos: [...kept, ...pinnedBeyondCap] };
+  });
 }
 
 /**
@@ -1383,7 +1375,14 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     IPC.SETTINGS_SET,
     async (event, partial: Partial<AppSettings>): Promise<AppSettings> => {
       const ctx = requireCtx(event);
-      const merged = getSettingsStore(ctx).set(partial);
+      // recentRepos + projectGroups are owned by the REPO_*/GROUPS_* handlers, which mutate them
+      // through the serialized store.update(). Strip them here so a settings.set() (settings modal
+      // only ever sends string keys + layouts) can never write them via plain set() and bypass that
+      // lock — defense-in-depth against a future/compromised caller racing a concurrent bump.
+      const safe = Object.fromEntries(
+        Object.entries(partial).filter(([k]) => k !== 'recentRepos' && k !== 'projectGroups'),
+      ) as Partial<AppSettings>;
+      const merged = getSettingsStore(ctx).set(safe);
       // A paneLayout-only change is pure UI geometry — it affects NO repo-scoped manager, so
       // skip the heavyweight cache teardown below (which other keys like baseBranch/agentCommand
       // DO require). Without this, a single pane drag would needlessly drop diffViewer/mergeRunner
@@ -1470,10 +1469,14 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     if (typeof path === 'string') {
       const target = canonicalRepoRoot(path); // single acted-on path — sync is fine
       if (target !== active) {
-        const canonical = await Promise.all(
-          (store.get().recentRepos ?? []).map(canonicalRepoRootAsync),
-        );
-        store.set({ recentRepos: canonical.filter((r) => r !== target) });
+        // Serialized RMW (store.update): a concurrent open's bump can't undo this forget by racing
+        // its write onto a stale recentRepos snapshot.
+        await store.update(async (current) => {
+          const canonical = await Promise.all(
+            (current.recentRepos ?? []).map(canonicalRepoRootAsync),
+          );
+          return { recentRepos: canonical.filter((r) => r !== target) };
+        });
       }
     }
     return recentRepoList(store, active);
@@ -1579,17 +1582,22 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   ipcMain.handle(IPC.GROUPS_SET, async (event, groups: unknown): Promise<ProjectGroup[]> => {
     const ctx = requireCtx(event);
     const store = getSettingsStore(ctx);
-    const live = new Set(await liveCanonicalRepos(store.get().recentRepos ?? []));
-    const normalized = await Promise.all(
-      (coerceProjectGroups(groups) ?? []).map(async (g) => ({
-        ...g,
-        repoPaths: (await Promise.all(g.repoPaths.map(canonicalRepoRootAsync))).filter((p) =>
-          live.has(p),
-        ),
-      })),
-    );
-    const final = coerceProjectGroups(normalized) ?? [];
-    store.set({ projectGroups: final });
+    // Serialized RMW (store.update): the live-set prune reads recentRepos and we write projectGroups,
+    // so running under the same lock as bumpRecentRepo keeps the two keys mutually consistent (a
+    // concurrent bump can't evict a repo this grouping just pinned, and vice versa).
+    const stored = await store.update(async (current) => {
+      const live = new Set(await liveCanonicalRepos(current.recentRepos ?? []));
+      const normalized = await Promise.all(
+        (coerceProjectGroups(groups) ?? []).map(async (g) => ({
+          ...g,
+          repoPaths: (await Promise.all(g.repoPaths.map(canonicalRepoRootAsync))).filter((p) =>
+            live.has(p),
+          ),
+        })),
+      );
+      return { projectGroups: coerceProjectGroups(normalized) ?? [] };
+    });
+    const final = [...(stored.projectGroups ?? [])];
     const senderId = event.sender.id;
     const { BrowserWindow } = await import('electron');
     for (const win of BrowserWindow.getAllWindows()) {
