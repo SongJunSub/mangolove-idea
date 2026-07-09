@@ -311,14 +311,24 @@ const MAX_RECENT_REPOS = 50;
  * recentRepos, canonicalizes + dedupes the rest, and caps the list to MAX_RECENT_REPOS. The SINGLE
  * recentRepos write path — shared by REPO_PICK / REPO_OPEN / REPO_OPEN_NEW_WINDOW so the dedupe +
  * cap can't drift between them.
+ *
+ * The cap NEVER evicts a repo pinned by a project group: the group-view prune (GROUPS_GET/SET) keeps
+ * only repoPaths still in the live recentRepos, so dropping a grouped-but-not-recent repo here would
+ * silently un-group it — and a later GROUPS_SET would persist that loss. Grouped repos beyond the cap
+ * are therefore retained (groups are a small curated set, so this keeps the list effectively bounded).
  */
 function bumpRecentRepo(store: SettingsStore, root: string): void {
-  const prev = store.get().recentRepos ?? [];
-  const recentRepos = [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)].slice(
-    0,
-    MAX_RECENT_REPOS,
+  const settings = store.get();
+  const bumped = [
+    root,
+    ...(settings.recentRepos ?? []).map(canonicalRepoRoot).filter((r) => r !== root),
+  ];
+  const grouped = new Set(
+    (settings.projectGroups ?? []).flatMap((g) => g.repoPaths.map(canonicalRepoRoot)),
   );
-  store.set({ recentRepos });
+  const kept = bumped.slice(0, MAX_RECENT_REPOS);
+  const pinnedBeyondCap = bumped.slice(MAX_RECENT_REPOS).filter((r) => grouped.has(r));
+  store.set({ recentRepos: [...kept, ...pinnedBeyondCap] });
 }
 
 /**

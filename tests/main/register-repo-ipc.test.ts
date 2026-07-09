@@ -318,5 +318,28 @@ describe('repo IPC wiring', () => {
       expect(written[0]).toBe(canon); // opened repo bumped to front
       expect(written.slice(1)).toEqual(stale.slice(0, 49)); // oldest tail dropped
     });
+
+    it('the cap never evicts a repo pinned by a group (else GROUPS_SET would persist the loss)', async () => {
+      writeFileSync(join(dir, '.git'), 'gitdir: x\n');
+      const canon = realpathSync(dir);
+      const stale = Array.from({ length: 60 }, (_, i) => `/stale/${i}`);
+      const pinned = '/stale/59'; // last entry — would fall past the cap, but it's grouped
+      const setSpy = vi.fn();
+      const ctx = baseCtx();
+      ctx.settingsStore = {
+        get: () => ({
+          recentRepos: [dir, ...stale],
+          projectGroups: [{ id: 'g1', name: 'G', repoPaths: [pinned] }],
+        }),
+        set: setSpy,
+      } as never;
+      ctx.openRepoNewWindow = vi.fn();
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir);
+      const written = setSpy.mock.calls[0][0].recentRepos as string[];
+      expect(written).toHaveLength(51); // 50 capped + 1 grouped repo retained beyond the cap
+      expect(written[0]).toBe(canon);
+      expect(written).toContain(pinned); // the grouped repo survived the cap
+    });
   });
 });
