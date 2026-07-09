@@ -16,6 +16,8 @@ export interface UseRecentRepos {
    * is delivered to the target window once its repo is active.
    */
   open(path: string, opts?: { worktreeId?: string }): Promise<RepoPickResult>;
+  /** Drop a repo from the list (disk untouched; never the active one). Adopts the updated list. */
+  forget(path: string): Promise<void>;
 }
 
 /** Reads recentRepos once on mount; open() switches to a repo, refresh() re-lists. */
@@ -33,6 +35,10 @@ export function useRecentRepos(): UseRecentRepos {
     [],
   );
 
+  const forget = useCallback(async (path: string): Promise<void> => {
+    setRepos(await window.mango.repo.forget(path));
+  }, []);
+
   useEffect(() => {
     let alive = true;
     void window.mango.repo
@@ -48,5 +54,5 @@ export function useRecentRepos(): UseRecentRepos {
     };
   }, []);
 
-  return { repos, loading, refresh, open };
+  return { repos, loading, refresh, open, forget };
 }

@@ -254,6 +254,12 @@ export interface MangoApi {
     takePendingSelect(): Promise<string | null>;
     /** Fires when main asks THIS window to select a worktree (focus / same-repo reselect path). */
     onSelectWorktree(cb: (e: { worktreeId: string }) => void): Unsubscribe;
+    /**
+     * Drop a repo from recentRepos so it leaves the project tree (the disk checkout is untouched —
+     * re-add it any time via the picker). Never removes THIS window's active repo. Returns the
+     * updated list (same shape as list()); any group referencing it is pruned by groups.get.
+     */
+    forget(path: string): Promise<RecentRepo[]>;
   };
   update: {
     /**

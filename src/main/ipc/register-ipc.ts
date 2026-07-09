@@ -300,6 +300,20 @@ function liveCanonicalRepos(recentRepos: readonly string[]): string[] {
   return out;
 }
 
+/**
+ * The sidebar repo switcher's list: live canonical recentRepos with the active one flagged, and a
+ * defensive fallback that surfaces the active repo even if recentRepos somehow lost it. Shared by
+ * REPO_LIST and REPO_FORGET so both return the identical shape.
+ */
+function recentRepoList(store: SettingsStore, active: string | null): RecentRepo[] {
+  const live = liveCanonicalRepos(store.get().recentRepos ?? []);
+  const repos: RecentRepo[] = live.map((path) => ({ path, active: path === active }));
+  if (active && !live.includes(active) && existsSync(join(active, '.git'))) {
+    repos.unshift({ path: active, active: true });
+  }
+  return repos;
+}
+
 /** Lists worktrees for a canonical repo path, reusing the window's manager for its active repo
  *  (also honors a test-injected ctx.worktreeManager) and a shared cache for the rest. */
 async function listWorktreesForCanonical(ctx: IpcContext, canonical: string): Promise<Worktree[]> {
@@ -1376,15 +1390,29 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   // dialog paths), with the active one (= THIS window's canonical repoRoot) flagged.
   ipcMain.handle(IPC.REPO_LIST, async (event): Promise<RecentRepo[]> => {
     const ctx = requireCtx(event);
+    return recentRepoList(getSettingsStore(ctx), ctx.repoRoot ?? null);
+  });
+
+  // Forget a repo: drop it from recentRepos so it leaves the project tree. The disk checkout is
+  // untouched (re-add via the picker any time). NEVER the active repo — this window is on it, and
+  // REPO_LIST's defensive branch would resurface it anyway. A group referencing it disappears from
+  // the tree because GROUPS_GET prunes its repoPaths to the live set — but that is a VIEW prune, not
+  // a persisted one: the stored membership lingers, so re-adding the repo later restores its group
+  // (same as an already-deleted/moved repo). Returns the updated list.
+  ipcMain.handle(IPC.REPO_FORGET, async (event, path: unknown): Promise<RecentRepo[]> => {
+    const ctx = requireCtx(event);
     const store = getSettingsStore(ctx);
-    const active = ctx.repoRoot ?? null; // already canonical (set in createWindow)
-    const live = liveCanonicalRepos(store.get().recentRepos ?? []);
-    const repos: RecentRepo[] = live.map((path) => ({ path, active: path === active }));
-    // Defensive: surface the active repo even if recentRepos somehow lost it.
-    if (active && !live.includes(active) && existsSync(join(active, '.git'))) {
-      repos.unshift({ path: active, active: true });
+    const active = ctx.repoRoot ?? null;
+    if (typeof path === 'string') {
+      const target = canonicalRepoRoot(path);
+      if (target !== active) {
+        const recentRepos = (store.get().recentRepos ?? [])
+          .map(canonicalRepoRoot)
+          .filter((r) => r !== target);
+        store.set({ recentRepos });
+      }
     }
-    return repos;
+    return recentRepoList(store, active);
   });
 
   // Switch to a KNOWN recent repo by path (no native dialog): same dedupe-write as
