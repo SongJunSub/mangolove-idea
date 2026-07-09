@@ -479,6 +479,20 @@ describe('<ProjectTree>', () => {
     expect(tabbableRows()).toEqual([next]);
   });
 
+  it('shows the "open in another window" badge only for repos flagged openElsewhere', () => {
+    renderWithI18n(
+      <Harness
+        repos={[
+          { path: ACTIVE, active: true },
+          { path: OTHER, active: false, openElsewhere: true },
+        ]}
+      />,
+    );
+    const other = screen.getByTestId('repo-node-mangolove-idea');
+    expect(within(other).getByTestId('repo-open-elsewhere')).toBeInTheDocument();
+    expect(screen.getAllByTestId('repo-open-elsewhere')).toHaveLength(1); // only the flagged repo
+  });
+
   it('roving falls back to the first visible row when the roving row is filtered out', async () => {
     renderWithI18n(<Harness />);
     fireEvent.focus(screen.getByTestId('repo-node-mangolove-idea')); // roving = the ungrouped repo

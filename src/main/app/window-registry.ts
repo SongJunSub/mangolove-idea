@@ -216,6 +216,22 @@ function isLiveCtx(ctx: IpcContext | undefined): ctx is IpcContext {
 }
 
 /**
+ * The canonical repoRoots of all LIVE windows EXCEPT `exceptWcId` — the repos open in OTHER windows.
+ * Powers REPO_LIST's `openElsewhere` flag (the project tree's "open in another window" badge).
+ * Empty-gate windows (repoRoot null) and destroyed windows contribute nothing.
+ */
+export function openRepoRootsExcluding(
+  contexts: Map<number, IpcContext>,
+  exceptWcId: number,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [id, ctx] of contexts) {
+    if (id !== exceptWcId && ctx.repoRoot && isLiveCtx(ctx)) out.add(ctx.repoRoot);
+  }
+  return out;
+}
+
+/**
  * The webContents id of a LIVE window owning canonical `root` (optionally excluding one ctx), or
  * undefined. The SINGLE owner-lookup behind the "one repo per window" focus guard — shared by
  * decideRepoSwitch (excludes the requesting window) and decideOpenNewWindow (no exclusion) so the

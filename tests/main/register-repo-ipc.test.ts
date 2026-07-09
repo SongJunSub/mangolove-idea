@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc-channels';
 import { registerIpcForTest } from '../helpers/register-ipc-for-test';
 import { SettingsStore } from '../../src/main/managers/settings-store';
-import type { AppSettings } from '../../src/shared/types';
+import type { AppSettings, RecentRepo } from '../../src/shared/types';
+import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
 /**
  * A get/set pair as a SettingsStore-shaped mock WITH a conforming serialized update(): handlers now
@@ -148,8 +149,9 @@ describe('repo IPC wiring', () => {
       const { handlers, fakeEvent } = registerIpcForTest(ctx);
       const out = await handlers.get(IPC.REPO_LIST)!(fakeEvent, undefined);
       expect(out).toEqual([
-        { path: canonB, active: true }, // gone dropped, duplicate b collapsed, order kept
-        { path: canonA, active: false },
+        // gone dropped, duplicate b collapsed, order kept; single window → openElsewhere false
+        { path: canonB, active: true, openElsewhere: false },
+        { path: canonA, active: false, openElsewhere: false },
       ]);
     } finally {
       rmSync(a, { recursive: true, force: true });
@@ -169,6 +171,33 @@ describe('repo IPC wiring', () => {
     });
     // The store only ever receives the settings-modal keys; the REPO_*/GROUPS_*-owned keys are dropped.
     expect(setSpy).toHaveBeenCalledWith({ theme: 'dark' });
+  });
+
+  it('REPO_LIST flags openElsewhere for a repo open in ANOTHER window', async () => {
+    const a = mkdtempSync(join(tmpdir(), 'mango-a-'));
+    writeFileSync(join(a, '.git'), 'gitdir: a\n');
+    const b = mkdtempSync(join(tmpdir(), 'mango-b-'));
+    writeFileSync(join(b, '.git'), 'gitdir: b\n');
+    try {
+      const canonA = realpathSync(a);
+      const canonB = realpathSync(b);
+      const ctx = baseCtx();
+      ctx.repoRoot = canonA; // this window is on A
+      ctx.settingsStore = storeMock(() => ({ recentRepos: [a, b] }), vi.fn());
+      // A SECOND live window (wcId 2) is on B.
+      const other = {
+        mainWindow: { isDestroyed: () => false },
+        repoRoot: canonB,
+      } as unknown as IpcContext;
+      const { handlers, fakeEvent } = registerIpcForTest(ctx, 1, [[2, other]]);
+      const out = (await handlers.get(IPC.REPO_LIST)!(fakeEvent, undefined)) as RecentRepo[];
+      const byPath = new Map(out.map((r) => [r.path, r]));
+      expect(byPath.get(canonA)).toMatchObject({ active: true, openElsewhere: false });
+      expect(byPath.get(canonB)).toMatchObject({ active: false, openElsewhere: true });
+    } finally {
+      rmSync(a, { recursive: true, force: true });
+      rmSync(b, { recursive: true, force: true });
+    }
   });
 
   it('REPO_OPEN switches to a known repo: bumps the CANONICAL path + calls openRepo', async () => {

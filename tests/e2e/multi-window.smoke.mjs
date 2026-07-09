@@ -62,6 +62,15 @@ try {
   await b2.waitFor({ timeout: 20000 });
   check('the second window is active on repo B', (await nodeClass(win2, bName)).includes('active'));
 
+  // ── B-2: window 1 now shows repo B with the "open in another window" badge (WINDOWS_CHANGED →
+  //         REPO_LIST refresh → openElsewhere). This exercises the live broadcast end to end. ──
+  const bBadge = window.getByTestId(`repo-node-${bName}`).getByTestId('repo-open-elsewhere');
+  await bBadge.waitFor({ timeout: 15000 });
+  check(
+    'window 1 shows the open-elsewhere badge for B (now open in window 2)',
+    (await bBadge.count()) === 1,
+  );
+
   // ── Window 1 is UNCHANGED: still on A, B still non-active (no in-place switch happened) ──
   check('window 1 stayed active on repo A', (await nodeClass(window, aName)).includes('active'));
   check(

@@ -1053,6 +1053,12 @@ a {
   color: var(--warn);
   border-color: var(--warn);
 }
+/* "open in another window" — subtle accent so it reads as informational, not a warning. */
+.pt-badge--elsewhere {
+  color: var(--accent);
+  border-color: var(--accent);
+  text-transform: none;
+}
 .pt-head {
   flex: none;
   font-size: 10.5px;

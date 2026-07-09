@@ -89,6 +89,7 @@ import {
   sweepAll,
   canonicalRepoRoot,
   canonicalRepoRootAsync,
+  openRepoRootsExcluding,
   type CtxEventLike,
 } from '../app/window-registry';
 import type { SessionStore } from '../managers/session-store';
@@ -1453,7 +1454,10 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   // dialog paths), with the active one (= THIS window's canonical repoRoot) flagged.
   ipcMain.handle(IPC.REPO_LIST, async (event): Promise<RecentRepo[]> => {
     const ctx = requireCtx(event);
-    return recentRepoList(getSettingsStore(ctx), ctx.repoRoot ?? null);
+    // Repos open in OTHER windows (one-repo-per-window) → the "open in another window" badge.
+    const elsewhere = openRepoRootsExcluding(contexts, event.sender.id);
+    const list = await recentRepoList(getSettingsStore(ctx), ctx.repoRoot ?? null);
+    return list.map((r) => ({ ...r, openElsewhere: elsewhere.has(r.path) }));
   });
 
   // Forget a repo: drop it from recentRepos so it leaves the project tree. The disk checkout is

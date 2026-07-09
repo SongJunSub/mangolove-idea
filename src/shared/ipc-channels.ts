@@ -105,6 +105,7 @@ export const IPC = {
   REPO_OPEN_NEW_WINDOW: 'repo:open-new-window', // invoke (path -> RepoPickResult; open a KNOWN repo in a NEW window, or focus its existing window)
   REPO_TAKE_PENDING_SELECT: 'repo:take-pending-select', // invoke (-> string|null; consume-once worktree id to select after a cross-repo switch reload)
   REPO_SELECT_WORKTREE: 'repo:select-worktree', // main -> renderer event ({worktreeId}); focus/reselect-path delivery of a cross-repo worktree selection
+  WINDOWS_CHANGED: 'windows:changed', // main -> renderer event (no payload); a window opened/closed/rebound repo, so re-fetch REPO_LIST (openElsewhere may have changed)
 
   // multimodel fan-out (V2) — one prompt to N claude --model lanes in parallel worktrees
   FANOUT_START: 'fanout:start', // invoke ({prompt, models, skipPermissions} -> {id, lanes})
