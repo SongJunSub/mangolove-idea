@@ -48,6 +48,7 @@ interface HarnessProps {
   expandedInit?: ProjectTreeExpanded;
   onSelectWorktree?: (id: string) => void;
   onSwitchRepo?: (path: string) => void;
+  onOpenNewWindow?: (path: string) => void;
   onRemoveWorktree?: (id: string) => void;
   onAddRepo?: () => void;
   onCreateGroup?: (name: string) => Promise<string | null>;
@@ -74,6 +75,7 @@ function Harness(props: HarnessProps) {
       expanded={expanded}
       onSelectWorktree={props.onSelectWorktree ?? vi.fn()}
       onSwitchRepo={props.onSwitchRepo ?? vi.fn()}
+      onOpenNewWindow={props.onOpenNewWindow ?? vi.fn()}
       onRemoveWorktree={props.onRemoveWorktree ?? vi.fn()}
       onAddRepo={props.onAddRepo ?? vi.fn()}
       onCreateGroup={props.onCreateGroup ?? vi.fn(async () => null)}
@@ -351,6 +353,39 @@ describe('<ProjectTree>', () => {
     renderWithI18n(<Harness expandedInit={{ groups: ['g1'], repos: [] }} />);
     fireEvent.contextMenu(screen.getByTestId('repo-node-crs')); // active
     expect(screen.queryByTestId('menu-forget-repo')).toBeNull();
+  });
+
+  // ── multi-window: open a non-active repo in a new window ─────────────────────
+
+  it('Cmd/Ctrl+click a NON-active repo row opens it in a new window (not an in-place switch)', () => {
+    const onOpenNewWindow = vi.fn();
+    const onSwitchRepo = vi.fn();
+    renderWithI18n(<Harness onOpenNewWindow={onOpenNewWindow} onSwitchRepo={onSwitchRepo} />);
+    fireEvent.click(screen.getByTestId('repo-node-mangolove-idea'), { metaKey: true });
+    expect(onOpenNewWindow).toHaveBeenCalledWith(OTHER);
+    expect(onSwitchRepo).not.toHaveBeenCalled();
+    // ctrlKey (Windows/Linux) takes the same path.
+    fireEvent.click(screen.getByTestId('repo-node-mangolove-idea'), { ctrlKey: true });
+    expect(onOpenNewWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it('repo menu → "open in new window" / "open here" route a NON-active repo', () => {
+    const onOpenNewWindow = vi.fn();
+    const onSwitchRepo = vi.fn();
+    renderWithI18n(<Harness onOpenNewWindow={onOpenNewWindow} onSwitchRepo={onSwitchRepo} />);
+    fireEvent.contextMenu(screen.getByTestId('repo-node-mangolove-idea')); // non-active
+    fireEvent.click(screen.getByTestId('menu-open-new-window'));
+    expect(onOpenNewWindow).toHaveBeenCalledWith(OTHER);
+    fireEvent.contextMenu(screen.getByTestId('repo-node-mangolove-idea'));
+    fireEvent.click(screen.getByTestId('menu-open-here'));
+    expect(onSwitchRepo).toHaveBeenCalledWith(OTHER);
+  });
+
+  it('repo menu offers NO open items for the ACTIVE repo (already open in this window)', () => {
+    renderWithI18n(<Harness expandedInit={{ groups: ['g1'], repos: [] }} />);
+    fireEvent.contextMenu(screen.getByTestId('repo-node-crs')); // active
+    expect(screen.queryByTestId('menu-open-new-window')).toBeNull();
+    expect(screen.queryByTestId('menu-open-here')).toBeNull();
   });
 
   it('re-expanding a non-active repo RELOADS its worktree snapshot (not frozen)', async () => {

@@ -16,6 +16,11 @@ export interface UseRecentRepos {
    * is delivered to the target window once its repo is active.
    */
   open(path: string, opts?: { worktreeId?: string }): Promise<RepoPickResult>;
+  /**
+   * Open a known repo in a NEW window (or focus its existing window — one repo per window).
+   * Unlike open(), THIS window is left untouched, so no editor flush is needed at the call site.
+   */
+  openNewWindow(path: string): Promise<RepoPickResult>;
   /** Drop a repo from the list (disk untouched; never the active one). Adopts the updated list. */
   forget(path: string): Promise<void>;
 }
@@ -32,6 +37,11 @@ export function useRecentRepos(): UseRecentRepos {
   const open = useCallback(
     async (path: string, opts?: { worktreeId?: string }): Promise<RepoPickResult> =>
       window.mango.repo.open(path, opts),
+    [],
+  );
+
+  const openNewWindow = useCallback(
+    async (path: string): Promise<RepoPickResult> => window.mango.repo.openNewWindow(path),
     [],
   );
 
@@ -54,5 +64,5 @@ export function useRecentRepos(): UseRecentRepos {
     };
   }, []);
 
-  return { repos, loading, refresh, open, forget };
+  return { repos, loading, refresh, open, openNewWindow, forget };
 }

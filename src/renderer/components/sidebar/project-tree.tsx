@@ -221,6 +221,8 @@ interface RepoNodeContext {
   readonly filter: string;
   onSelectWorktree(id: string): void;
   onSwitchRepo(path: string, worktreeId?: string): void;
+  /** Open a (non-active) repo in a new window — Cmd/Ctrl+click a repo row, or its menu item. */
+  onOpenNewWindow(path: string): void;
   onRemoveWorktree(id: string): void;
   // ── interactive (Phase 4): grouping via drag + context menu ──
   onRepoMenu(e: React.MouseEvent, repoPath: string): void;
@@ -279,9 +281,18 @@ function RepoNode({
     if (!filtering) ctx.expanded.toggleRepo(repo.path);
   };
   // A non-active repo row SWITCHES to that repo; the active repo's row just toggles its worktrees.
-  const activateRow = (): void => {
-    if (active) toggle();
-    else ctx.onSwitchRepo(repo.path);
+  // Cmd/Ctrl+click a non-active repo opens it in a NEW window instead (parallels the menu item);
+  // keyboard activation passes no event, so Enter always switches in place.
+  const activateRow = (e?: React.MouseEvent): void => {
+    if (active) {
+      toggle();
+      return;
+    }
+    if (e && (e.metaKey || e.ctrlKey)) {
+      ctx.onOpenNewWindow(repo.path);
+      return;
+    }
+    ctx.onSwitchRepo(repo.path);
   };
   const notePad = { paddingLeft: level * 14 + 22 }; // aligns the loading/empty/error note under the worktrees
 
@@ -459,6 +470,8 @@ export interface ProjectTreeProps {
   readonly expanded: UseProjectTreeExpanded;
   onSelectWorktree(id: string): void;
   onSwitchRepo(path: string, worktreeId?: string): void;
+  /** Open a (non-active) repo in a new window (or focus its existing window). */
+  onOpenNewWindow(path: string): void;
   onRemoveWorktree(id: string): void;
   onAddRepo(): void;
   // ── grouping mutations (from useProjectGroups) ──
@@ -495,6 +508,7 @@ export function ProjectTree({
   expanded,
   onSelectWorktree,
   onSwitchRepo,
+  onOpenNewWindow,
   onRemoveWorktree,
   onAddRepo,
   onCreateGroup,
@@ -590,6 +604,7 @@ export function ProjectTree({
     filter: q,
     onSelectWorktree,
     onSwitchRepo,
+    onOpenNewWindow,
     onRemoveWorktree,
     onRepoMenu: (e, repoPath) => {
       e.preventDefault();
@@ -735,8 +750,27 @@ export function ProjectTree({
             {menu.kind === 'repo' &&
               (() => {
                 const current = groupOf(menu.repoPath);
+                // The active repo is already open in THIS window, so "open here / new window" are
+                // meaningless for it (and REPO_OPEN_NEW_WINDOW would just focus this same window).
+                const isActive = repos.some((r) => r.path === menu.repoPath && r.active);
                 return (
                   <>
+                    {!isActive && (
+                      <>
+                        <MenuItem
+                          testId="menu-open-here"
+                          label={t('projectTree.menu.openHere')}
+                          onSelect={() => onSwitchRepo(menu.repoPath)}
+                          close={closeMenu}
+                        />
+                        <MenuItem
+                          testId="menu-open-new-window"
+                          label={t('projectTree.menu.openNewWindow')}
+                          onSelect={() => onOpenNewWindow(menu.repoPath)}
+                          close={closeMenu}
+                        />
+                      </>
+                    )}
                     <MenuItem
                       testId="menu-new-group"
                       label={t('projectTree.menu.newGroupWithRepo')}
@@ -763,7 +797,7 @@ export function ProjectTree({
                     )}
                     {/* Forget = drop from the list (disk untouched). Not the active repo — this
                         window is on it and REPO_LIST would resurface it anyway. */}
-                    {!repos.some((r) => r.path === menu.repoPath && r.active) && (
+                    {!isActive && (
                       <MenuItem
                         testId="menu-forget-repo"
                         label={t('projectTree.menu.forget')}

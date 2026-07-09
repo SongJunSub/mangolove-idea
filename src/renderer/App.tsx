@@ -157,6 +157,12 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
+  // Name each window by its repo so multiple windows are distinguishable (OS window list, Cmd+`,
+  // taskbar). The empty-gate window (no repo yet) falls back to the bare product name.
+  useEffect(() => {
+    const name = repo.repoRoot ? (repo.repoRoot.split('/').filter(Boolean).pop() ?? null) : null;
+    document.title = name ? `${name} — MangoLove` : 'MangoLove';
+  }, [repo.repoRoot]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   // Pending in-place repo switch awaiting confirmation (set only when the current repo is
@@ -879,6 +885,7 @@ export function App(): React.JSX.Element {
                         expanded={treeExpanded}
                         onSelectWorktree={requestSelectWorktree}
                         onSwitchRepo={requestRepoSwitch}
+                        onOpenNewWindow={(path) => void recentRepos.openNewWindow(path)}
                         onRemoveWorktree={(id) => {
                           void remove(id);
                           // Prune the removed worktree's persisted tabs so the openTabs map can't
