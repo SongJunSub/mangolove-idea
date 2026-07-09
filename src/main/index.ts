@@ -76,9 +76,9 @@ function openOrCreateWindowForRepo(repoRoot: string): void {
   applyOpenWindowAction(action, contexts, {
     createWindow: () => {
       const from = BrowserWindow.getFocusedWindow();
-      const pos = from
-        ? { x: from.getPosition()[0] + 30, y: from.getPosition()[1] + 30 }
-        : undefined;
+      const [x, y] = from?.getPosition() ?? [];
+      // Cascade a mid-session new window +30,+30 off the focused one (omit when there's no anchor).
+      const pos = x !== undefined && y !== undefined ? { x: x + 30, y: y + 30 } : undefined;
       createWindow(root, pos);
     },
     focus: (ctx) => ctx.mainWindow?.focus(),

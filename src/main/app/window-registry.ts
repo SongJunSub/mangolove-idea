@@ -166,18 +166,19 @@ function isLiveCtx(ctx: IpcContext | undefined): ctx is IpcContext {
 }
 
 /**
- * The [wcId, ctx] of a LIVE window owning canonical `root` (optionally excluding one ctx), or
+ * The webContents id of a LIVE window owning canonical `root` (optionally excluding one ctx), or
  * undefined. The SINGLE owner-lookup behind the "one repo per window" focus guard — shared by
  * decideRepoSwitch (excludes the requesting window) and decideOpenNewWindow (no exclusion) so the
- * liveness + id-recovery logic exists once.
+ * liveness + id-recovery logic exists once. Callers carry only the id into their actions (the apply
+ * step re-fetches the ctx from `contexts`, since it may go stale between decide and apply).
  */
-function findLiveCtxEntry(
+function findLiveCtxWcId(
   contexts: Map<number, IpcContext>,
   root: string,
   exclude?: IpcContext,
-): [number, IpcContext] | undefined {
+): number | undefined {
   for (const [id, ctx] of contexts) {
-    if (ctx !== exclude && ctx.repoRoot === root && isLiveCtx(ctx)) return [id, ctx];
+    if (ctx !== exclude && ctx.repoRoot === root && isLiveCtx(ctx)) return id;
   }
   return undefined;
 }
@@ -209,9 +210,9 @@ export function decideRepoSwitch(
   if (current.repoRoot === root) {
     return worktreeId ? { kind: 'reselect', worktreeId } : { kind: 'noop' };
   }
-  const other = findLiveCtxEntry(contexts, root, current);
-  return other
-    ? { kind: 'focus', targetWcId: other[0], worktreeId }
+  const otherWcId = findLiveCtxWcId(contexts, root, current);
+  return otherWcId !== undefined
+    ? { kind: 'focus', targetWcId: otherWcId, worktreeId }
     : { kind: 'reload', worktreeId };
 }
 
@@ -231,8 +232,10 @@ export function decideOpenNewWindow(
   contexts: Map<number, IpcContext>,
   root: string,
 ): OpenWindowAction {
-  const existing = findLiveCtxEntry(contexts, root);
-  return existing ? { kind: 'focus', targetWcId: existing[0] } : { kind: 'create' };
+  const existingWcId = findLiveCtxWcId(contexts, root);
+  return existingWcId !== undefined
+    ? { kind: 'focus', targetWcId: existingWcId }
+    : { kind: 'create' };
 }
 
 /** The side effects applyRepoSwitchAction performs — injected so it is unit-testable sans Electron. */

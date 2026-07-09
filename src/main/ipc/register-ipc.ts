@@ -1416,9 +1416,9 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   });
 
   // Open a KNOWN repo in a NEW window (or focus its existing window — one repo per window). SECURITY:
-  // only a repo already in the live recentRepos allowlist is honored (the tree only shows those), so
-  // the renderer can't make main spawn a window in an arbitrary directory. Opening is a use, so bump
-  // it to the front of recentRepos (matches REPO_OPEN).
+  // the path must be BOTH a live .git dir (guard below) AND already a member of recentRepos (the tree
+  // only shows those), so the renderer can't make main spawn a window in an arbitrary directory.
+  // Opening is a use, so bump it to the front of recentRepos (matches REPO_OPEN).
   ipcMain.handle(
     IPC.REPO_OPEN_NEW_WINDOW,
     async (event, path: unknown): Promise<RepoPickResult> => {
@@ -1428,11 +1428,13 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       }
       const store = getSettingsStore(ctx);
       const root = canonicalRepoRoot(path);
-      if (!new Set(liveCanonicalRepos(store.get().recentRepos ?? [])).has(root)) {
+      // One store read + one canonicalization pass; root is already proven live by the guard above,
+      // so membership in the canonicalized recentRepos is the full allowlist check.
+      const canon = (store.get().recentRepos ?? []).map(canonicalRepoRoot);
+      if (!canon.includes(root)) {
         return { ok: false, error: 'unknown repository' };
       }
-      const prev = store.get().recentRepos ?? [];
-      store.set({ recentRepos: [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)] });
+      store.set({ recentRepos: [root, ...canon.filter((r) => r !== root)] });
       ctx.openRepoNewWindow?.(root);
       return { ok: true, repoRoot: root };
     },

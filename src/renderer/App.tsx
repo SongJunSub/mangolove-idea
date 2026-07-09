@@ -47,6 +47,7 @@ import { useUpdateCheck } from './hooks/use-update-check';
 import { useSelfUpdate } from './hooks/use-self-update';
 import { useUsage } from './hooks/use-usage';
 import { openExternal } from './lib/open-external';
+import { basename } from './lib/basename';
 import { I18nContext } from './i18n/i18n-context';
 import { makeT, type TranslateFn } from './i18n/messages';
 import { resolveLocale } from './i18n/resolve-locale';
@@ -160,8 +161,7 @@ export function App(): React.JSX.Element {
   // Name each window by its repo so multiple windows are distinguishable (OS window list, Cmd+`,
   // taskbar). The empty-gate window (no repo yet) falls back to the bare product name.
   useEffect(() => {
-    const name = repo.repoRoot ? (repo.repoRoot.split('/').filter(Boolean).pop() ?? null) : null;
-    document.title = name ? `${name} — MangoLove` : 'MangoLove';
+    document.title = repo.repoRoot ? `${basename(repo.repoRoot)} — MangoLove` : 'MangoLove';
   }, [repo.repoRoot]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
