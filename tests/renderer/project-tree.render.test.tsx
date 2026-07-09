@@ -178,7 +178,8 @@ describe('<ProjectTree>', () => {
     const row = await screen.findByTestId('worktree-item');
     expect(row.querySelector('.pt-dot--static')).not.toBeNull(); // non-active: static, no live status
     fireEvent.click(row);
-    expect(onSwitchRepo).toHaveBeenCalledWith(OTHER);
+    // Cross-repo select: the click carries THIS worktree's id so the target window lands on it.
+    expect(onSwitchRepo).toHaveBeenCalledWith(OTHER, `${OTHER}/main`);
   });
 
   it('shows the empty state when there are no repos', () => {
