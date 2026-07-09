@@ -58,9 +58,11 @@ function switchOrFocusRepo(wcId: number, repoRoot: string, worktreeId?: string):
       return;
     case 'reselect':
       // Already on this repo — just tell this window to select the worktree (no reload).
-      current?.mainWindow?.webContents.send(IPC.REPO_SELECT_WORKTREE, {
-        worktreeId: action.worktreeId,
-      });
+      if (current?.mainWindow && !current.mainWindow.isDestroyed()) {
+        current.mainWindow.webContents.send(IPC.REPO_SELECT_WORKTREE, {
+          worktreeId: action.worktreeId,
+        });
+      }
       return;
     case 'focus': {
       // Open elsewhere -> focus it, don't duplicate or steal. Pend the selection durably (the
