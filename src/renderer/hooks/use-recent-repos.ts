@@ -64,5 +64,9 @@ export function useRecentRepos(): UseRecentRepos {
     };
   }, []);
 
+  // Any window open/close/repo-swap re-fetches the list so the "open in another window" flags
+  // (openElsewhere) stay live in this window's tree.
+  useEffect(() => window.mango.repo.onWindowsChanged(() => void refresh()), [refresh]);
+
   return { repos, loading, refresh, open, openNewWindow, forget };
 }

@@ -349,6 +349,15 @@ function RepoNode({
         </span>
         <span className="pt-name">{basename(repo.path)}</span>
         {active && <span className="pt-here">{t('projectTree.here')}</span>}
+        {repo.openElsewhere && (
+          <span
+            className="pt-badge pt-badge--elsewhere"
+            data-testid="repo-open-elsewhere"
+            title={t('projectTree.openElsewhereTip')}
+          >
+            {t('projectTree.openElsewhere')}
+          </span>
+        )}
         {worktrees.length > 0 && <span className="pt-chip">{worktrees.length}</span>}
       </div>
       {open && (

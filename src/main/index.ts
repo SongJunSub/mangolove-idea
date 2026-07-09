@@ -59,6 +59,17 @@ function focusWindow(ctx: IpcContext): void {
 }
 
 /**
+ * Tell every live window that the window/repo set changed (one opened, closed, or swapped repos),
+ * so each project tree re-fetches REPO_LIST — refreshing the "open in another window" badge.
+ */
+function broadcastWindowsChanged(): void {
+  for (const ctx of contexts.values()) {
+    const win = ctx.mainWindow;
+    if (win && !win.isDestroyed()) win.webContents.send(IPC.WINDOWS_CHANGED);
+  }
+}
+
+/**
  * Switches the window identified by `wcId` to `repoRoot` IN PLACE (one window swaps repos,
  * no new BrowserWindow) — this is what the sidebar repo switcher drives. Honors the same
  * "one repo per window" invariant: if the target repo is already open in ANOTHER window,
@@ -77,6 +88,8 @@ function switchOrFocusRepo(wcId: number, repoRoot: string, worktreeId?: string):
       ctx.mainWindow?.webContents.send(IPC.REPO_SELECT_WORKTREE, { worktreeId: id }),
     focus: focusWindow,
   });
+  // A rebind changed this window's repo → other windows' "open elsewhere" set shifted.
+  broadcastWindowsChanged();
 }
 
 /**
@@ -155,11 +168,16 @@ function createWindow(repoRoot: string | null, position?: { x: number; y: number
   ctx.openRepoNewWindow = (root) => openOrCreateWindowForRepo(root);
   // Register BEFORE loading content so a quit during load still sweeps this window.
   contexts.set(wcId, ctx);
+  // A new window's repo joins the set → existing windows' "open elsewhere" badge updates. (The new
+  // window itself isn't listening yet; it reads the current set via REPO_LIST when it mounts.)
+  broadcastWindowsChanged();
 
   win.on('closed', () => {
     // Sweep ONLY this window's processes (no orphan claude/server), then drop the ctx.
     // Use the CAPTURED wcId — reading win.webContents.id here would throw post-destroy.
     teardownWindow(contexts, wcId);
+    // This window's repo left the set → remaining windows' "open elsewhere" badge updates.
+    broadcastWindowsChanged();
   });
 
   // Show the window when its content is ready — UNLESS MANGO_HEADLESS=1 (automated

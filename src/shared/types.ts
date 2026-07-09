@@ -858,6 +858,10 @@ export interface RecentRepo {
   readonly path: string;
   /** True when this is the repo THIS window is bound to (ctx.repoRoot). */
   readonly active: boolean;
+  /** True when this repo is open in ANOTHER window right now (one-repo-per-window, so never the
+   *  active one). Drives the project tree's "open in another window" badge; refreshed on
+   *  WINDOWS_CHANGED. Optional so older payloads / non-multi-window callers omit it. */
+  readonly openElsewhere?: boolean;
 }
 
 // ── Multimodel fan-out (V2) ──

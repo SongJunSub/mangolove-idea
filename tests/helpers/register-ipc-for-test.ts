@@ -29,6 +29,9 @@ interface RegisterIpcForTestResult {
 export function registerIpcForTest(
   ctx: IpcContext,
   id: number = TEST_WC_ID,
+  /** Extra [wcId, ctx] windows to seed into the registry — for multi-window handlers (e.g. REPO_LIST's
+   *  openElsewhere flag reads the OTHER windows' repoRoots). */
+  extraWindows: ReadonlyArray<readonly [number, IpcContext]> = [],
 ): RegisterIpcForTestResult {
   const handlers = new Map<string, RecordedHandler>();
   const onHandlers = new Map<string, RecordedHandler>();
@@ -36,7 +39,7 @@ export function registerIpcForTest(
     handle: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void handlers.set(c, fn)),
     on: vi.fn((c: string, fn: (...a: unknown[]) => unknown) => void onHandlers.set(c, fn)),
   };
-  const contexts = new Map<number, IpcContext>([[id, ctx]]);
+  const contexts = new Map<number, IpcContext>([[id, ctx], ...extraWindows]);
   registerIpc(ipcMain as never, contexts);
   return { handlers, onHandlers, ipcMain, fakeEvent: { sender: { id } } };
 }

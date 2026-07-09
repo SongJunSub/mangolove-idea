@@ -112,6 +112,7 @@ const api: MangoApi = {
     open: (path, opts) => ipcRenderer.invoke(IPC.REPO_OPEN, path, opts),
     takePendingSelect: () => ipcRenderer.invoke(IPC.REPO_TAKE_PENDING_SELECT),
     onSelectWorktree: (cb) => subscribe(IPC.REPO_SELECT_WORKTREE, cb),
+    onWindowsChanged: (cb) => subscribe(IPC.WINDOWS_CHANGED, cb),
     forget: (path) => ipcRenderer.invoke(IPC.REPO_FORGET, path),
     openNewWindow: (path) => ipcRenderer.invoke(IPC.REPO_OPEN_NEW_WINDOW, path),
   },

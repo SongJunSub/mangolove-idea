@@ -8,6 +8,7 @@ import {
   applyOpenWindowAction,
   cascadeWindowPosition,
   CASCADE_STEP,
+  openRepoRootsExcluding,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
@@ -249,6 +250,27 @@ describe('applyOpenWindowAction (side effects of opening a new window)', () => {
     applyOpenWindowAction({ kind: 'focus', targetWcId: 2 }, new Map([[2, dead]]), f);
     expect(f.focus).not.toHaveBeenCalled();
     expect(f.createWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe('openRepoRootsExcluding (repos open in OTHER windows → the badge)', () => {
+  const live = () => ({ isDestroyed: () => false }) as never;
+  const ctx = (repoRoot: string | null): IpcContext => ({ mainWindow: live(), repoRoot });
+
+  it('returns the repoRoots of live windows except the given one; skips empty-gate + destroyed', () => {
+    const dead: IpcContext = {
+      mainWindow: { isDestroyed: () => true } as never,
+      repoRoot: '/dead',
+    };
+    const contexts = new Map<number, IpcContext>([
+      [1, ctx('/a')],
+      [2, ctx('/b')],
+      [3, ctx(null)], // empty-gate → contributes nothing
+      [4, dead], // destroyed → contributes nothing
+    ]);
+    expect(openRepoRootsExcluding(contexts, 1)).toEqual(new Set(['/b'])); // excludes self (/a), null, dead
+    expect(openRepoRootsExcluding(contexts, 9)).toEqual(new Set(['/a', '/b'])); // no exclusion
+    expect(openRepoRootsExcluding(new Map(), 1)).toEqual(new Set()); // no windows
   });
 });
 
