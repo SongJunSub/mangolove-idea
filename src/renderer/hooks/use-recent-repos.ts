@@ -12,9 +12,10 @@ export interface UseRecentRepos {
   /**
    * Switch to a known repo by path: main opens or FOCUSES its window (never a second
    * window for the same repo). This window stays put when it focuses another; the
-   * empty-gate window attaches + reloads.
+   * empty-gate window attaches + reloads. `opts.worktreeId` (cross-repo worktree select)
+   * is delivered to the target window once its repo is active.
    */
-  open(path: string): Promise<RepoPickResult>;
+  open(path: string, opts?: { worktreeId?: string }): Promise<RepoPickResult>;
 }
 
 /** Reads recentRepos once on mount; open() switches to a repo, refresh() re-lists. */
@@ -27,7 +28,8 @@ export function useRecentRepos(): UseRecentRepos {
   }, []);
 
   const open = useCallback(
-    async (path: string): Promise<RepoPickResult> => window.mango.repo.open(path),
+    async (path: string, opts?: { worktreeId?: string }): Promise<RepoPickResult> =>
+      window.mango.repo.open(path, opts),
     [],
   );
 
