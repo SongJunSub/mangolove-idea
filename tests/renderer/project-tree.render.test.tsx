@@ -190,6 +190,59 @@ describe('<ProjectTree>', () => {
     expect(screen.getByText('No repositories yet')).toBeInTheDocument();
   });
 
+  // ── filter / search (PR-1) ──────────────────────────────────────────────────
+
+  it('filtering by repo name shows only matching repos (others hidden)', async () => {
+    renderWithI18n(<Harness />);
+    fireEvent.change(screen.getByTestId('project-filter'), { target: { value: 'mango' } });
+    await waitFor(() => expect(screen.getByTestId('repo-node-mangolove-idea')).toBeInTheDocument());
+    expect(screen.queryByTestId('group-node-CRS')).toBeNull(); // CRS group has no match -> hidden
+    expect(screen.queryByTestId('repo-node-crs')).toBeNull();
+  });
+
+  it('filtering by branch reveals the repo force-expanded with only the matching worktree', () => {
+    renderWithI18n(<Harness />);
+    fireEvent.change(screen.getByTestId('project-filter'), { target: { value: 'feature' } });
+    // crs matches on its feature/x branch -> group + repo force-open, only that worktree shown.
+    expect(screen.getByTestId('group-node-CRS')).toBeInTheDocument();
+    expect(screen.getByTestId('repo-node-crs')).toBeInTheDocument();
+    const rows = screen.getAllByTestId('worktree-item');
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText('feature/x')).toBeInTheDocument();
+    expect(screen.queryByTestId('repo-node-mangolove-idea')).toBeNull(); // no match -> hidden
+  });
+
+  it('a non-matching filter shows the "no matches" state; clear restores the tree', () => {
+    renderWithI18n(<Harness />);
+    const input = screen.getByTestId('project-filter');
+    fireEvent.change(input, { target: { value: 'zzz-nothing' } });
+    expect(screen.getByTestId('project-filter-none')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('project-filter-clear'));
+    expect(screen.queryByTestId('project-filter-none')).toBeNull();
+    expect(screen.getByTestId('group-node-CRS')).toBeInTheDocument(); // tree back
+  });
+
+  it('starting a filter eager-loads non-active repos so their branches are searchable', async () => {
+    const listFor = stubListFor(async () => []);
+    renderWithI18n(<Harness />);
+    fireEvent.change(screen.getByTestId('project-filter'), { target: { value: 'x' } });
+    await waitFor(() => expect(listFor).toHaveBeenCalledWith(OTHER));
+  });
+
+  it('a chevron toggle WHILE filtering does not flip the persisted expand state', () => {
+    renderWithI18n(<Harness />);
+    fireEvent.change(screen.getByTestId('project-filter'), { target: { value: 'mango' } });
+    const node = screen.getByTestId('repo-node-mangolove-idea');
+    expect(node).toHaveAttribute('aria-expanded', 'true'); // force-open while filtering
+    fireEvent.click(node.querySelector('.pt-chev')!); // invisible + must be a no-op (guarded)
+    fireEvent.click(screen.getByTestId('project-filter-clear'));
+    // Back to its pre-filter COLLAPSED state — the invisible toggle did not persist.
+    expect(screen.getByTestId('repo-node-mangolove-idea')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
   // ── header menu (Phase 4) ────────────────────────────────────────────────────
 
   it('the + button opens a menu; "add repository" triggers onAddRepo', () => {

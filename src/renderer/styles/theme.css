@@ -864,6 +864,53 @@ a {
   flex-direction: column;
   gap: 1px;
 }
+/* ── filter (search) bar ── */
+.pt-filter {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.pt-filter-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px 24px 4px 9px;
+  outline: none;
+}
+.pt-filter-input:focus {
+  border-color: var(--accent);
+}
+.pt-filter-input::placeholder {
+  color: var(--faint);
+}
+.pt-filter-clear {
+  position: absolute;
+  right: 12px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pt-filter-clear:hover {
+  color: var(--accent);
+  background: var(--elevated);
+}
 .pt-row {
   display: flex;
   align-items: center;
