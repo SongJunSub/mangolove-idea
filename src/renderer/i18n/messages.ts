@@ -169,6 +169,9 @@ export const en = {
     '{count} running agent turn(s) would be interrupted. Conversations are saved by claude and resume with --continue next time — only the in-flight turn is lost. Quit anyway?',
   'app.quit.unsaved':
     '{count} unsaved editor file(s) will be lost — they were never saved to disk.',
+  'app.quit.activeCount': '{count} running',
+  'app.quit.unsavedCount': '{count} unsaved',
+  'app.quit.untitledWindow': 'New window',
   'app.quit.cancel': 'Cancel',
   'app.quit.stopAll': 'Stop all & quit',
   'app.quit.keepRunning': 'Keep running & quit',
@@ -503,6 +506,9 @@ export const ko: Record<MessageKey, string> = {
   'app.quit.lite':
     '작업 중인 에이전트 {count}개가 중단돼요. 대화는 claude가 저장해서 다음에 --continue로 이어갈 수 있고, 진행 중이던 작업만 사라져요. 그래도 종료할까요?',
   'app.quit.unsaved': '저장 안 한 파일 {count}개가 사라져요 — 디스크에 저장된 적이 없어요.',
+  'app.quit.activeCount': '작업 중 {count}',
+  'app.quit.unsavedCount': '미저장 {count}',
+  'app.quit.untitledWindow': '새 창',
   'app.quit.cancel': '취소',
   'app.quit.stopAll': '모두 멈추고 종료',
   'app.quit.keepRunning': '켜둔 채 종료',
