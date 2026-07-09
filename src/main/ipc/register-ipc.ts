@@ -88,6 +88,7 @@ import {
   aggregateUnsavedCount,
   sweepAll,
   canonicalRepoRoot,
+  canonicalRepoRootAsync,
   type CtxEventLike,
 } from '../app/window-registry';
 import type { SessionStore } from '../managers/session-store';
@@ -107,6 +108,7 @@ import {
   mkdirSync,
   constants as fsConstants,
 } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { FileTreeReader } from '../fs/file-tree-reader';
 import { FileEditor } from '../fs/file-editor';
 import { CodeNavService } from '../codenav/code-nav-service';
@@ -280,20 +282,36 @@ async function getWorktreeManager(ctx: IpcContext): Promise<WorktreeManager> {
  */
 const worktreeManagersByPath = new Map<string, WorktreeManager>();
 
+/** True when `<repoPath>/.git` exists — async so a fan-out over a repo LIST never blocks the main
+ *  process on a hung/stale entry (unlike the sync existsSync used for a single acted-on path). */
+async function isLiveGitDir(repoPath: string): Promise<boolean> {
+  try {
+    await access(join(repoPath, '.git'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The canonical repo roots that CURRENTLY exist as git repos, in recentRepos order, deduped. The
  * SINGLE definition of "which recentRepos are live": REPO_LIST maps it to RecentRepo (adding the
  * active flag), WORKTREE_LIST_FOR uses it as the security allowlist, and project groups use it as
  * the pruning oracle — only a repo the user actually opened (and that still has a `.git`) may be
- * listed or grouped. Pure over the passed array so callers read settings once.
+ * listed or grouped. ASYNC (fs.promises): the exists + realpath fan-out over the whole list runs
+ * off the sync path so one hung/stale mount can't freeze every window's IPC/UI — it yields to the
+ * event loop. Entries resolve in parallel; order + first-wins dedup match the old sync form exactly.
  */
-function liveCanonicalRepos(recentRepos: readonly string[]): string[] {
+async function liveCanonicalRepos(recentRepos: readonly string[]): Promise<string[]> {
+  const resolved = await Promise.all(
+    recentRepos.map(async (raw) =>
+      (await isLiveGitDir(raw)) ? await canonicalRepoRootAsync(raw) : null,
+    ),
+  );
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of recentRepos) {
-    if (!existsSync(join(raw, '.git'))) continue; // stale: dir gone or no longer a repo
-    const path = canonicalRepoRoot(raw);
-    if (seen.has(path)) continue; // two raw forms of the same repo collapse to one
+  for (const path of resolved) {
+    if (path === null || seen.has(path)) continue; // stale (dropped) or a dup raw form
     seen.add(path);
     out.push(path);
   }
@@ -316,18 +334,35 @@ const MAX_RECENT_REPOS = 50;
  * only repoPaths still in the live recentRepos, so dropping a grouped-but-not-recent repo here would
  * silently un-group it — and a later GROUPS_SET would persist that loss. Grouped repos beyond the cap
  * are therefore retained (groups are a small curated set, so this keeps the list effectively bounded).
+ *
+ * CONCURRENCY: now async, the recentRepos read-modify-write is no longer atomic — two opens (or an
+ * open + a REPO_FORGET) overlapping within the realpath await window are last-writer-wins on the
+ * recentRepos key, so one bump/forget can be lost (a just-opened repo briefly absent, or a just-
+ * forgotten repo transiently back). Accepted for an MRU convenience list: it self-heals on the next
+ * open/list and the active repo is still surfaced by recentRepoList's fallback. The one interaction
+ * that would NOT self-heal — a concurrent GROUPS_SET grouping a cap-boundary repo, which a stale pin
+ * snapshot could evict and a later GROUPS_SET then persist as un-grouped — is closed above by reading
+ * projectGroups fresh with no await before the write. A store-level write serialization would remove
+ * the residual MRU races too, if they ever matter; the whole-app freeze on a hung mount that the async
+ * conversion avoids is the worse problem, so this trade is deliberate.
  */
-function bumpRecentRepo(store: SettingsStore, root: string): void {
-  const settings = store.get();
-  const bumped = [
-    root,
-    ...(settings.recentRepos ?? []).map(canonicalRepoRoot).filter((r) => r !== root),
-  ];
-  const grouped = new Set(
-    (settings.projectGroups ?? []).flatMap((g) => g.repoPaths.map(canonicalRepoRoot)),
+async function bumpRecentRepo(store: SettingsStore, root: string): Promise<void> {
+  // Async realpath fan-out over the current list — off the sync path (see liveCanonicalRepos). `root`
+  // is already canonical from the caller (a single sync canonicalRepoRoot on the acted-on path).
+  // Promise.all preserves order, so the dedupe/cap results match the old sync form.
+  const prevCanonical = await Promise.all(
+    (store.get().recentRepos ?? []).map(canonicalRepoRootAsync),
   );
+  const bumped = [root, ...prevCanonical.filter((r) => r !== root)];
   const kept = bumped.slice(0, MAX_RECENT_REPOS);
-  const pinnedBeyondCap = bumped.slice(MAX_RECENT_REPOS).filter((r) => grouped.has(r));
+  const overflow = bumped.slice(MAX_RECENT_REPOS);
+  // Read projectGroups FRESH here — synchronously, with NO await before the store.set below — so the
+  // grouped-repo pin is atomic w.r.t. GROUPS_SET: a grouping that committed during the realpath await
+  // above is honored, instead of evicting its just-grouped repo (which a later GROUPS_SET would then
+  // persist as un-grouped). Stored repoPaths are already canonical (GROUPS_SET canonicalizes), as are
+  // the overflow entries, so a string-match pin needs no realpath.
+  const grouped = new Set((store.get().projectGroups ?? []).flatMap((g) => g.repoPaths));
+  const pinnedBeyondCap = overflow.filter((r) => grouped.has(r));
   store.set({ recentRepos: [...kept, ...pinnedBeyondCap] });
 }
 
@@ -336,10 +371,10 @@ function bumpRecentRepo(store: SettingsStore, root: string): void {
  * defensive fallback that surfaces the active repo even if recentRepos somehow lost it. Shared by
  * REPO_LIST and REPO_FORGET so both return the identical shape.
  */
-function recentRepoList(store: SettingsStore, active: string | null): RecentRepo[] {
-  const live = liveCanonicalRepos(store.get().recentRepos ?? []);
+async function recentRepoList(store: SettingsStore, active: string | null): Promise<RecentRepo[]> {
+  const live = await liveCanonicalRepos(store.get().recentRepos ?? []);
   const repos: RecentRepo[] = live.map((path) => ({ path, active: path === active }));
-  if (active && !live.includes(active) && existsSync(join(active, '.git'))) {
+  if (active && !live.includes(active) && (await isLiveGitDir(active))) {
     repos.unshift({ path: active, active: true });
   }
   return repos;
@@ -1409,7 +1444,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     // canonicalized read (else a symlinked repo's raw + canonical forms both persist).
     const store = getSettingsStore(ctx);
     const root = canonicalRepoRoot(dir);
-    bumpRecentRepo(store, root);
+    await bumpRecentRepo(store, root);
     ctx.openRepo?.(root);
     return { ok: true, repoRoot: root };
   });
@@ -1433,12 +1468,12 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     const store = getSettingsStore(ctx);
     const active = ctx.repoRoot ?? null;
     if (typeof path === 'string') {
-      const target = canonicalRepoRoot(path);
+      const target = canonicalRepoRoot(path); // single acted-on path — sync is fine
       if (target !== active) {
-        const recentRepos = (store.get().recentRepos ?? [])
-          .map(canonicalRepoRoot)
-          .filter((r) => r !== target);
-        store.set({ recentRepos });
+        const canonical = await Promise.all(
+          (store.get().recentRepos ?? []).map(canonicalRepoRootAsync),
+        );
+        store.set({ recentRepos: canonical.filter((r) => r !== target) });
       }
     }
     return recentRepoList(store, active);
@@ -1458,14 +1493,14 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
         return { ok: false, error: 'not a git repository' };
       }
       const store = getSettingsStore(ctx);
-      const root = canonicalRepoRoot(path);
+      const root = canonicalRepoRoot(path); // single acted-on path — sync is fine
       // root is already proven live by the .git guard above, so membership in the canonicalized
       // recentRepos is the full allowlist check. bumpRecentRepo owns the dedupe + cap write.
-      const canon = (store.get().recentRepos ?? []).map(canonicalRepoRoot);
+      const canon = await Promise.all((store.get().recentRepos ?? []).map(canonicalRepoRootAsync));
       if (!canon.includes(root)) {
         return { ok: false, error: 'unknown repository' };
       }
-      bumpRecentRepo(store, root);
+      await bumpRecentRepo(store, root);
       ctx.openRepoNewWindow?.(root);
       return { ok: true, repoRoot: root };
     },
@@ -1489,7 +1524,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       const worktreeId = typeof rawId === 'string' && rawId !== '' ? rawId : undefined;
       const store = getSettingsStore(ctx);
       const root = canonicalRepoRoot(path); // canonical-key (matches REPO_LIST + REPO_PICK)
-      bumpRecentRepo(store, root);
+      await bumpRecentRepo(store, root);
       ctx.openRepo?.(root, worktreeId);
       return { ok: true, repoRoot: root };
     },
@@ -1513,8 +1548,8 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     if (typeof repoPath !== 'string' || repoPath === '') return [];
     const store = getSettingsStore(ctx);
     try {
-      const canonical = canonicalRepoRoot(repoPath);
-      const live = new Set(liveCanonicalRepos(store.get().recentRepos ?? []));
+      const canonical = canonicalRepoRoot(repoPath); // single acted-on path — sync is fine
+      const live = new Set(await liveCanonicalRepos(store.get().recentRepos ?? []));
       if (!live.has(canonical)) return [];
       if (!existsSync(join(canonical, '.git'))) return [];
       return await listWorktreesForCanonical(ctx, canonical);
@@ -1530,7 +1565,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   ipcMain.handle(IPC.GROUPS_GET, async (event): Promise<ProjectGroup[]> => {
     const ctx = requireCtx(event);
     const settings = getSettingsStore(ctx).get(); // read settings ONCE for both the live set + groups
-    const live = new Set(liveCanonicalRepos(settings.recentRepos ?? []));
+    const live = new Set(await liveCanonicalRepos(settings.recentRepos ?? []));
     return (settings.projectGroups ?? []).map((g) => ({
       ...g,
       repoPaths: g.repoPaths.filter((p) => live.has(p)),
@@ -1544,11 +1579,15 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   ipcMain.handle(IPC.GROUPS_SET, async (event, groups: unknown): Promise<ProjectGroup[]> => {
     const ctx = requireCtx(event);
     const store = getSettingsStore(ctx);
-    const live = new Set(liveCanonicalRepos(store.get().recentRepos ?? []));
-    const normalized = (coerceProjectGroups(groups) ?? []).map((g) => ({
-      ...g,
-      repoPaths: g.repoPaths.map((p) => canonicalRepoRoot(p)).filter((p) => live.has(p)),
-    }));
+    const live = new Set(await liveCanonicalRepos(store.get().recentRepos ?? []));
+    const normalized = await Promise.all(
+      (coerceProjectGroups(groups) ?? []).map(async (g) => ({
+        ...g,
+        repoPaths: (await Promise.all(g.repoPaths.map(canonicalRepoRootAsync))).filter((p) =>
+          live.has(p),
+        ),
+      })),
+    );
     const final = coerceProjectGroups(normalized) ?? [];
     store.set({ projectGroups: final });
     const senderId = event.sender.id;

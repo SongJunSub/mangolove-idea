@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import type { IpcContext } from '../ipc/ipc-context';
 
 /**
@@ -12,6 +13,21 @@ import type { IpcContext } from '../ipc/ipc-context';
 export function canonicalRepoRoot(repoRoot: string): string {
   try {
     return realpathSync(repoRoot);
+  } catch {
+    return repoRoot;
+  }
+}
+
+/**
+ * Async form of canonicalRepoRoot — for fan-out over a LIST of paths (recentRepos, group repoPaths),
+ * so a hung/stale entry (e.g. a dead NFS/automount) yields to the event loop instead of blocking the
+ * whole single-threaded main process. Single KNOWN-LIVE path binds (window creation, the path being
+ * opened) keep the sync canonicalRepoRoot. Falls back to the input on error, identically to the sync
+ * form, so results match one-for-one.
+ */
+export async function canonicalRepoRootAsync(repoRoot: string): Promise<string> {
+  try {
+    return await realpath(repoRoot);
   } catch {
     return repoRoot;
   }

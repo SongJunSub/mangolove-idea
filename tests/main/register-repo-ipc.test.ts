@@ -341,5 +341,36 @@ describe('repo IPC wiring', () => {
       expect(written[0]).toBe(canon);
       expect(written).toContain(pinned); // the grouped repo survived the cap
     });
+
+    it('reads projectGroups FRESH before the cap write, so a concurrent GROUPS_SET is not evicted', async () => {
+      // Race: bumpRecentRepo reads recentRepos, awaits realpath, then reads projectGroups. If it used
+      // the FIRST snapshot's (empty) groups, a grouping committed during the await would be evicted by
+      // the cap and later persisted as un-grouped. The 2nd get() here returns the just-committed group;
+      // the pin must honor it. Driven via REPO_OPEN, whose only get()s are bumpRecentRepo's two reads.
+      writeFileSync(join(dir, '.git'), 'gitdir: x\n');
+      const stale = Array.from({ length: 60 }, (_, i) => `/stale/${i}`);
+      const pinned = '/stale/59';
+      let getCall = 0;
+      const setSpy = vi.fn();
+      const ctx = baseCtx();
+      ctx.settingsStore = {
+        get: () => {
+          getCall += 1;
+          return getCall === 1
+            ? { recentRepos: [dir, ...stale] } // recentRepos read: no groups yet
+            : {
+                recentRepos: [dir, ...stale],
+                projectGroups: [{ id: 'g', name: 'G', repoPaths: [pinned] }], // grouped during await
+              };
+        },
+        set: setSpy,
+      } as never;
+      ctx.openRepo = vi.fn();
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      getCall = 0; // ignore any registration-time reads
+      await handlers.get(IPC.REPO_OPEN)!(fakeEvent, dir, undefined);
+      const written = setSpy.mock.calls[0][0].recentRepos as string[];
+      expect(written).toContain(pinned); // fresh group read -> the concurrently-grouped repo survives
+    });
   });
 });
