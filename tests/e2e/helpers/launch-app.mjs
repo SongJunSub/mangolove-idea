@@ -39,14 +39,18 @@ export function seedRepo(files) {
 }
 
 /**
- * Launches the built app pointed at a freshly seeded repo. Returns { app, window, repoRoot, close }.
- * `close()` shuts the app down cleanly and removes every temp dir. Requires `npm run build` first.
+ * Launches the built app pointed at a freshly seeded repo. Returns { app, window, repoRoot,
+ * extraRoots, close }. `opts.extraRepos` seeds additional repos (each a { relPath: contents } map)
+ * that join recentRepos AFTER the boot repo — so the project tree shows them as non-active repos
+ * (for cross-repo tests). `close()` shuts the app down cleanly and removes every temp dir. Requires
+ * `npm run build` first.
  */
-export async function launchApp(files) {
+export async function launchApp(files, { extraRepos = [] } = {}) {
   if (!existsSync(MAIN_ENTRY)) {
     throw new Error(`built main not found at ${MAIN_ENTRY} — run \`npm run build\` first`);
   }
   const repoRoot = seedRepo(files);
+  const extraRoots = extraRepos.map((f) => seedRepo(f));
   const userData = mkdtempSync(join(tmpdir(), 'mango-e2e-userdata-'));
 
   // A fake agent that just idles — selecting a worktree mounts the agent terminal, which must not
@@ -55,10 +59,11 @@ export async function launchApp(files) {
   writeFileSync(fakeAgent, '#!/bin/sh\nwhile true; do sleep 3600; done\n');
   chmodSync(fakeAgent, 0o755);
 
-  // Seed settings.json so the app boots straight into the repo (recentRepos[0]).
+  // Seed settings.json so the app boots straight into the FIRST repo (recentRepos[0]); any extra
+  // repos follow so they render as non-active nodes in the project tree.
   writeFileSync(
     join(userData, 'settings.json'),
-    JSON.stringify({ recentRepos: [repoRoot], theme: 'dark' }, null, 2),
+    JSON.stringify({ recentRepos: [repoRoot, ...extraRoots], theme: 'dark' }, null, 2),
   );
 
   const app = await _electron.launch({
@@ -77,6 +82,7 @@ export async function launchApp(files) {
     await app.close().catch(() => {});
     rmSync(userData, { recursive: true, force: true });
     rmSync(repoRoot, { recursive: true, force: true });
+    for (const r of extraRoots) rmSync(r, { recursive: true, force: true });
   };
-  return { app, window, repoRoot, close };
+  return { app, window, repoRoot, extraRoots, close };
 }
