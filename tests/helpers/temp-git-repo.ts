@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
@@ -18,8 +18,13 @@ export async function makeTempGitRepo(): Promise<TempGitRepo> {
   const dir = mkdtempSync(joinPath(tmpdir(), 'mango-git-'));
   const git = simpleGit(dir);
   await git.init(['--initial-branch=main']);
-  await git.addConfig('user.email', 'test@mango.local');
-  await git.addConfig('user.name', 'Mango Test');
+  // Write the commit identity straight into .git/config (one fs append, zero subprocess spawns) in
+  // place of two `git config` calls. Worktrees added later share this same config file, so their
+  // commits inherit the identity too. Halves the git spawns per repo across the whole integration pool.
+  appendFileSync(
+    joinPath(dir, '.git', 'config'),
+    '[user]\n\temail = test@mango.local\n\tname = Mango Test\n',
+  );
   await git.commit('init', [], { '--allow-empty': null });
   return {
     dir,
