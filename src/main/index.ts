@@ -98,7 +98,7 @@ function switchOrFocusRepo(wcId: number, repoRoot: string, worktreeId?: string):
  * (the "one repo per window" invariant). Drives the project tree's "Open in new window". A new
  * window cascades +30,+30 from the focused window so it doesn't land exactly on top of it.
  */
-function openOrCreateWindowForRepo(repoRoot: string): void {
+function openOrCreateWindowForRepo(repoRoot: string): boolean {
   const root = canonicalRepoRoot(repoRoot);
   const action = decideOpenNewWindow(contexts, root);
   applyOpenWindowAction(action, contexts, {
@@ -117,6 +117,8 @@ function openOrCreateWindowForRepo(repoRoot: string): void {
     },
     focus: focusWindow,
   });
+  // true = the repo was already open, so we focused its existing window (→ "moved" toast).
+  return action.kind === 'focus';
 }
 
 /**
