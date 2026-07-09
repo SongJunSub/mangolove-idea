@@ -229,6 +229,34 @@ describe('<ProjectTree>', () => {
     await waitFor(() => expect(listFor).toHaveBeenCalledWith(OTHER));
   });
 
+  // ── keyboard navigation (PR-2) ──────────────────────────────────────────────
+
+  it('ArrowDown/ArrowUp move focus between rows; Home/End jump; clamps at the ends', () => {
+    renderWithI18n(<Harness expandedInit={{ groups: ['g1'], repos: [ACTIVE] }} />);
+    const tree = screen.getByRole('tree');
+    const items = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'));
+    expect(items.length).toBeGreaterThanOrEqual(4); // group + repo + 2 worktrees + ungrouped repo
+    items[0].focus();
+    fireEvent.keyDown(tree, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(tree, { key: 'End' });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    fireEvent.keyDown(tree, { key: 'ArrowDown' }); // clamp at bottom
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    fireEvent.keyDown(tree, { key: 'Home' });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(tree, { key: 'ArrowUp' }); // clamp at top
+    expect(document.activeElement).toBe(items[0]);
+  });
+
+  it('vertical nav coexists with per-row Arrow Right/Left expand/collapse', () => {
+    renderWithI18n(<Harness />); // CRS group collapsed
+    const group = screen.getByTestId('group-node-CRS');
+    group.focus();
+    fireEvent.keyDown(group, { key: 'ArrowRight' }); // per-row handler expands
+    expect(screen.getByTestId('repo-node-crs')).toBeInTheDocument(); // group opened
+  });
+
   it('a chevron toggle WHILE filtering does not flip the persisted expand state', () => {
     renderWithI18n(<Harness />);
     fireEvent.change(screen.getByTestId('project-filter'), { target: { value: 'mango' } });
