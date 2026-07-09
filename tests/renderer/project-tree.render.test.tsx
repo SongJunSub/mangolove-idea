@@ -446,4 +446,47 @@ describe('<ProjectTree>', () => {
     fireEvent.drop(body, { dataTransfer });
     expect(onAssignRepo).toHaveBeenCalledWith(ACTIVE, null);
   });
+
+  // ── roving tabindex (WAI-ARIA tree: one tab stop, arrows move it) ─────────────
+
+  const tabbableRows = () =>
+    screen.getAllByRole('treeitem').filter((el) => el.getAttribute('tabindex') === '0');
+
+  it('roving tabindex: exactly the FIRST row is tabbable initially; the rest are -1', () => {
+    renderWithI18n(<Harness />);
+    const tabbable = tabbableRows();
+    expect(tabbable).toHaveLength(1); // one tab stop, not one-per-row
+    expect(tabbable[0]).toBe(screen.getByTestId('group-node-CRS')); // groups render before ungrouped
+    expect(screen.getByTestId('repo-node-mangolove-idea').getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('roving tabindex: focusing a row makes IT the only tabbable one', () => {
+    renderWithI18n(<Harness />);
+    const other = screen.getByTestId('repo-node-mangolove-idea');
+    fireEvent.focus(other);
+    expect(other.getAttribute('tabindex')).toBe('0');
+    expect(tabbableRows()).toEqual([other]);
+  });
+
+  it('ArrowDown moves focus to the next row and the roving tabindex follows it', () => {
+    renderWithI18n(<Harness />);
+    const first = screen.getByTestId('group-node-CRS'); // collapsed group, starts tabbable
+    first.focus();
+    fireEvent.keyDown(screen.getByRole('tree'), { key: 'ArrowDown' });
+    const next = screen.getByTestId('repo-node-mangolove-idea');
+    expect(document.activeElement).toBe(next);
+    expect(next.getAttribute('tabindex')).toBe('0');
+    expect(tabbableRows()).toEqual([next]);
+  });
+
+  it('roving falls back to the first visible row when the roving row is filtered out', async () => {
+    renderWithI18n(<Harness />);
+    fireEvent.focus(screen.getByTestId('repo-node-mangolove-idea')); // roving = the ungrouped repo
+    fireEvent.change(screen.getByTestId('project-filter'), { target: { value: 'crs' } }); // hides it
+    await waitFor(() => {
+      // its row is gone, but a tab stop still exists (the self-correcting fallback re-armed one)
+      expect(screen.queryByTestId('repo-node-mangolove-idea')).toBeNull();
+      expect(tabbableRows()).toHaveLength(1);
+    });
+  });
 });

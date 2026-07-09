@@ -15,6 +15,11 @@ const DRAG_TYPE = 'application/x-mango-repo';
 /** Sentinel drop-target id for "drop here to ungroup" (the tree body outside any group). */
 const UNGROUPED = '__ungrouped__';
 
+/** Stable roving-tabindex ids, unique per row across the tree (group / repo / worktree). */
+const groupRid = (id: string): string => `g:${id}`;
+const repoRid = (path: string): string => `r:${path}`;
+const worktreeRid = (id: string): string => `w:${id}`;
+
 /** True when a drag event carries a repo payload (so we only accept repo drops). */
 function isRepoDrag(e: React.DragEvent): boolean {
   return e.dataTransfer.types.includes(DRAG_TYPE);
@@ -146,6 +151,9 @@ function WorktreeRow({
   repoActive,
   selected,
   status,
+  rid,
+  roving,
+  onFocus,
   onActivate,
   onRemove,
 }: {
@@ -154,6 +162,10 @@ function WorktreeRow({
   readonly repoActive: boolean;
   readonly selected: boolean;
   readonly status: WorktreeRowStatus | undefined;
+  /** Stable roving-tabindex id for this row + whether it is the (single) tabbable one. */
+  readonly rid: string;
+  readonly roving: boolean;
+  onFocus(): void;
   onActivate(): void;
   onRemove?(id: string): void;
 }): React.JSX.Element {
@@ -166,10 +178,12 @@ function WorktreeRow({
       role="treeitem"
       aria-level={level}
       aria-selected={selected}
-      tabIndex={0}
+      tabIndex={roving ? 0 : -1}
+      data-rid={rid}
       data-testid="worktree-item"
       className={`pt-row pt-wt${selected ? ' sel' : ''}`}
       title={worktree.branch}
+      onFocus={onFocus}
       onClick={onActivate}
       onKeyDown={rowKeyHandler({ activate: onActivate })}
     >
@@ -219,6 +233,10 @@ interface RepoNodeContext {
   /** Normalized (trimmed + lowercased) filter query; '' when not filtering. Force-opens nodes and
    *  narrows worktrees to branch matches (a repo whose NAME matches shows all its worktrees). */
   readonly filter: string;
+  /** The single row (by rid) that is Tab-reachable now; the tabindex "roves" here as arrows move
+   *  focus. onRowFocus updates it when a row receives focus (click or programmatic arrow-nav). */
+  readonly rovingId: string | null;
+  onRowFocus(rid: string): void;
   onSelectWorktree(id: string): void;
   onSwitchRepo(path: string, worktreeId?: string): void;
   /** Open a (non-active) repo in a new window — Cmd/Ctrl+click a repo row, or its menu item. */
@@ -303,11 +321,13 @@ function RepoNode({
         aria-level={level}
         aria-expanded={open}
         aria-current={active ? 'true' : undefined}
-        tabIndex={0}
+        tabIndex={ctx.rovingId === repoRid(repo.path) ? 0 : -1}
+        data-rid={repoRid(repo.path)}
         draggable
         data-testid={`repo-node-${basename(repo.path)}`}
         className={`pt-row pt-repo${active ? ' active' : ''}`}
         title={repo.path}
+        onFocus={() => ctx.onRowFocus(repoRid(repo.path))}
         onClick={activateRow}
         onContextMenu={(e) => ctx.onRepoMenu(e, repo.path)}
         onDragStart={(e) => ctx.onRepoDragStart(e, repo.path)}
@@ -356,6 +376,9 @@ function RepoNode({
               repoActive={active}
               selected={active && wt.id === ctx.selectedId}
               status={active ? ctx.statuses.get(wt.id) : undefined}
+              rid={worktreeRid(wt.id)}
+              roving={ctx.rovingId === worktreeRid(wt.id)}
+              onFocus={() => ctx.onRowFocus(worktreeRid(wt.id))}
               onActivate={() =>
                 // Active repo -> select in place. Non-active -> switch to that repo AND carry this
                 // worktree's id so the target window lands on it (cross-repo select).
@@ -402,9 +425,11 @@ function GroupNode({
         role="treeitem"
         aria-level={1}
         aria-expanded={open}
-        tabIndex={0}
+        tabIndex={ctx.rovingId === groupRid(group.id) ? 0 : -1}
+        data-rid={groupRid(group.id)}
         data-testid={`group-node-${group.name}`}
         className="pt-row pt-group"
+        onFocus={() => ctx.onRowFocus(groupRid(group.id))}
         onClick={renaming ? undefined : toggle}
         onContextMenu={(e) => ctx.onGroupMenu(e, group.id)}
         onKeyDown={rowKeyHandler({
@@ -570,6 +595,27 @@ export function ProjectTree({
   const visibleUngrouped = filtering ? ungrouped.filter(repoMatches) : ungrouped;
   const noMatches = filtering && visibleGroups.length === 0 && visibleUngrouped.length === 0;
 
+  // ── Roving tabindex ── Exactly ONE row is Tab-reachable (tabIndex 0); the rest are -1 and are
+  // focused programmatically by ↑/↓/Home/End. rovingId tracks which; it defaults to the FIRST visible
+  // row (in render order: groups then ungrouped repos) so Tab can always enter the tree.
+  const [rovingId, setRovingId] = useState<string | null>(null);
+  const firstRowId =
+    visibleGroups.length > 0
+      ? groupRid(visibleGroups[0].group.id)
+      : visibleUngrouped.length > 0
+        ? repoRid(visibleUngrouped[0].path)
+        : null;
+  const effectiveRovingId = rovingId ?? firstRowId;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // If the roving row was hidden (a filter or collapse removed it) so NO row is tabbable, drop back to
+  // the first-row default — otherwise Tab could no longer reach the tree at all.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (rovingId !== null && el && !el.querySelector('[role="treeitem"][tabindex="0"]')) {
+      setRovingId(null);
+    }
+  });
+
   const submitCreate = (name: string): void => {
     const repoPath = creating?.repoPath ?? undefined;
     setCreating(null);
@@ -602,6 +648,8 @@ export function ProjectTree({
     worktreesFor,
     expanded,
     filter: q,
+    rovingId: effectiveRovingId,
+    onRowFocus: setRovingId,
     onSelectWorktree,
     onSwitchRepo,
     onOpenNewWindow,
@@ -677,6 +725,7 @@ export function ProjectTree({
         </div>
       )}
       <div
+        ref={bodyRef}
         className={`project-tree-body${dragTarget === UNGROUPED ? ' pt-drop-root' : ''}`}
         role="tree"
         aria-label={t('app.projects')}
