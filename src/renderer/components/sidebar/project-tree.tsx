@@ -197,6 +197,9 @@ interface RepoNodeContext {
   readonly selectedId: string | null;
   readonly worktreesFor: UseWorktreesFor;
   readonly expanded: UseProjectTreeExpanded;
+  /** Normalized (trimmed + lowercased) filter query; '' when not filtering. Force-opens nodes and
+   *  narrows worktrees to branch matches (a repo whose NAME matches shows all its worktrees). */
+  readonly filter: string;
   onSelectWorktree(id: string): void;
   onSwitchRepo(path: string, worktreeId?: string): void;
   onRemoveWorktree(id: string): void;
@@ -221,7 +224,8 @@ function RepoNode({
   readonly ctx: RepoNodeContext;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const open = ctx.expanded.isRepoExpanded(repo.path);
+  const filtering = ctx.filter !== '';
+  const open = filtering || ctx.expanded.isRepoExpanded(repo.path); // filtering force-opens to reveal matches
   const active = repo.active;
   const { ensureLoaded, reload } = ctx.worktreesFor;
   const loadedOnceRef = useRef(false);
@@ -242,8 +246,19 @@ function RepoNode({
   const worktrees = active ? ctx.activeWorktrees : (remote?.worktrees ?? []);
   const loading = active ? ctx.activeLoading : remote?.status === 'loading';
   const error = active ? ctx.activeError : (remote?.error ?? null);
+  // When filtering, a repo whose NAME matches shows all its worktrees; otherwise only the branches
+  // that match. (The parent already decided this repo is worth rendering.)
+  const nameMatch = filtering && basename(repo.path).toLowerCase().includes(ctx.filter);
+  const shownWorktrees =
+    !filtering || nameMatch
+      ? worktrees
+      : worktrees.filter((w) => w.branch.toLowerCase().includes(ctx.filter));
 
-  const toggle = (): void => ctx.expanded.toggleRepo(repo.path);
+  // While filtering the node is force-open, so a chevron/keyboard toggle must be a no-op — otherwise
+  // it would silently flip the persisted expand state (invisible during the filter, surprising after).
+  const toggle = (): void => {
+    if (!filtering) ctx.expanded.toggleRepo(repo.path);
+  };
   // A non-active repo row SWITCHES to that repo; the active repo's row just toggles its worktrees.
   const activateRow = (): void => {
     if (active) toggle();
@@ -303,7 +318,7 @@ function RepoNode({
               {t('projectTree.noWorktrees')}
             </p>
           )}
-          {worktrees.map((wt) => (
+          {shownWorktrees.map((wt) => (
             <WorktreeRow
               key={wt.id}
               worktree={wt}
@@ -342,8 +357,10 @@ function GroupNode({
   onDragOverGroup(e: React.DragEvent): void;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const open = ctx.expanded.isGroupExpanded(group.id);
-  const toggle = (): void => ctx.expanded.toggleGroup(group.id);
+  const open = ctx.filter !== '' || ctx.expanded.isGroupExpanded(group.id); // filtering force-opens
+  const toggle = (): void => {
+    if (ctx.filter === '') ctx.expanded.toggleGroup(group.id); // no-op while force-open (see RepoNode)
+  };
   const renaming = ctx.renamingGroupId === group.id;
   return (
     <div
@@ -482,6 +499,36 @@ export function ProjectTree({
   const groupOf = (repoPath: string): ProjectGroup | undefined =>
     groups.find((g) => g.repoPaths.includes(repoPath));
 
+  // ── Filter (search) ──
+  const [filter, setFilter] = useState('');
+  const q = filter.trim().toLowerCase();
+  const filtering = q !== '';
+  const { ensureLoaded } = worktreesFor;
+  // While filtering, eager-load every non-active repo so its branches become searchable (idempotent
+  // — a no-op once loaded). Repo-name matches work without this; branch matches need the list.
+  useEffect(() => {
+    if (!filtering) return;
+    for (const r of repos) if (!r.active) ensureLoaded(r.path);
+  }, [filtering, repos, ensureLoaded]);
+
+  const worktreesOf = (repo: RecentRepo): readonly Worktree[] =>
+    repo.active ? activeWorktrees : worktreesFor.stateFor(repo.path).worktrees;
+  const repoMatches = (repo: RecentRepo): boolean =>
+    !filtering ||
+    basename(repo.path).toLowerCase().includes(q) ||
+    worktreesOf(repo).some((w) => w.branch.toLowerCase().includes(q));
+  const memberRepos = (g: ProjectGroup): RecentRepo[] =>
+    g.repoPaths.map((p) => byPath.get(p)).filter((r): r is RecentRepo => Boolean(r));
+
+  // Groups keep only their matching repos while filtering; a group with no match drops out.
+  const shownGroups = groups.map((g) => ({
+    group: g,
+    repos: filtering ? memberRepos(g).filter(repoMatches) : memberRepos(g),
+  }));
+  const visibleGroups = filtering ? shownGroups.filter((x) => x.repos.length > 0) : shownGroups;
+  const visibleUngrouped = filtering ? ungrouped.filter(repoMatches) : ungrouped;
+  const noMatches = filtering && visibleGroups.length === 0 && visibleUngrouped.length === 0;
+
   const submitCreate = (name: string): void => {
     const repoPath = creating?.repoPath ?? undefined;
     setCreating(null);
@@ -513,6 +560,7 @@ export function ProjectTree({
     selectedId,
     worktreesFor,
     expanded,
+    filter: q,
     onSelectWorktree,
     onSwitchRepo,
     onRemoveWorktree,
@@ -558,6 +606,34 @@ export function ProjectTree({
           +
         </button>
       </div>
+      {repos.length > 0 && (
+        <div className="pt-filter">
+          <input
+            type="search"
+            className="pt-filter-input"
+            data-testid="project-filter"
+            placeholder={t('projectTree.filter.placeholder')}
+            aria-label={t('projectTree.filter.placeholder')}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setFilter('');
+            }}
+          />
+          {filter !== '' && (
+            <button
+              type="button"
+              className="pt-filter-clear"
+              data-testid="project-filter-clear"
+              aria-label={t('projectTree.filter.clear')}
+              title={t('projectTree.filter.clear')}
+              onClick={() => setFilter('')}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
       <div
         className={`project-tree-body${dragTarget === UNGROUPED ? ' pt-drop-root' : ''}`}
         role="tree"
@@ -574,21 +650,26 @@ export function ProjectTree({
             onCancel={() => setCreating(null)}
           />
         )}
-        {groups.map((g) => (
+        {visibleGroups.map(({ group, repos: memberReposShown }) => (
           <GroupNode
-            key={g.id}
-            group={g}
-            repos={g.repoPaths.map((p) => byPath.get(p)).filter((r): r is RecentRepo => Boolean(r))}
+            key={group.id}
+            group={group}
+            repos={memberReposShown}
             ctx={ctx}
-            dropActive={dragTarget === g.id}
-            onDropRepo={(e) => onDropRepo(e, g.id)}
-            onDragOverGroup={(e) => onDragOver(e, g.id)}
+            dropActive={dragTarget === group.id}
+            onDropRepo={(e) => onDropRepo(e, group.id)}
+            onDragOverGroup={(e) => onDragOver(e, group.id)}
           />
         ))}
-        {ungrouped.map((r) => (
+        {visibleUngrouped.map((r) => (
           <RepoNode key={r.path} repo={r} level={1} ctx={ctx} />
         ))}
         {repos.length === 0 && <p className="wt-empty">{t('projectTree.empty')}</p>}
+        {noMatches && (
+          <p className="wt-empty" data-testid="project-filter-none">
+            {t('projectTree.filter.none')}
+          </p>
+        )}
       </div>
 
       {menu && (
