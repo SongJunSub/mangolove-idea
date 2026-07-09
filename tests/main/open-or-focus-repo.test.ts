@@ -6,6 +6,8 @@ import {
   applyRepoSwitchAction,
   decideOpenNewWindow,
   applyOpenWindowAction,
+  cascadeWindowPosition,
+  CASCADE_STEP,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
@@ -247,5 +249,31 @@ describe('applyOpenWindowAction (side effects of opening a new window)', () => {
     applyOpenWindowAction({ kind: 'focus', targetWcId: 2 }, new Map([[2, dead]]), f);
     expect(f.focus).not.toHaveBeenCalled();
     expect(f.createWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe('cascadeWindowPosition (new-window cascade, clamped to the work area)', () => {
+  const wa = { x: 0, y: 0, width: 1920, height: 1080 };
+  const size = { width: 1280, height: 800 };
+
+  it('offsets by CASCADE_STEP off the anchor when there is room', () => {
+    expect(cascadeWindowPosition({ x: 100, y: 60, ...size }, wa, size)).toEqual({
+      x: 100 + CASCADE_STEP,
+      y: 60 + CASCADE_STEP,
+    });
+  });
+
+  it('wraps an axis back to the work-area origin when the offset window would overflow it', () => {
+    // x: 640+30+1280 = 1950 > 1920 -> wrap to workArea.x (0). y still fits (250+30+800=1080 == end).
+    expect(cascadeWindowPosition({ x: 640, y: 250, ...size }, wa, size)).toEqual({ x: 0, y: 280 });
+  });
+
+  it('honors a non-zero work-area origin (secondary display / menu bar inset)', () => {
+    const inset = { x: 100, y: 50, width: 1400, height: 900 };
+    // x fits (200+30+1280=1510 < 1500? no: 1510 > 1500 -> wrap to 100). y: 60+30+800=890 < 950 -> 90.
+    expect(cascadeWindowPosition({ x: 200, y: 60, ...size }, inset, size)).toEqual({
+      x: 100,
+      y: 90,
+    });
   });
 });

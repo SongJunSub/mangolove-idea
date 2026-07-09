@@ -301,6 +301,37 @@ function liveCanonicalRepos(recentRepos: readonly string[]): string[] {
 }
 
 /**
+ * Cap on recentRepos length. A "recent" list is inherently bounded (LRU by open order), and this
+ * also bounds the synchronous realpath fan-out that REPO_LIST/REPO_OPEN* run over the whole list.
+ */
+const MAX_RECENT_REPOS = 50;
+
+/**
+ * Records `root` (already canonical) as the most-recently-used repo: moves it to the front of
+ * recentRepos, canonicalizes + dedupes the rest, and caps the list to MAX_RECENT_REPOS. The SINGLE
+ * recentRepos write path — shared by REPO_PICK / REPO_OPEN / REPO_OPEN_NEW_WINDOW so the dedupe +
+ * cap can't drift between them.
+ *
+ * The cap NEVER evicts a repo pinned by a project group: the group-view prune (GROUPS_GET/SET) keeps
+ * only repoPaths still in the live recentRepos, so dropping a grouped-but-not-recent repo here would
+ * silently un-group it — and a later GROUPS_SET would persist that loss. Grouped repos beyond the cap
+ * are therefore retained (groups are a small curated set, so this keeps the list effectively bounded).
+ */
+function bumpRecentRepo(store: SettingsStore, root: string): void {
+  const settings = store.get();
+  const bumped = [
+    root,
+    ...(settings.recentRepos ?? []).map(canonicalRepoRoot).filter((r) => r !== root),
+  ];
+  const grouped = new Set(
+    (settings.projectGroups ?? []).flatMap((g) => g.repoPaths.map(canonicalRepoRoot)),
+  );
+  const kept = bumped.slice(0, MAX_RECENT_REPOS);
+  const pinnedBeyondCap = bumped.slice(MAX_RECENT_REPOS).filter((r) => grouped.has(r));
+  store.set({ recentRepos: [...kept, ...pinnedBeyondCap] });
+}
+
+/**
  * The sidebar repo switcher's list: live canonical recentRepos with the active one flagged, and a
  * defensive fallback that surfaces the active repo even if recentRepos somehow lost it. Shared by
  * REPO_LIST and REPO_FORGET so both return the identical shape.
@@ -1378,9 +1409,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     // canonicalized read (else a symlinked repo's raw + canonical forms both persist).
     const store = getSettingsStore(ctx);
     const root = canonicalRepoRoot(dir);
-    const prev = store.get().recentRepos ?? [];
-    const recentRepos = [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)];
-    store.set({ recentRepos });
+    bumpRecentRepo(store, root);
     ctx.openRepo?.(root);
     return { ok: true, repoRoot: root };
   });
@@ -1430,13 +1459,13 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       }
       const store = getSettingsStore(ctx);
       const root = canonicalRepoRoot(path);
-      // One store read + one canonicalization pass; root is already proven live by the guard above,
-      // so membership in the canonicalized recentRepos is the full allowlist check.
+      // root is already proven live by the .git guard above, so membership in the canonicalized
+      // recentRepos is the full allowlist check. bumpRecentRepo owns the dedupe + cap write.
       const canon = (store.get().recentRepos ?? []).map(canonicalRepoRoot);
       if (!canon.includes(root)) {
         return { ok: false, error: 'unknown repository' };
       }
-      store.set({ recentRepos: [root, ...canon.filter((r) => r !== root)] });
+      bumpRecentRepo(store, root);
       ctx.openRepoNewWindow?.(root);
       return { ok: true, repoRoot: root };
     },
@@ -1460,9 +1489,7 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
       const worktreeId = typeof rawId === 'string' && rawId !== '' ? rawId : undefined;
       const store = getSettingsStore(ctx);
       const root = canonicalRepoRoot(path); // canonical-key (matches REPO_LIST + REPO_PICK)
-      const prev = store.get().recentRepos ?? [];
-      const recentRepos = [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)];
-      store.set({ recentRepos });
+      bumpRecentRepo(store, root);
       ctx.openRepo?.(root, worktreeId);
       return { ok: true, repoRoot: root };
     },

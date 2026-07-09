@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, screen } from 'electron';
 import { createIpcContext, type IpcContext } from './ipc/ipc-context';
 import { registerIpc } from './ipc/register-ipc';
 import { IPC } from '../shared/ipc-channels';
@@ -18,6 +18,7 @@ import {
   decideOpenNewWindow,
   applyOpenWindowAction,
   canonicalRepoRoot,
+  cascadeWindowPosition,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
 import { SettingsStore, getDefaultSettingsPath } from './managers/settings-store';
@@ -44,6 +45,18 @@ let scrollbackStore: ScrollbackStore;
  */
 let abducoPath: string | null = null;
 
+/** Default BrowserWindow size — also the box the new-window cascade clamps against. */
+const WINDOW_WIDTH = 1280;
+const WINDOW_HEIGHT = 800;
+
+/** Bring a window to the foreground, RESTORING it first if minimized (focus() alone won't). */
+function focusWindow(ctx: IpcContext): void {
+  const win = ctx.mainWindow;
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
+}
+
 /**
  * Switches the window identified by `wcId` to `repoRoot` IN PLACE (one window swaps repos,
  * no new BrowserWindow) — this is what the sidebar repo switcher drives. Honors the same
@@ -61,7 +74,7 @@ function switchOrFocusRepo(wcId: number, repoRoot: string, worktreeId?: string):
     reload: (ctx) => ctx.mainWindow?.webContents.reload(),
     selectWorktree: (ctx, id) =>
       ctx.mainWindow?.webContents.send(IPC.REPO_SELECT_WORKTREE, { worktreeId: id }),
-    focus: (ctx) => ctx.mainWindow?.focus(),
+    focus: focusWindow,
   });
 }
 
@@ -75,13 +88,19 @@ function openOrCreateWindowForRepo(repoRoot: string): void {
   const action = decideOpenNewWindow(contexts, root);
   applyOpenWindowAction(action, contexts, {
     createWindow: () => {
+      // Cascade a mid-session new window off the focused one, CLAMPED to that window's display so it
+      // never marches off-screen after repeated opens (omit the offset when there's no anchor window).
       const from = BrowserWindow.getFocusedWindow();
-      const [x, y] = from?.getPosition() ?? [];
-      // Cascade a mid-session new window +30,+30 off the focused one (omit when there's no anchor).
-      const pos = x !== undefined && y !== undefined ? { x: x + 30, y: y + 30 } : undefined;
+      const bounds = from?.getBounds();
+      const pos = bounds
+        ? cascadeWindowPosition(bounds, screen.getDisplayMatching(bounds).workArea, {
+            width: WINDOW_WIDTH,
+            height: WINDOW_HEIGHT,
+          })
+        : undefined;
       createWindow(root, pos);
     },
-    focus: (ctx) => ctx.mainWindow?.focus(),
+    focus: focusWindow,
   });
 }
 
@@ -94,8 +113,8 @@ function openOrCreateWindowForRepo(repoRoot: string): void {
  */
 function createWindow(repoRoot: string | null, position?: { x: number; y: number }): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: WINDOW_WIDTH,
+    height: WINDOW_HEIGHT,
     show: false,
     ...(position ?? {}), // cascade offset for a mid-session new window (boot/activate omit it)
     // Frameless unified titlebar (macOS): the traffic lights overlay the renderer's
