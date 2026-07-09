@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { findCtxByRepoRoot, pickEmptyGateCtx } from '../../src/main/app/window-registry';
+import {
+  findCtxByRepoRoot,
+  pickEmptyGateCtx,
+  decideRepoSwitch,
+} from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
 describe('open-or-focus routing helpers', () => {
@@ -39,5 +43,57 @@ describe('same-repo-twice focus-guard', () => {
     expect(findCtxByRepoRoot(contexts, '/proj-c')).toBeUndefined();
     // And there is no empty gate to attach to (both windows own a repo).
     expect(pickEmptyGateCtx(contexts)).toBeUndefined();
+  });
+});
+
+describe('decideRepoSwitch (cross-repo worktree select routing)', () => {
+  const live = () => ({ isDestroyed: () => false }) as never; // fake live BrowserWindow
+  const ctx = (repoRoot: string | null): IpcContext => ({ mainWindow: live(), repoRoot });
+
+  it('noop when the source window is missing, or already here with no worktree to select', () => {
+    const contexts = new Map<number, IpcContext>([[1, ctx('/a')]]);
+    expect(decideRepoSwitch(contexts, 9, '/a')).toEqual({ kind: 'noop' }); // wcId not registered
+    expect(decideRepoSwitch(contexts, 1, '/a')).toEqual({ kind: 'noop' }); // already on /a, no wt
+  });
+
+  it('reselect (no reload) when already on the repo but a worktree is requested', () => {
+    const contexts = new Map<number, IpcContext>([[1, ctx('/a')]]);
+    expect(decideRepoSwitch(contexts, 1, '/a', '/a/wt')).toEqual({
+      kind: 'reselect',
+      worktreeId: '/a/wt',
+    });
+  });
+
+  it('reload (worktree pended) when the target repo is not open in any other window', () => {
+    const contexts = new Map<number, IpcContext>([[1, ctx('/a')]]);
+    expect(decideRepoSwitch(contexts, 1, '/b', '/b/wt')).toEqual({
+      kind: 'reload',
+      worktreeId: '/b/wt',
+    });
+    expect(decideRepoSwitch(contexts, 1, '/b')).toEqual({ kind: 'reload', worktreeId: undefined });
+  });
+
+  it('focus the OTHER window that already owns the target repo (carrying the worktree)', () => {
+    const contexts = new Map<number, IpcContext>([
+      [1, ctx('/a')],
+      [2, ctx('/b')],
+    ]);
+    expect(decideRepoSwitch(contexts, 1, '/b', '/b/wt')).toEqual({
+      kind: 'focus',
+      targetWcId: 2,
+      worktreeId: '/b/wt',
+    });
+  });
+
+  it('reloads (not focus) when the only ctx on the target repo is a destroyed window', () => {
+    const dead: IpcContext = { mainWindow: { isDestroyed: () => true } as never, repoRoot: '/b' };
+    const contexts = new Map<number, IpcContext>([
+      [1, ctx('/a')],
+      [2, dead],
+    ]);
+    expect(decideRepoSwitch(contexts, 1, '/b', '/b/wt')).toEqual({
+      kind: 'reload',
+      worktreeId: '/b/wt',
+    });
   });
 });

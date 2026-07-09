@@ -242,9 +242,18 @@ export interface MangoApi {
     /**
      * Switch to a KNOWN recent repo by path: opens or FOCUSES its window (never a second
      * window for the same repo). Bumps it to the front of recentRepos. Rejects-as-result
-     * with {error} if the path is no longer a git repo.
+     * with {error} if the path is no longer a git repo. `opts.worktreeId` (cross-repo worktree
+     * select) is delivered to the target window: pended for the reload path, nudged for focus.
      */
-    open(path: string): Promise<RepoPickResult>;
+    open(path: string, opts?: { worktreeId?: string }): Promise<RepoPickResult>;
+    /**
+     * Consume-once: the worktree id a cross-repo switch asked this window to select once its repo
+     * is active (or null). The renderer pulls it on mount after a reband/reload and applies it when
+     * the worktree list has loaded; clears it in main so a later manual reload can't re-apply it.
+     */
+    takePendingSelect(): Promise<string | null>;
+    /** Fires when main asks THIS window to select a worktree (focus / same-repo reselect path). */
+    onSelectWorktree(cb: (e: { worktreeId: string }) => void): Unsubscribe;
   };
   update: {
     /**

@@ -198,7 +198,7 @@ interface RepoNodeContext {
   readonly worktreesFor: UseWorktreesFor;
   readonly expanded: UseProjectTreeExpanded;
   onSelectWorktree(id: string): void;
-  onSwitchRepo(path: string): void;
+  onSwitchRepo(path: string, worktreeId?: string): void;
   onRemoveWorktree(id: string): void;
   // ── interactive (Phase 4): grouping via drag + context menu ──
   onRepoMenu(e: React.MouseEvent, repoPath: string): void;
@@ -306,7 +306,9 @@ function RepoNode({
               selected={active && wt.id === ctx.selectedId}
               status={active ? ctx.statuses.get(wt.id) : undefined}
               onActivate={() =>
-                active ? ctx.onSelectWorktree(wt.id) : ctx.onSwitchRepo(repo.path)
+                // Active repo -> select in place. Non-active -> switch to that repo AND carry this
+                // worktree's id so the target window lands on it (cross-repo select).
+                active ? ctx.onSelectWorktree(wt.id) : ctx.onSwitchRepo(repo.path, wt.id)
               }
               onRemove={active ? ctx.onRemoveWorktree : undefined}
             />
@@ -414,7 +416,7 @@ export interface ProjectTreeProps {
   /** Expand/collapse state (persisted). */
   readonly expanded: UseProjectTreeExpanded;
   onSelectWorktree(id: string): void;
-  onSwitchRepo(path: string): void;
+  onSwitchRepo(path: string, worktreeId?: string): void;
   onRemoveWorktree(id: string): void;
   onAddRepo(): void;
   // ── grouping mutations (from useProjectGroups) ──

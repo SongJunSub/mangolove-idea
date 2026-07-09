@@ -145,7 +145,32 @@ describe('repo IPC wiring', () => {
     const out = await handlers.get(IPC.REPO_OPEN)!(fakeEvent, dir);
     expect(out).toEqual({ ok: true, repoRoot: canon });
     expect(setSpy).toHaveBeenCalledWith({ recentRepos: [canon, '/old'] }); // canonical, front, deduped
-    expect(openRepo).toHaveBeenCalledWith(canon);
+    expect(openRepo).toHaveBeenCalledWith(canon, undefined); // no worktree to select
+  });
+
+  it('REPO_OPEN forwards a cross-repo worktree selection to openRepo', async () => {
+    writeFileSync(join(dir, '.git'), 'gitdir: x\n');
+    const canon = realpathSync(dir);
+    const ctx = baseCtx();
+    ctx.settingsStore = { get: () => ({ recentRepos: [dir] }), set: vi.fn() } as never;
+    const openRepo = vi.fn();
+    ctx.openRepo = openRepo;
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    await handlers.get(IPC.REPO_OPEN)!(fakeEvent, dir, { worktreeId: '/wt/feature-x' });
+    expect(openRepo).toHaveBeenCalledWith(canon, '/wt/feature-x');
+    // a blank / non-string worktreeId is ignored (undefined)
+    await handlers.get(IPC.REPO_OPEN)!(fakeEvent, dir, { worktreeId: '' });
+    expect(openRepo).toHaveBeenLastCalledWith(canon, undefined);
+  });
+
+  it('REPO_TAKE_PENDING_SELECT returns the pended id once, then null (consume-once)', async () => {
+    const ctx = baseCtx();
+    ctx.pendingSelectWorktreeId = '/wt/feature-x';
+    const { handlers, fakeEvent } = registerIpcForTest(ctx);
+    expect(await handlers.get(IPC.REPO_TAKE_PENDING_SELECT)!(fakeEvent, undefined)).toBe(
+      '/wt/feature-x',
+    );
+    expect(await handlers.get(IPC.REPO_TAKE_PENDING_SELECT)!(fakeEvent, undefined)).toBeNull();
   });
 
   it('REPO_OPEN rejects a non-git / non-string path without opening', async () => {

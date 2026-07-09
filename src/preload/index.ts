@@ -109,7 +109,9 @@ const api: MangoApi = {
     get: () => ipcRenderer.invoke(IPC.REPO_GET),
     pick: () => ipcRenderer.invoke(IPC.REPO_PICK),
     list: () => ipcRenderer.invoke(IPC.REPO_LIST),
-    open: (path) => ipcRenderer.invoke(IPC.REPO_OPEN, path),
+    open: (path, opts) => ipcRenderer.invoke(IPC.REPO_OPEN, path, opts),
+    takePendingSelect: () => ipcRenderer.invoke(IPC.REPO_TAKE_PENDING_SELECT),
+    onSelectWorktree: (cb) => subscribe(IPC.REPO_SELECT_WORKTREE, cb),
   },
   update: {
     check: () => ipcRenderer.invoke(IPC.UPDATE_CHECK),

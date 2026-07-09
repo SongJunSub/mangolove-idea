@@ -13,7 +13,7 @@ import {
   sweepAll,
   teardownWindow,
   rebindCtxRepo,
-  findCtxByRepoRoot,
+  decideRepoSwitch,
   canonicalRepoRoot,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
@@ -49,18 +49,44 @@ let abducoPath: string | null = null;
  * torn down + rebound to the new root (rebindCtxRepo) and the window is reloaded so the
  * renderer remounts against the new repo. A no-op when already on that repo.
  */
-function switchOrFocusRepo(wcId: number, repoRoot: string): void {
+function switchOrFocusRepo(wcId: number, repoRoot: string, worktreeId?: string): void {
   const root = canonicalRepoRoot(repoRoot);
+  const action = decideRepoSwitch(contexts, wcId, root, worktreeId);
   const current = contexts.get(wcId);
-  if (!current?.mainWindow || current.mainWindow.isDestroyed()) return;
-  if (current.repoRoot === root) return; // already here
-  const other = findCtxByRepoRoot(contexts, root);
-  if (other && other !== current && other.mainWindow && !other.mainWindow.isDestroyed()) {
-    other.mainWindow.focus(); // open elsewhere -> focus it, don't duplicate or steal
-    return;
+  switch (action.kind) {
+    case 'noop':
+      return;
+    case 'reselect':
+      // Already on this repo — just tell this window to select the worktree (no reload).
+      if (current?.mainWindow && !current.mainWindow.isDestroyed()) {
+        current.mainWindow.webContents.send(IPC.REPO_SELECT_WORKTREE, {
+          worktreeId: action.worktreeId,
+        });
+      }
+      return;
+    case 'focus': {
+      // Open elsewhere -> focus it, don't duplicate or steal. Pend the selection durably (the
+      // nudge is lost if the target isn't listening yet) AND nudge so it applies live if it is.
+      const other = contexts.get(action.targetWcId);
+      if (!other?.mainWindow || other.mainWindow.isDestroyed()) return;
+      other.pendingSelectWorktreeId = action.worktreeId ?? null;
+      if (action.worktreeId) {
+        other.mainWindow.webContents.send(IPC.REPO_SELECT_WORKTREE, {
+          worktreeId: action.worktreeId,
+        });
+      }
+      other.mainWindow.focus();
+      return;
+    }
+    case 'reload':
+      if (!current?.mainWindow) return;
+      rebindCtxRepo(current, root);
+      // ALWAYS set (null clears a stale target from a prior cross-repo click) so a plain switch
+      // never inherits a pending selection. Survives the reload — ctx keeps its webContents.id.
+      current.pendingSelectWorktreeId = action.worktreeId ?? null;
+      current.mainWindow.webContents.reload();
+      return;
   }
-  rebindCtxRepo(current, root);
-  current.mainWindow.webContents.reload();
 }
 
 /**
@@ -108,7 +134,7 @@ function createWindow(repoRoot: string | null): BrowserWindow {
   ctx.requestQuit = () => quitController.decide(true);
   // The sidebar switcher swaps repos IN PLACE in THIS window (focus another window only
   // if the target repo is already open there). Boot/activate use createWindow directly.
-  ctx.openRepo = (root) => switchOrFocusRepo(wcId, root);
+  ctx.openRepo = (root, worktreeId) => switchOrFocusRepo(wcId, root, worktreeId);
   // Register BEFORE loading content so a quit during load still sweeps this window.
   contexts.set(wcId, ctx);
 

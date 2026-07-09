@@ -34,6 +34,7 @@ import { useRecentRepos } from './hooks/use-recent-repos';
 import { useProjectGroups } from './hooks/use-project-groups';
 import { useWorktreesFor } from './hooks/use-worktrees-for';
 import { useProjectTreeExpanded } from './hooks/use-project-tree-expanded';
+import { usePendingWorktreeSelect } from './hooks/use-pending-worktree-select';
 import type { ProjectTreeExpanded } from '../shared/project-groups';
 import { usePaneLayout } from './hooks/use-pane-layout';
 import { Split } from './components/layout/split';
@@ -160,7 +161,10 @@ export function App(): React.JSX.Element {
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   // Pending in-place repo switch awaiting confirmation (set only when the current repo is
   // busy — a running agent turn or an unsaved file — since the switch tears those down).
-  const [pendingRepoSwitch, setPendingRepoSwitch] = useState<string | null>(null);
+  const [pendingRepoSwitch, setPendingRepoSwitch] = useState<{
+    path: string;
+    worktreeId?: string;
+  } | null>(null);
   // In-app update notice (macOS, unsigned): one silent check on launch feeds the banner. A
   // failed check yields a status with `error` set, which the banner predicate excludes (so it
   // stays hidden). The app never auto-installs — the banner just links the download.
@@ -197,12 +201,14 @@ export function App(): React.JSX.Element {
   // In-place repo switch (the sidebar): main tears down THIS window's agents/servers/LSP and
   // rebinds it to the new repo. Auto-save flushes the open file first; a live agent turn still
   // warrants a confirm (the editor no longer gates it — its buffer is already persisted).
-  const requestRepoSwitch = async (path: string): Promise<void> => {
+  // `worktreeId` (cross-repo worktree select) rides along to the target window: main pends it for
+  // the reload path / nudges it for the focus path.
+  const requestRepoSwitch = async (path: string, worktreeId?: string): Promise<void> => {
     // Await the flush so the open file is persisted BEFORE the window teardown/reload races it;
     // on write failure stay put (the saveError banner shows why) so the edit isn't lost.
     if (!(await editor.flush())) return;
-    if (isRepoBusy(statuses)) setPendingRepoSwitch(path);
-    else void recentRepos.open(path);
+    if (isRepoBusy(statuses)) setPendingRepoSwitch({ path, worktreeId });
+    else void recentRepos.open(path, { worktreeId });
   };
 
   // Code-nav (Phase B): the position to reveal in the editor after a go-to-definition jump
@@ -311,6 +317,12 @@ export function App(): React.JSX.Element {
     },
     [selectedId, applyWorktree],
   );
+
+  // ── Cross-repo worktree select (v2) ──
+  // A worktree clicked in ANOTHER repo pends its id in main; this window (after the switch reload,
+  // or via a live nudge on the focus/reselect path) selects it. Logic lives in the hook so it's unit-
+  // tested; here we just wire it to this window's worktree list + selection.
+  usePendingWorktreeSelect(worktrees, loading, selectedId, (id) => void requestSelectWorktree(id));
 
   // ── Code navigation (Phase B) ──
   // Stable snapshot for the once-registered, process-global code-nav opener (reads refs so
@@ -1070,9 +1082,9 @@ export function App(): React.JSX.Element {
                     type="button"
                     data-testid="repo-switch-confirm"
                     onClick={() => {
-                      const path = pendingRepoSwitch;
+                      const { path, worktreeId } = pendingRepoSwitch;
                       setPendingRepoSwitch(null);
-                      void recentRepos.open(path);
+                      void recentRepos.open(path, { worktreeId });
                     }}
                   >
                     {t('app.repoSwitch.confirm')}
