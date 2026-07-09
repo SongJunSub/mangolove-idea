@@ -161,6 +161,46 @@ export function findCtxByRepoRoot(
 }
 
 /**
+ * The action a repo switch resolves to, given the current windows. PURE (no side effects) so the
+ * branching — the riskiest part of cross-repo worktree select — is unit-testable; index.ts owns the
+ * interpretation (reload/focus/send). `root` must already be canonical.
+ *  - `noop`     : already on this repo with no worktree to (re)select, or the source window is gone.
+ *  - `reselect` : already on this repo but asked to select a worktree — this window selects it, no reload.
+ *  - `focus`    : the repo is open in ANOTHER window (`targetWcId`) — focus it (+ deliver worktreeId).
+ *  - `reload`   : rebind THIS window to the repo and reload (+ pend worktreeId for the mount pull).
+ */
+export type RepoSwitchAction =
+  | { readonly kind: 'noop' }
+  | { readonly kind: 'reselect'; readonly worktreeId: string }
+  | { readonly kind: 'focus'; readonly targetWcId: number; readonly worktreeId?: string }
+  | { readonly kind: 'reload'; readonly worktreeId?: string };
+
+/** Decides how a switch of window `wcId` to canonical `root` (optionally selecting `worktreeId`) resolves. */
+export function decideRepoSwitch(
+  contexts: Map<number, IpcContext>,
+  wcId: number,
+  root: string,
+  worktreeId?: string,
+): RepoSwitchAction {
+  const current = contexts.get(wcId);
+  if (!current?.mainWindow || current.mainWindow.isDestroyed()) return { kind: 'noop' };
+  if (current.repoRoot === root) {
+    return worktreeId ? { kind: 'reselect', worktreeId } : { kind: 'noop' };
+  }
+  for (const [id, ctx] of contexts) {
+    if (
+      ctx !== current &&
+      ctx.repoRoot === root &&
+      ctx.mainWindow &&
+      !ctx.mainWindow.isDestroyed()
+    ) {
+      return { kind: 'focus', targetWcId: id, worktreeId };
+    }
+  }
+  return { kind: 'reload', worktreeId };
+}
+
+/**
  * The first context with NO repoRoot (the empty-gate window showing the picker), or
  * undefined when every window already owns a repo. The launcher attaches a picked
  * repo to this window rather than spawning a second window for it.

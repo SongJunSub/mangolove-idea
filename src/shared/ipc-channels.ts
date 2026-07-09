@@ -100,7 +100,9 @@ export const IPC = {
   REPO_GET: 'repo:get', // invoke (-> string | null = ctx.repoRoot)
   REPO_PICK: 'repo:pick', // invoke (-> RepoPickResult; native picker; persists to recentRepos + opens/focuses a window, no relaunch)
   REPO_LIST: 'repo:list', // invoke (-> RecentRepo[]; recentRepos filtered to live .git dirs, canonicalized, active flagged)
-  REPO_OPEN: 'repo:open', // invoke (path -> RepoPickResult; switch to a KNOWN recent repo by path = openOrFocus its window)
+  REPO_OPEN: 'repo:open', // invoke ((path, opts?{worktreeId}) -> RepoPickResult; switch to a KNOWN recent repo by path = openOrFocus its window, optionally selecting a worktree)
+  REPO_TAKE_PENDING_SELECT: 'repo:take-pending-select', // invoke (-> string|null; consume-once worktree id to select after a cross-repo switch reload)
+  REPO_SELECT_WORKTREE: 'repo:select-worktree', // main -> renderer event ({worktreeId}); focus/reselect-path delivery of a cross-repo worktree selection
 
   // multimodel fan-out (V2) — one prompt to N claude --model lanes in parallel worktrees
   FANOUT_START: 'fanout:start', // invoke ({prompt, models, skipPermissions} -> {id, lanes})

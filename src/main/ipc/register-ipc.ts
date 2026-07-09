@@ -1390,18 +1390,36 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   // Switch to a KNOWN recent repo by path (no native dialog): same dedupe-write as
   // REPO_PICK, then openOrFocus its window. The same-repo-twice focus-guard lives in
   // openRepo (index.ts), so clicking a repo already open elsewhere just FOCUSES it.
-  ipcMain.handle(IPC.REPO_OPEN, async (event, path: unknown): Promise<RepoPickResult> => {
+  ipcMain.handle(
+    IPC.REPO_OPEN,
+    async (event, path: unknown, opts: unknown): Promise<RepoPickResult> => {
+      const ctx = requireCtx(event);
+      if (typeof path !== 'string' || !existsSync(join(path, '.git'))) {
+        return { ok: false, error: 'not a git repository' };
+      }
+      // Optional cross-repo worktree selection; only a string worktreeId is honored.
+      const rawId =
+        opts !== null && typeof opts === 'object'
+          ? (opts as Record<string, unknown>).worktreeId
+          : undefined;
+      const worktreeId = typeof rawId === 'string' && rawId !== '' ? rawId : undefined;
+      const store = getSettingsStore(ctx);
+      const root = canonicalRepoRoot(path); // canonical-key (matches REPO_LIST + REPO_PICK)
+      const prev = store.get().recentRepos ?? [];
+      const recentRepos = [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)];
+      store.set({ recentRepos });
+      ctx.openRepo?.(root, worktreeId);
+      return { ok: true, repoRoot: root };
+    },
+  );
+
+  // Consume-once: the reloaded renderer pulls the worktree id a cross-repo switch pended for it
+  // (or null), and main clears it so a later manual reload can't re-apply a stale selection.
+  ipcMain.handle(IPC.REPO_TAKE_PENDING_SELECT, async (event): Promise<string | null> => {
     const ctx = requireCtx(event);
-    if (typeof path !== 'string' || !existsSync(join(path, '.git'))) {
-      return { ok: false, error: 'not a git repository' };
-    }
-    const store = getSettingsStore(ctx);
-    const root = canonicalRepoRoot(path); // canonical-key (matches REPO_LIST + REPO_PICK)
-    const prev = store.get().recentRepos ?? [];
-    const recentRepos = [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)];
-    store.set({ recentRepos });
-    ctx.openRepo?.(root);
-    return { ok: true, repoRoot: root };
+    const id = ctx.pendingSelectWorktreeId ?? null;
+    ctx.pendingSelectWorktreeId = null;
+    return id;
   });
 
   // Read-only worktree listing for an ARBITRARY known repo (the project tree's cross-repo

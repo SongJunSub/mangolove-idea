@@ -130,11 +130,19 @@ export interface IpcContext {
   /** Injected by index.ts so the quit handler can actually quit (app.quit). */
   requestQuit?: () => void;
   /**
-   * Injected by index.ts: open (or focus an existing window for) a repo by path.
-   * REPO_PICK delegates here instead of relaunching, so picking a repo opens/focuses
-   * a window in this process (multi-window). Optional so windowless tests omit it.
+   * Injected by index.ts: open (or focus an existing window for) a repo by path, optionally
+   * carrying a worktree id to select once that repo is active (cross-repo worktree select).
+   * REPO_PICK delegates here (no worktreeId) instead of relaunching; the project tree passes a
+   * worktreeId. Optional so windowless tests omit it.
    */
-  openRepo?: (repoRoot: string) => void;
+  openRepo?: (repoRoot: string, worktreeId?: string) => void;
+  /**
+   * The worktree id a cross-repo switch asked this window to select once its repo is active. The
+   * reload path sets it just after rebindCtxRepo (survives the reload since ctx is keyed by the
+   * stable webContents.id); the renderer pulls it consume-once on mount via REPO_TAKE_PENDING_SELECT.
+   * ALWAYS overwritten on a switch (null clears a stale target) so a later plain switch never inherits it.
+   */
+  pendingSelectWorktreeId?: string | null;
 }
 
 export function createIpcContext(): IpcContext {
