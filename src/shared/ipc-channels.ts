@@ -102,6 +102,7 @@ export const IPC = {
   REPO_LIST: 'repo:list', // invoke (-> RecentRepo[]; recentRepos filtered to live .git dirs, canonicalized, active flagged)
   REPO_OPEN: 'repo:open', // invoke ((path, opts?{worktreeId}) -> RepoPickResult; switch to a KNOWN recent repo by path = openOrFocus its window, optionally selecting a worktree)
   REPO_FORGET: 'repo:forget', // invoke (path -> RecentRepo[]; drop a repo from recentRepos (never the active one; disk untouched), returns the updated list)
+  REPO_OPEN_NEW_WINDOW: 'repo:open-new-window', // invoke (path -> RepoPickResult; open a KNOWN repo in a NEW window, or focus its existing window)
   REPO_TAKE_PENDING_SELECT: 'repo:take-pending-select', // invoke (-> string|null; consume-once worktree id to select after a cross-repo switch reload)
   REPO_SELECT_WORKTREE: 'repo:select-worktree', // main -> renderer event ({worktreeId}); focus/reselect-path delivery of a cross-repo worktree selection
 

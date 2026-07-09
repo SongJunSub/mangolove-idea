@@ -260,6 +260,11 @@ export interface MangoApi {
      * updated list (same shape as list()); any group referencing it is pruned by groups.get.
      */
     forget(path: string): Promise<RecentRepo[]>;
+    /**
+     * Open a KNOWN repo (one already in recentRepos) in a NEW window — or, honoring one-repo-per-
+     * window, FOCUS its existing window if it is already open. Rejects an unknown/non-git path.
+     */
+    openNewWindow(path: string): Promise<RepoPickResult>;
   };
   update: {
     /**

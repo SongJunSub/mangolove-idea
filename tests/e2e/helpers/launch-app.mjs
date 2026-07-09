@@ -42,10 +42,12 @@ export function seedRepo(files) {
  * Launches the built app pointed at a freshly seeded repo. Returns { app, window, repoRoot,
  * extraRoots, close }. `opts.extraRepos` seeds additional repos (each a { relPath: contents } map)
  * that join recentRepos AFTER the boot repo — so the project tree shows them as non-active repos
- * (for cross-repo tests). `close()` shuts the app down cleanly and removes every temp dir. Requires
- * `npm run build` first.
+ * (for cross-repo tests). `opts.headless` (MANGO_HEADLESS=1) keeps windows hidden — they still
+ * render the DOM + handle IPC, so Playwright drives them identically, but a mid-test SECOND window
+ * can't steal OS focus (multi-window tests observe STATE, not focus). `close()` shuts the app down
+ * cleanly and removes every temp dir. Requires `npm run build` first.
  */
-export async function launchApp(files, { extraRepos = [] } = {}) {
+export async function launchApp(files, { extraRepos = [], headless = false } = {}) {
   if (!existsSync(MAIN_ENTRY)) {
     throw new Error(`built main not found at ${MAIN_ENTRY} — run \`npm run build\` first`);
   }
@@ -73,6 +75,7 @@ export async function launchApp(files, { extraRepos = [] } = {}) {
       MANGO_AGENT_CMD: fakeAgent,
       MANGO_SERVER_CMD: fakeAgent,
       MANGO_VERIFY_CMD: 'true',
+      ...(headless ? { MANGO_HEADLESS: '1' } : {}),
     },
   });
   const window = await app.firstWindow();

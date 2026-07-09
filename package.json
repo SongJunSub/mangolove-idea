@@ -27,7 +27,8 @@
     "dist:dir": "npm run build && electron-builder --mac --arm64 --dir",
     "dist:signed": "npm run build && electron-builder --mac --arm64 --config electron-builder.signed.cjs",
     "smoke:editor": "node tests/e2e/tab-editor.smoke.mjs",
-    "smoke:cross-repo": "node tests/e2e/cross-repo-select.smoke.mjs"
+    "smoke:cross-repo": "node tests/e2e/cross-repo-select.smoke.mjs",
+    "smoke:multi-window": "node tests/e2e/multi-window.smoke.mjs"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",

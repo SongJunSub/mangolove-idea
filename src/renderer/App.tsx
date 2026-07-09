@@ -47,6 +47,7 @@ import { useUpdateCheck } from './hooks/use-update-check';
 import { useSelfUpdate } from './hooks/use-self-update';
 import { useUsage } from './hooks/use-usage';
 import { openExternal } from './lib/open-external';
+import { basename } from './lib/basename';
 import { I18nContext } from './i18n/i18n-context';
 import { makeT, type TranslateFn } from './i18n/messages';
 import { resolveLocale } from './i18n/resolve-locale';
@@ -157,6 +158,11 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
+  // Name each window by its repo so multiple windows are distinguishable (OS window list, Cmd+`,
+  // taskbar). The empty-gate window (no repo yet) falls back to the bare product name.
+  useEffect(() => {
+    document.title = repo.repoRoot ? `${basename(repo.repoRoot)} — MangoLove` : 'MangoLove';
+  }, [repo.repoRoot]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quitWarning, setQuitWarning] = useState<QuitWarningEvent | null>(null);
   // Pending in-place repo switch awaiting confirmation (set only when the current repo is
@@ -879,6 +885,7 @@ export function App(): React.JSX.Element {
                         expanded={treeExpanded}
                         onSelectWorktree={requestSelectWorktree}
                         onSwitchRepo={requestRepoSwitch}
+                        onOpenNewWindow={(path) => void recentRepos.openNewWindow(path)}
                         onRemoveWorktree={(id) => {
                           void remove(id);
                           // Prune the removed worktree's persisted tabs so the openTabs map can't

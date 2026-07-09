@@ -254,4 +254,52 @@ describe('repo IPC wiring', () => {
     });
     expect(openRepo).not.toHaveBeenCalled();
   });
+
+  describe('REPO_OPEN_NEW_WINDOW', () => {
+    it('opens a KNOWN repo in a new window: bumps recentRepos + calls openRepoNewWindow', async () => {
+      writeFileSync(join(dir, '.git'), 'gitdir: x\n');
+      const canon = realpathSync(dir);
+      const setSpy = vi.fn();
+      const ctx = baseCtx();
+      // '/old' is non-existent -> dropped from the live allowlist but kept in recentRepos on write.
+      ctx.settingsStore = { get: () => ({ recentRepos: ['/old', dir] }), set: setSpy } as never;
+      const openRepoNewWindow = vi.fn();
+      ctx.openRepoNewWindow = openRepoNewWindow;
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      const out = await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir);
+      expect(out).toEqual({ ok: true, repoRoot: canon });
+      expect(setSpy).toHaveBeenCalledWith({ recentRepos: [canon, '/old'] }); // bumped to front
+      expect(openRepoNewWindow).toHaveBeenCalledWith(canon);
+    });
+
+    it('rejects a git repo that is NOT in recentRepos (allowlist)', async () => {
+      writeFileSync(join(dir, '.git'), 'gitdir: x\n'); // valid repo but not listed
+      const ctx = baseCtx();
+      ctx.settingsStore = { get: () => ({ recentRepos: ['/other'] }), set: vi.fn() } as never;
+      const openRepoNewWindow = vi.fn();
+      ctx.openRepoNewWindow = openRepoNewWindow;
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      expect(await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir)).toEqual({
+        ok: false,
+        error: 'unknown repository',
+      });
+      expect(openRepoNewWindow).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-git / non-string path', async () => {
+      const ctx = baseCtx();
+      const openRepoNewWindow = vi.fn();
+      ctx.openRepoNewWindow = openRepoNewWindow;
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      expect(await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir)).toEqual({
+        ok: false,
+        error: 'not a git repository', // dir has no .git
+      });
+      expect(await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, 123 as never)).toEqual({
+        ok: false,
+        error: 'not a git repository',
+      });
+      expect(openRepoNewWindow).not.toHaveBeenCalled();
+    });
+  });
 });

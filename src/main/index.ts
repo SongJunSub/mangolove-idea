@@ -15,6 +15,8 @@ import {
   rebindCtxRepo,
   decideRepoSwitch,
   applyRepoSwitchAction,
+  decideOpenNewWindow,
+  applyOpenWindowAction,
   canonicalRepoRoot,
 } from './app/window-registry';
 import { SessionStore, getDefaultSessionsPath } from './managers/session-store';
@@ -64,17 +66,38 @@ function switchOrFocusRepo(wcId: number, repoRoot: string, worktreeId?: string):
 }
 
 /**
+ * Opens `repoRoot` in a NEW window — or FOCUSES the existing window if that repo is already open
+ * (the "one repo per window" invariant). Drives the project tree's "Open in new window". A new
+ * window cascades +30,+30 from the focused window so it doesn't land exactly on top of it.
+ */
+function openOrCreateWindowForRepo(repoRoot: string): void {
+  const root = canonicalRepoRoot(repoRoot);
+  const action = decideOpenNewWindow(contexts, root);
+  applyOpenWindowAction(action, contexts, {
+    createWindow: () => {
+      const from = BrowserWindow.getFocusedWindow();
+      const [x, y] = from?.getPosition() ?? [];
+      // Cascade a mid-session new window +30,+30 off the focused one (omit when there's no anchor).
+      const pos = x !== undefined && y !== undefined ? { x: x + 30, y: y + 30 } : undefined;
+      createWindow(root, pos);
+    },
+    focus: (ctx) => ctx.mainWindow?.focus(),
+  });
+}
+
+/**
  * Builds a BrowserWindow + a per-window IpcContext bound to `repoRoot`, sharing the
  * 3 global stores. Captures webContents.id AT CREATION and registers the ctx under it
  * BEFORE loading content (so the quit sweep never misses a window), and sweeps THAT
  * window's managers on 'closed'. repoRoot=null opens the empty-gate window (renderer
  * shows the picker).
  */
-function createWindow(repoRoot: string | null): BrowserWindow {
+function createWindow(repoRoot: string | null, position?: { x: number; y: number }): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     show: false,
+    ...(position ?? {}), // cascade offset for a mid-session new window (boot/activate omit it)
     // Frameless unified titlebar (macOS): the traffic lights overlay the renderer's
     // own titlebar, which carries the brand + toolbar (see components/titlebar). The
     // renderer marks it -webkit-app-region: drag. hiddenInset keeps the standard
@@ -109,6 +132,7 @@ function createWindow(repoRoot: string | null): BrowserWindow {
   // The sidebar switcher swaps repos IN PLACE in THIS window (focus another window only
   // if the target repo is already open there). Boot/activate use createWindow directly.
   ctx.openRepo = (root, worktreeId) => switchOrFocusRepo(wcId, root, worktreeId);
+  ctx.openRepoNewWindow = (root) => openOrCreateWindowForRepo(root);
   // Register BEFORE loading content so a quit during load still sweeps this window.
   contexts.set(wcId, ctx);
 

@@ -4,6 +4,8 @@ import {
   pickEmptyGateCtx,
   decideRepoSwitch,
   applyRepoSwitchAction,
+  decideOpenNewWindow,
+  applyOpenWindowAction,
 } from '../../src/main/app/window-registry';
 import type { IpcContext } from '../../src/main/ipc/ipc-context';
 
@@ -190,5 +192,60 @@ describe('applyRepoSwitchAction (side-effect interpretation of a switch)', () =>
     );
     expect(f.focus).not.toHaveBeenCalled();
     expect(dead.pendingSelectWorktreeId).toBeUndefined();
+  });
+});
+
+describe('decideOpenNewWindow (open repo in a new window routing)', () => {
+  const live = () => ({ isDestroyed: () => false }) as never;
+  const ctx = (repoRoot: string | null): IpcContext => ({ mainWindow: live(), repoRoot });
+
+  it('create when no live window owns the repo', () => {
+    expect(decideOpenNewWindow(new Map([[1, ctx('/a')]]), '/b')).toEqual({ kind: 'create' });
+  });
+
+  it('focus the existing window that owns the repo (one repo per window)', () => {
+    const contexts = new Map<number, IpcContext>([
+      [1, ctx('/a')],
+      [2, ctx('/b')],
+    ]);
+    expect(decideOpenNewWindow(contexts, '/b')).toEqual({ kind: 'focus', targetWcId: 2 });
+  });
+
+  it('create (not focus) when the only ctx on the repo is a destroyed window', () => {
+    const dead: IpcContext = { mainWindow: { isDestroyed: () => true } as never, repoRoot: '/b' };
+    const contexts = new Map<number, IpcContext>([
+      [1, ctx('/a')],
+      [2, dead],
+    ]);
+    expect(decideOpenNewWindow(contexts, '/b')).toEqual({ kind: 'create' });
+  });
+});
+
+describe('applyOpenWindowAction (side effects of opening a new window)', () => {
+  const live = () => ({ isDestroyed: () => false }) as never;
+  const ctx = (repoRoot: string | null): IpcContext => ({ mainWindow: live(), repoRoot });
+  const fx = () => ({ createWindow: vi.fn(), focus: vi.fn() });
+
+  it('create calls createWindow (never focus)', () => {
+    const f = fx();
+    applyOpenWindowAction({ kind: 'create' }, new Map(), f);
+    expect(f.createWindow).toHaveBeenCalledOnce();
+    expect(f.focus).not.toHaveBeenCalled();
+  });
+
+  it('focus brings the target window forward (never creates)', () => {
+    const other = ctx('/b');
+    const f = fx();
+    applyOpenWindowAction({ kind: 'focus', targetWcId: 2 }, new Map([[2, other]]), f);
+    expect(f.focus).toHaveBeenCalledWith(other);
+    expect(f.createWindow).not.toHaveBeenCalled();
+  });
+
+  it('focus on a destroyed target is a no-op', () => {
+    const dead: IpcContext = { mainWindow: { isDestroyed: () => true } as never, repoRoot: '/b' };
+    const f = fx();
+    applyOpenWindowAction({ kind: 'focus', targetWcId: 2 }, new Map([[2, dead]]), f);
+    expect(f.focus).not.toHaveBeenCalled();
+    expect(f.createWindow).not.toHaveBeenCalled();
   });
 });

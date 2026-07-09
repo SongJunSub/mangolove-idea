@@ -160,6 +160,29 @@ export function findCtxByRepoRoot(
   return undefined;
 }
 
+/** True for a window whose BrowserWindow is present and not destroyed. */
+function isLiveCtx(ctx: IpcContext | undefined): ctx is IpcContext {
+  return !!ctx?.mainWindow && !ctx.mainWindow.isDestroyed();
+}
+
+/**
+ * The webContents id of a LIVE window owning canonical `root` (optionally excluding one ctx), or
+ * undefined. The SINGLE owner-lookup behind the "one repo per window" focus guard — shared by
+ * decideRepoSwitch (excludes the requesting window) and decideOpenNewWindow (no exclusion) so the
+ * liveness + id-recovery logic exists once. Callers carry only the id into their actions (the apply
+ * step re-fetches the ctx from `contexts`, since it may go stale between decide and apply).
+ */
+function findLiveCtxWcId(
+  contexts: Map<number, IpcContext>,
+  root: string,
+  exclude?: IpcContext,
+): number | undefined {
+  for (const [id, ctx] of contexts) {
+    if (ctx !== exclude && ctx.repoRoot === root && isLiveCtx(ctx)) return id;
+  }
+  return undefined;
+}
+
 /**
  * The action a repo switch resolves to, given the current windows. PURE (no side effects) so the
  * branching — the riskiest part of cross-repo worktree select — is unit-testable; index.ts owns the
@@ -183,26 +206,36 @@ export function decideRepoSwitch(
   worktreeId?: string,
 ): RepoSwitchAction {
   const current = contexts.get(wcId);
-  if (!current?.mainWindow || current.mainWindow.isDestroyed()) return { kind: 'noop' };
+  if (!isLiveCtx(current)) return { kind: 'noop' };
   if (current.repoRoot === root) {
     return worktreeId ? { kind: 'reselect', worktreeId } : { kind: 'noop' };
   }
-  for (const [id, ctx] of contexts) {
-    if (
-      ctx !== current &&
-      ctx.repoRoot === root &&
-      ctx.mainWindow &&
-      !ctx.mainWindow.isDestroyed()
-    ) {
-      return { kind: 'focus', targetWcId: id, worktreeId };
-    }
-  }
-  return { kind: 'reload', worktreeId };
+  const otherWcId = findLiveCtxWcId(contexts, root, current);
+  return otherWcId !== undefined
+    ? { kind: 'focus', targetWcId: otherWcId, worktreeId }
+    : { kind: 'reload', worktreeId };
 }
 
-/** True for a window whose BrowserWindow is present and not destroyed. */
-function isLiveCtx(ctx: IpcContext | undefined): ctx is IpcContext {
-  return !!ctx?.mainWindow && !ctx.mainWindow.isDestroyed();
+/**
+ * The action opening a repo in a NEW window resolves to. PURE; index.ts interprets it. `root` must
+ * already be canonical. The "one repo per window" invariant means an already-open repo focuses its
+ * existing window instead of duplicating it.
+ *  - `focus`  : the repo is already open in a live window (`targetWcId`) — focus it, don't duplicate.
+ *  - `create` : no window owns it — create a fresh one.
+ */
+export type OpenWindowAction =
+  | { readonly kind: 'focus'; readonly targetWcId: number }
+  | { readonly kind: 'create' };
+
+/** Decides whether opening `root` in a new window focuses an existing window or creates one. */
+export function decideOpenNewWindow(
+  contexts: Map<number, IpcContext>,
+  root: string,
+): OpenWindowAction {
+  const existingWcId = findLiveCtxWcId(contexts, root);
+  return existingWcId !== undefined
+    ? { kind: 'focus', targetWcId: existingWcId }
+    : { kind: 'create' };
 }
 
 /** The side effects applyRepoSwitchAction performs — injected so it is unit-testable sans Electron. */
@@ -257,6 +290,28 @@ export function applyRepoSwitchAction(
       fx.reload(current);
       return;
   }
+}
+
+/** The side effects applyOpenWindowAction performs — injected so it is unit-testable sans Electron. */
+export interface OpenWindowEffects {
+  /** Create a fresh window for the repo (index.ts closes over the canonical root). */
+  createWindow(): void;
+  /** Bring an existing window to the foreground. */
+  focus(ctx: IpcContext): void;
+}
+
+/** Interprets an OpenWindowAction into side effects — focus the existing window, or create a new one. */
+export function applyOpenWindowAction(
+  action: OpenWindowAction,
+  contexts: Map<number, IpcContext>,
+  fx: OpenWindowEffects,
+): void {
+  if (action.kind === 'create') {
+    fx.createWindow();
+    return;
+  }
+  const target = contexts.get(action.targetWcId);
+  if (isLiveCtx(target)) fx.focus(target);
 }
 
 /**
