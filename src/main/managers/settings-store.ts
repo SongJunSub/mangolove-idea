@@ -64,9 +64,31 @@ function sanitizePaneLayout(raw: unknown): AppSettings['paneLayout'] {
  */
 export class SettingsStore {
   private readonly filePath: string;
+  /** Tail of the serialized update() chain — each update() runs after the previous resolves. */
+  private writeChain: Promise<unknown> = Promise.resolve();
 
   constructor(filePath: string) {
     this.filePath = filePath;
+  }
+
+  /**
+   * Serialized read-modify-write. `mutator` receives the CURRENT settings and returns the partial to
+   * persist; it MAY be async (e.g. a realpath fan-out). Concurrent update() calls on this store run
+   * STRICTLY one at a time — each awaits the previous — so a read→async→write sequence can never
+   * interleave with another's and clobber it (the lost-update race that a bare get()…await…set() has).
+   * ALL writes to a key that more than one window mutates (recentRepos, projectGroups) must go through
+   * update() to be race-free. Plain get()/load() reads are lock-free and unaffected. A mutator that
+   * throws rejects only its own call and does NOT poison the chain (the next update still runs).
+   */
+  async update(
+    mutator: (current: AppSettings) => Partial<AppSettings> | Promise<Partial<AppSettings>>,
+  ): Promise<AppSettings> {
+    const run = async (): Promise<AppSettings> => this.set(await mutator(this.load()));
+    // Chain onto the previous update (regardless of its outcome) so they serialize; keep the chain
+    // tail non-rejecting so one failure can't wedge every later update.
+    const result = this.writeChain.then(run, run);
+    this.writeChain = result.catch(() => undefined);
+    return result;
   }
 
   /** Reads + parses settings, returning {} on missing/corrupt/non-object files. */
