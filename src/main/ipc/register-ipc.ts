@@ -1415,6 +1415,29 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
     return recentRepoList(store, active);
   });
 
+  // Open a KNOWN repo in a NEW window (or focus its existing window — one repo per window). SECURITY:
+  // only a repo already in the live recentRepos allowlist is honored (the tree only shows those), so
+  // the renderer can't make main spawn a window in an arbitrary directory. Opening is a use, so bump
+  // it to the front of recentRepos (matches REPO_OPEN).
+  ipcMain.handle(
+    IPC.REPO_OPEN_NEW_WINDOW,
+    async (event, path: unknown): Promise<RepoPickResult> => {
+      const ctx = requireCtx(event);
+      if (typeof path !== 'string' || !existsSync(join(path, '.git'))) {
+        return { ok: false, error: 'not a git repository' };
+      }
+      const store = getSettingsStore(ctx);
+      const root = canonicalRepoRoot(path);
+      if (!new Set(liveCanonicalRepos(store.get().recentRepos ?? [])).has(root)) {
+        return { ok: false, error: 'unknown repository' };
+      }
+      const prev = store.get().recentRepos ?? [];
+      store.set({ recentRepos: [root, ...prev.map(canonicalRepoRoot).filter((r) => r !== root)] });
+      ctx.openRepoNewWindow?.(root);
+      return { ok: true, repoRoot: root };
+    },
+  );
+
   // Switch to a KNOWN recent repo by path (no native dialog): same dedupe-write as
   // REPO_PICK, then openOrFocus its window. The same-repo-twice focus-guard lives in
   // openRepo (index.ts), so clicking a repo already open elsewhere just FOCUSES it.
