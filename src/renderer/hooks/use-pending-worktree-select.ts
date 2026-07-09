@@ -45,6 +45,10 @@ export function usePendingWorktreeSelect(
   useEffect(
     () =>
       window.mango.repo.onSelectWorktree(({ worktreeId }) => {
+        // The focus path durably pends the id in main (in case the nudge lands before we subscribe).
+        // A delivered nudge means we no longer need that copy, so CONSUME it — otherwise it lingers
+        // and a later manual reload (Cmd+R, no switch) would re-apply this stale selection.
+        void window.mango.repo.takePendingSelect();
         if (worktreesRef.current.some((w) => w.id === worktreeId)) {
           onSelectRef.current(worktreeId);
         }

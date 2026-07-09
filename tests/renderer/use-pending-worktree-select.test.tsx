@@ -100,4 +100,13 @@ describe('usePendingWorktreeSelect', () => {
     await s.nudge('/wt/a');
     expect(onSelect).toHaveBeenCalledWith('/wt/a');
   });
+
+  it('a delivered nudge CONSUMES the durable pending (so a later reload can not re-apply it)', async () => {
+    const s = stub(async () => null);
+    const onSelect = vi.fn();
+    render(onSelect, { worktrees: [wt('/wt/a')], loading: false, selectedId: null });
+    const before = s.takePendingSelect.mock.calls.length; // the mount pull already ran once
+    await s.nudge('/wt/a');
+    expect(s.takePendingSelect.mock.calls.length).toBeGreaterThan(before);
+  });
 });
