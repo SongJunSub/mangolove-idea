@@ -388,6 +388,21 @@ describe('<ProjectTree>', () => {
     expect(screen.queryByTestId('menu-open-here')).toBeNull();
   });
 
+  it('Cmd/Ctrl+click on the ACTIVE repo row does nothing (active branch precedes the modifier check)', () => {
+    const onOpenNewWindow = vi.fn();
+    const onSwitchRepo = vi.fn();
+    renderWithI18n(
+      <Harness
+        expandedInit={{ groups: ['g1'], repos: [] }}
+        onOpenNewWindow={onOpenNewWindow}
+        onSwitchRepo={onSwitchRepo}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('repo-node-crs'), { metaKey: true }); // active row
+    expect(onOpenNewWindow).not.toHaveBeenCalled(); // active row never opens a new window
+    expect(onSwitchRepo).not.toHaveBeenCalled(); // (only toggles its worktrees)
+  });
+
   it('re-expanding a non-active repo RELOADS its worktree snapshot (not frozen)', async () => {
     const listFor = stubListFor(async () => []);
     renderWithI18n(<Harness />);

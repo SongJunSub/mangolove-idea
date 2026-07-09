@@ -1416,8 +1416,10 @@ export function registerIpc(ipcMain: IpcMain, contexts: Map<number, IpcContext>)
   });
 
   // Open a KNOWN repo in a NEW window (or focus its existing window — one repo per window). SECURITY:
-  // the path must be BOTH a live .git dir (guard below) AND already a member of recentRepos (the tree
-  // only shows those), so the renderer can't make main spawn a window in an arbitrary directory.
+  // the path must be BOTH a live .git dir (guard below) AND already a canonicalized member of
+  // recentRepos, so the renderer can't make main spawn a window in an ARBITRARY directory — it's
+  // bounded to git repos already in the recents list. (recentRepos is renderer-populated via
+  // REPO_PICK/REPO_OPEN, so this bounds to known git checkouts, it is not a user-approval gate.)
   // Opening is a use, so bump it to the front of recentRepos (matches REPO_OPEN).
   ipcMain.handle(
     IPC.REPO_OPEN_NEW_WINDOW,

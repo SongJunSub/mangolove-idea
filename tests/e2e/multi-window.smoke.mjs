@@ -70,10 +70,22 @@ try {
   );
 
   // ── FOCUS path: opening B AGAIN (already owned by window 2) must NOT create a third window ──
+  // Assert the ABSENCE of a new window deterministically: a 'window' event arriving within the budget
+  // means a 3rd window was wrongly spawned (fail); the budget elapsing with no event is the focus path
+  // (pass). A bare sleep can't distinguish "focused" from "3rd window still loading" under CI load.
   await bNode.click({ button: 'right' });
   await window.getByTestId('menu-open-new-window').click();
-  await window.waitForTimeout(600); // give main a beat to (wrongly) spawn a 3rd window
-  check('re-opening B focuses the existing window (no third window)', app.windows().length === 2);
+  let thirdWindow = false;
+  await app
+    .waitForEvent('window', { timeout: 1500 })
+    .then(() => {
+      thirdWindow = true;
+    })
+    .catch(() => {}); // timeout = no new window = the focus path
+  check(
+    're-opening B focuses the existing window (no third window)',
+    !thirdWindow && app.windows().length === 2,
+  );
 } finally {
   clearTimeout(hardExit);
   await close();
