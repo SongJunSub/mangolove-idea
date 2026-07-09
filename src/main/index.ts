@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, Menu } from 'electron';
 import { createIpcContext, type IpcContext } from './ipc/ipc-context';
 import { registerIpc } from './ipc/register-ipc';
 import { IPC } from '../shared/ipc-channels';
@@ -30,6 +30,7 @@ import { reapOrphanDetachedSessions } from './pty/abduco-reap';
 import { getOrCreateMachineIdentity } from './sync/machine-identity';
 import type { QuitWarningEvent } from '../shared/types';
 import { resolveRepoRoot } from './util/resolve-repo-root';
+import { buildAppMenuTemplate } from './app/app-menu';
 
 /** One IpcContext per OS BrowserWindow, keyed by webContents.id (multi-window). */
 const contexts = new Map<number, IpcContext>();
@@ -265,6 +266,18 @@ app.whenReady().then(() => {
 
   // Channels are process-global: register the handlers ONCE over the registry.
   registerIpc(ipcMain, contexts);
+
+  // Set an EXPLICIT application menu (replacing Electron's implicit default) — standard macro roles
+  // keep native copy/paste/quit + the macOS window LIST, and File > New Window opens a fresh picker
+  // window (the menu entry point to multi-window).
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      buildAppMenuTemplate(
+        { onNewWindow: () => createWindow(null) },
+        process.platform === 'darwin',
+      ),
+    ),
+  );
 
   // Multi-window boot: reopen the MOST-RECENT repo (recentRepos[0]) if valid; else
   // fall back to the legacy single repoRoot / cwd resolve; else open the empty gate.
