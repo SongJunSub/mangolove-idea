@@ -301,5 +301,22 @@ describe('repo IPC wiring', () => {
       });
       expect(openRepoNewWindow).not.toHaveBeenCalled();
     });
+
+    it('caps recentRepos at MAX (50) on open, keeping the opened repo at the front', async () => {
+      writeFileSync(join(dir, '.git'), 'gitdir: x\n');
+      const canon = realpathSync(dir);
+      // dir is allowlisted; 60 stale entries follow (they canonicalize to themselves — no .git).
+      const stale = Array.from({ length: 60 }, (_, i) => `/stale/${i}`);
+      const setSpy = vi.fn();
+      const ctx = baseCtx();
+      ctx.settingsStore = { get: () => ({ recentRepos: [dir, ...stale] }), set: setSpy } as never;
+      ctx.openRepoNewWindow = vi.fn();
+      const { handlers, fakeEvent } = registerIpcForTest(ctx);
+      await handlers.get(IPC.REPO_OPEN_NEW_WINDOW)!(fakeEvent, dir);
+      const written = setSpy.mock.calls[0][0].recentRepos as string[];
+      expect(written).toHaveLength(50); // capped
+      expect(written[0]).toBe(canon); // opened repo bumped to front
+      expect(written.slice(1)).toEqual(stale.slice(0, 49)); // oldest tail dropped
+    });
   });
 });
