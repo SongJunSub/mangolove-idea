@@ -65,6 +65,7 @@ function makeManager(replies: Record<string, unknown>, over: Partial<LspManagerD
     resolveServer: (lang) => (lang === 'java' ? '/opt/homebrew/bin/jdtls' : null),
     readFileText: () => 'class X {}',
     dataDir: () => '/tmp/jdtls-data',
+    readyTimeoutMs: 20, // readiness gate: java stays 'indexing', so keep the wait tiny (no suite hang)
     ...over,
   };
   return { mgr: new LspManager(deps), procs, spawnRpc };
@@ -162,6 +163,7 @@ describe('LspManager', () => {
       resolveServer: (l) => (l === 'java' ? '/opt/homebrew/bin/jdtls' : null),
       readFileText: () => 'class X {}',
       dataDir: () => '/tmp/jdtls-data',
+      readyTimeoutMs: 20,
     });
     const q = {
       absPath: '/repo/wt/src/Main.java',
@@ -311,6 +313,50 @@ describe('LspManager', () => {
     expect(statuses[statuses.length - 1].state).toBe('indexing'); // NOT cleared prematurely
     procs[0].emit('$/progress', { token: 'b', value: { kind: 'end' } }); // all closed
     expect(statuses[statuses.length - 1].state).toBe('ready');
+  });
+
+  it('readiness gate: a query during indexing WAITS for ready, then returns real results (not [])', async () => {
+    const statuses: { state: string }[] = [];
+    // Long gate so it does NOT time out: the ServiceReady notification is what releases the query.
+    const { mgr, procs } = makeManager(
+      { initialize: { capabilities: {} }, 'textDocument/definition': [defLoc] },
+      { readyTimeoutMs: 5000, onStatus: (s) => statuses.push(s) },
+    );
+    const q = {
+      absPath: '/repo/wt/src/Main.java',
+      line: 4,
+      character: 6,
+      includeDeclaration: false,
+    };
+    // java handshakes then stays 'indexing' → the query parks on the readiness gate.
+    const pending = mgr.query('definition', '/repo/wt', 'java', q);
+    await vi.waitFor(() => expect(statuses.map((s) => s.state)).toContain('indexing'));
+    procs[0].emit('language/status', { type: 'ServiceReady' }); // → ready → releases the gate
+    expect(await pending).toEqual([
+      {
+        absPath: '/repo/wt/src/Other.java',
+        startLine: 1,
+        startCharacter: 2,
+        endLine: 1,
+        endCharacter: 8,
+      },
+    ]);
+  });
+
+  it('readiness gate: fires anyway on timeout (degrades to the old behaviour, no hang)', async () => {
+    // No ServiceReady emitted → the 20ms gate times out and the query fires against the indexing
+    // server, returning whatever it has (here []). Proves the gate never blocks nav indefinitely.
+    const { mgr } = makeManager({
+      initialize: { capabilities: {} },
+      'textDocument/definition': [],
+    });
+    const r = await mgr.query('definition', '/repo/wt', 'java', {
+      absPath: '/repo/wt/A.java',
+      line: 0,
+      character: 0,
+      includeDeclaration: false,
+    });
+    expect(r).toEqual([]);
   });
 
   it('launchArgsFor: jdtls -data dir; kotlin-lsp --stdio; kotlin-language-server none', () => {

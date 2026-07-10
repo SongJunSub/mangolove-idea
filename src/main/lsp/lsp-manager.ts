@@ -24,6 +24,13 @@ const REQUEST_TIMEOUT_MS = 15000;
 const INIT_TIMEOUT_MS = 90 * 1000;
 const IDLE_TTL_MS = 5 * 60 * 1000;
 const KILL_GRACE_MS = 3000; // JVMs are slow; SIGTERM then SIGKILL after a grace
+/**
+ * Readiness gate: a query that arrives while the server is still importing/indexing WAITS up to this
+ * long for 'ready' before firing — so the FIRST go-to-definition after opening a Java project returns
+ * real results instead of the empty list an unindexed server hands back (which read as "No definition
+ * found"). On timeout it fires anyway (degrades to the old behaviour; the badge still shows indexing).
+ */
+const READY_TIMEOUT_MS = 15000;
 
 /** The launcher basename that identifies JetBrains' kotlin-lsp (needs an explicit stdio flag). */
 const KOTLIN_LSP_BIN = 'kotlin-lsp';
@@ -60,6 +67,8 @@ class LspServer {
   private status: CodeNavRuntimeState = 'starting';
   /** Open work-done progress tokens; stay 'indexing' until ALL close (avoids a premature 'ready'). */
   private readonly progressTokens = new Set<string>();
+  /** Resolvers of in-flight whenReady() waiters — flushed when the server reaches ready/failed. */
+  private readonly readyWaiters = new Set<() => void>();
 
   constructor(
     private readonly proc: IRpcProc,
@@ -69,6 +78,8 @@ class LspServer {
     private readonly onIdleDispose: () => void,
     /** Emits a coarse lifecycle state so the renderer can show "indexing / failed" (dedup'd here). */
     private readonly notifyStatus: (state: CodeNavRuntimeState, detail?: string) => void,
+    /** Max time a query waits for 'ready' while the server is still indexing (readiness gate). */
+    private readonly readyTimeoutMs: number,
   ) {
     proc.onStdout((chunk) => {
       for (const msg of this.reader.append(chunk)) this.onMessage(msg);
@@ -93,6 +104,30 @@ class LspServer {
     if (this.status === state) return;
     this.status = state;
     this.notifyStatus(state, detail);
+    // Indexing finished (ready) or the server died (failed) → release any query waiting on the gate.
+    if (state === 'ready' || state === 'failed') this.flushReadyWaiters();
+  }
+
+  private flushReadyWaiters(): void {
+    for (const w of [...this.readyWaiters]) w(); // each waiter's done() removes itself from the set
+  }
+
+  /**
+   * Resolves when the server is ready (or failed/disposed), or after `timeoutMs` — whichever first.
+   * The readiness gate: a query firing during import waits this out so it hits an indexed server.
+   */
+  private whenReady(timeoutMs: number): Promise<void> {
+    if (this.status === 'ready' || this.status === 'failed' || this.disposed)
+      return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const done = (): void => {
+        this.readyWaiters.delete(done);
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(done, timeoutMs);
+      this.readyWaiters.add(done);
+    });
   }
 
   /** First failure wins (keeps the root cause); a graceful dispose does NOT count as failed. */
@@ -239,6 +274,9 @@ class LspServer {
   ): Promise<RawLocation[]> {
     this.touch();
     await this.ensureInitialized();
+    // Readiness gate: wait out an in-progress import (bounded) so the first query after opening a
+    // project returns real results, not the empty list an unindexed server hands back.
+    await this.whenReady(this.readyTimeoutMs);
     this.ensureOpen(absPath);
     const position = { line: q.line, character: q.character };
     const textDocument = { uri: pathToFileURL(absPath).toString() };
@@ -260,6 +298,7 @@ class LspServer {
     // the terminal 'failed' (not a busy state), so this leaves that reason intact.
     if (this.status === 'starting' || this.status === 'indexing') this.setState('ready');
     this.disposed = true;
+    this.flushReadyWaiters(); // release any gate waiter (e.g. when status was already 'failed')
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.failAll(new Error('disposed'));
     // Best-effort graceful shutdown, then EXACT-pid SIGTERM -> SIGKILL after a grace.
@@ -326,6 +365,9 @@ export interface LspManagerDeps {
   dataDir(worktreeId: string, lang: NavServerLanguage): string;
   /** Optional: pushed a server-state change (starting/indexing/ready/failed) to the renderer. */
   onStatus?(status: CodeNavStatus): void;
+  /** Optional override for the readiness-gate wait (READY_TIMEOUT_MS). Tests inject a small value so
+   *  a query during indexing doesn't hang the suite; production uses the default. */
+  readyTimeoutMs?: number;
 }
 
 /** Owns one LspServer per (worktreeId, language); lazy-spawns, idle-kills, disposes all. */
@@ -363,6 +405,7 @@ export class LspManager {
         lang,
         () => this.disposeServer(key),
         (state, detail) => this.deps.onStatus?.({ worktreeId, lang, state, detail }),
+        this.deps.readyTimeoutMs ?? READY_TIMEOUT_MS,
       );
       this.servers.set(key, server);
     }
