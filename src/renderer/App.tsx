@@ -1231,6 +1231,7 @@ export function App(): React.JSX.Element {
                 lang={navLang}
                 state={navIndicator.state}
                 detail={navIndicator.detail}
+                onAction={() => setSettingsOpen(true)}
               />
             </>
           }
