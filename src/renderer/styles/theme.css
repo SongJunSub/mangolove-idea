@@ -1423,6 +1423,18 @@ a {
 .nav-status--unavailable {
   cursor: help;
 }
+/* Actionable failed/unavailable badge: a bare button (inherits .nav-status color/size) that opens
+   Settings. Underline on hover so it reads as clickable. */
+.nav-status--action {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+}
+.nav-status--action:hover {
+  text-decoration: underline;
+}
 .nav-status__dot {
   width: 6px;
   height: 6px;

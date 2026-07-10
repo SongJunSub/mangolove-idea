@@ -16,6 +16,10 @@ export interface NavStatusBadgeProps {
   readonly state: NavIndicatorState | null;
   /** Extra context for the tooltip: the failure reason, or the install hint. */
   readonly detail?: string;
+  /** When set AND the state is actionable (failed / unavailable), the badge becomes a button that
+   *  invokes this — App wires it to open Settings, where the LSP paths + install hints live. Busy
+   *  states (starting/indexing) stay non-interactive. */
+  onAction?(): void;
 }
 
 const LANG_LABEL: Readonly<Record<'java' | 'kotlin', string>> = { java: 'Java', kotlin: 'Kotlin' };
@@ -24,6 +28,7 @@ export function NavStatusBadge({
   lang,
   state,
   detail,
+  onAction,
 }: NavStatusBadgeProps): React.JSX.Element | null {
   const { t } = useI18n();
   if (!lang || !state || state === 'ready') return null; // ready/other = nothing to say
@@ -35,14 +40,33 @@ export function NavStatusBadge({
       : state === 'unavailable'
         ? t('nav.unavailable', { lang: label })
         : t('nav.indexing', { lang: label }); // starting | indexing
+  const inner = (
+    <>
+      {busy && <span className="nav-status__dot" aria-hidden="true" />}
+      {text}
+    </>
+  );
+  // failed/unavailable → an actionable button (open Settings); busy/others stay a static span.
+  if (onAction && (state === 'failed' || state === 'unavailable')) {
+    return (
+      <button
+        type="button"
+        className={`nav-status nav-status--${state} nav-status--action`}
+        data-testid="nav-status"
+        title={detail ? t('nav.actionTip', { detail }) : t('nav.actionTipBare')}
+        onClick={onAction}
+      >
+        {inner}
+      </button>
+    );
+  }
   return (
     <span
       className={`nav-status nav-status--${state}`}
       data-testid="nav-status"
       title={detail || undefined}
     >
-      {busy && <span className="nav-status__dot" aria-hidden="true" />}
-      {text}
+      {inner}
     </span>
   );
 }

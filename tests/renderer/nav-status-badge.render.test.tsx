@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { wrapI18n } from './i18n-test-util';
 import { NavStatusBadge } from '../../src/renderer/components/statusbar/nav-status-badge';
 
@@ -38,5 +38,25 @@ describe('<NavStatusBadge>', () => {
     const badge = screen.getByTestId('nav-status');
     expect(badge.className).toMatch(/nav-status--unavailable/);
     expect(badge.getAttribute('title')).toBe('kotlin-lsp not found');
+  });
+
+  it('failed/unavailable become an actionable button that invokes onAction (open Settings)', () => {
+    const onAction = vi.fn();
+    render(
+      wrapI18n(
+        <NavStatusBadge lang="java" state="failed" detail="exited (code 1)" onAction={onAction} />,
+      ),
+    );
+    const badge = screen.getByTestId('nav-status');
+    expect(badge.tagName).toBe('BUTTON');
+    expect(badge.className).toMatch(/nav-status--action/);
+    expect(badge.getAttribute('title')).toMatch(/exited \(code 1\)/); // detail + "open Settings" hint
+    fireEvent.click(badge);
+    expect(onAction).toHaveBeenCalledOnce();
+  });
+
+  it('a busy badge stays a static span even with onAction (only failed/unavailable act)', () => {
+    render(wrapI18n(<NavStatusBadge lang="java" state="indexing" onAction={vi.fn()} />));
+    expect(screen.getByTestId('nav-status').tagName).toBe('SPAN');
   });
 });
